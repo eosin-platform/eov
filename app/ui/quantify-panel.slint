@@ -1,6 +1,7 @@
 // The Quantify Stain panel: positive-pixel analysis and an H-score of one
 // stain in the region of interest, for brightfield IHC.
 
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { ChoiceItem, ResultRow } from "types.slint";
 import { Chip, NumberField, PanelButton } from "panel-controls.slint";
@@ -70,6 +71,7 @@ export component QuantifyPanel inherits Rectangle {
                         font-size: 14px;
                         font-weight: 600;
                         horizontal-stretch: 1;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -107,12 +109,14 @@ export component QuantifyPanel inherits Rectangle {
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                 }
 
                 Text {
                     text: @tr("Stain model");
                     color: Theme.text-secondary;
                     font-size: 11px;
+                    horizontal-alignment: Locale.start;
                 }
 
                 HorizontalLayout {
@@ -132,6 +136,7 @@ export component QuantifyPanel inherits Rectangle {
                     text: @tr("Stain to measure");
                     color: Theme.text-secondary;
                     font-size: 11px;
+                    horizontal-alignment: Locale.start;
                 }
 
                 HorizontalLayout {
@@ -152,6 +157,7 @@ export component QuantifyPanel inherits Rectangle {
                     alignment: start;
 
                     NumberField {
+                        // Translators: label above a number field: the stain concentration from which staining counts as weak (1+).
                         label: @tr("Weak (1+) from");
                         accepted => {
                             if !root.running {
@@ -165,6 +171,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
+                        // Translators: label above a number field: the stain concentration from which staining counts as moderate (2+).
                         label: @tr("Moderate (2+) from");
                         accepted => {
                             if !root.running {
@@ -178,6 +185,7 @@ export component QuantifyPanel inherits Rectangle {
                     }
 
                     NumberField {
+                        // Translators: label above a number field: the stain concentration from which staining counts as strong (3+).
                         label: @tr("Strong (3+) from");
                         accepted => {
                             if !root.running {
@@ -196,6 +204,7 @@ export component QuantifyPanel inherits Rectangle {
                     color: Theme.text-secondary;
                     font-size: 10px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                 }
 
                 if root.results.length > 0: Rectangle {
@@ -212,6 +221,7 @@ export component QuantifyPanel inherits Rectangle {
                                 color: Theme.text-secondary;
                                 font-size: 12px;
                                 horizontal-stretch: 1;
+                                horizontal-alignment: Locale.start;
                             }
 
                             Text {
@@ -229,6 +239,7 @@ export component QuantifyPanel inherits Rectangle {
                     color: Theme.warning;
                     font-size: 11px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                     height: self.preferred-height;
                 }
 

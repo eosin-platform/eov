@@ -144,7 +144,10 @@ Hotkeys (of tools, buttons and `register_hotkey`) cannot take a key eov
 uses: the keys in its Keyboard Shortcuts panel (F1), which users can
 change in `config.toml`, and Escape, Enter, Delete, Backspace, Tab and the
 plain arrows. A refused key arrives as `RegistrationRefused`, so offer
-users a way to pick another.
+users a way to pick another; to say why, show its `shown_reason` (the
+reason in the interface's language; hosts with plugin API 1.0 send none)
+when it is there, else `i18n::isolate(reason)` inside your own translated
+text.
 
 Multichannel slides (fluorescence and multiplexed immunofluorescence
 OME-TIFF) list their channels in `FileInfo::channel_names` and their OME
@@ -191,7 +194,7 @@ file extensions without running any plugin code, and implement
 ```toml
 [[slide_formats]]
 id = "isyntax"                 # unique within the plugin
-name = "Philips iSyntax"       # shown in the file picker
+name = "Philips iSyntax"       # the format's name (not shown yet)
 extensions = ["isyntax"]       # without the dot, any case
 ```
 
@@ -228,7 +231,10 @@ are ignored.
   the slide never reach the plugin.
 - **Failures.** An `Err` fails that read (the tile is tried again later); a
   panic fails it, makes the plugin's slides fail from then on, and stops the
-  plugin, as a panicking event handler does.
+  plugin, as a panicking event handler does. Write the errors of
+  `open_slide` and of a reader in English, as eov's own readers do: eov
+  logs them and hands them to scripts as they are, and shows them to the
+  user inside its own translated message.
 - **Where.** Slides open in eov's window and in the commands that read
   slides (`eov batch`, `eov dataset patches`, `eov qc`, `eov convert`,
   `eov probe`), which start the installed plugins with formats without a
@@ -241,6 +247,121 @@ are ignored.
 - **Testing.** `TestHarness::open_slide` opens a slide through the same FFI
   path eov uses; the example plugin's checkerboard format
   (`example-plugin`, `.excheck` files) shows the whole thing.
+
+## Translations
+
+eov's interface is available in 31 languages ([`i18n::LANGUAGES`](https://docs.rs/eov-plugin-api/latest/eov_plugin_api/i18n/)),
+and a plugin can follow the language the user chose:
+
+1. Declare its catalogs in `plugin.toml`:
+
+   ```toml
+   [i18n]
+   catalogs = "translations"   # <catalogs>/<tag>/LC_MESSAGES/<domain>.po
+   domain = "hello"            # default: the plugin id
+   ```
+
+2. Mark texts in `.slint` surfaces with `@tr("…")` (eov compiles surfaces
+   with the plugin's catalogs; the default context is the component name),
+   and texts made in Rust with `tr!` (in the prelude), which takes the same
+   placeholders and plural syntax:
+
+   ```rust
+   self.host.notify(NotifyLevel::Info, tr!("Counted {n} cell" | "Counted {n} cells" % count));
+   let tooltip = tr!("Toolbar" => "Count cells");
+   ```
+
+3. Handle `HostEvent::LanguageChanged { language }`: the SDK has already
+   switched `tr!` to the new language; hand eov again what it shows for you
+   (toolbar tooltips, tool names, surface properties that hold text).
+   Surfaces that declare `in property <bool> eov-rtl;` and
+   `in property <string> eov-language;` get the writing direction (Arabic,
+   Persian, Hebrew are right to left) and the language's tag.
+
+4. Ship `translations/<tag>/LC_MESSAGES/<domain>.po` in the `.eop`. The
+   Plugins panel shows the plugin's `name` and `description` from catalog
+   entries with the context `plugin.toml`. Each catalog's plural rule
+   (`Plural-Forms`) must be its language's, as `i18n::LANGUAGES` lists
+   it: any spelling that gives every number the same form will do, and a
+   catalog without one takes the language's. eov leaves a catalog with
+   another rule out of the plugin's surfaces (they show in English in that
+   language). A text with fewer plural forms than its language has shows
+   in English: in surfaces always, in Rust for the numbers whose form is
+   missing. `i18n.py update --plugin` writes the right header and as many
+   forms as the language has.
+
+**Warnings and errors.** eov writes a plugin's `host.warn`/`host.error`
+messages to its log as they are, and shows the same text to the user as a
+notification. eov's log stays in English, so tell the user in their
+language with `host.notify` or `host.notify_error` and `tr!`, and log in
+English with `host.info` or `host.debug`. For a text that is both shown
+and logged, `i18n::shown_and_english` writes it in both forms from the same
+code:
+
+```rust
+let (shown, english) = i18n::shown_and_english(|| tr!("{} failed", i18n::isolate(&name)));
+self.host.info(english);
+self.host.notify(NotifyLevel::Warning, shown);
+```
+
+It runs the closure twice, the second time in English, so the closure
+should only make the text. Values made inside it (with `tr!`,
+`i18n::isolate`, `i18n::format_decimal`) follow the language; a text made
+earlier is inserted as it is, so keep such a text in both forms.
+`i18n::in_english(|| …)` runs any code as in English: on the calling
+thread only, for Rust code only (surfaces' `@tr` texts keep the
+interface's language), until the code returns or panics, and it can be
+nested. A plugin that hands translated text to `warn` or `error` has it
+shown in the user's language, and accepts that eov's log gets that
+language too.
+
+Errors a plugin returns: an `Err` from `Plugin::create` is logged, written
+to the audit log and shown in the Plugins panel as it is, so keep it
+English (and tell the user with `notify`), as are the errors of
+`open_slide` and slide readers (see [Slide formats](#slide-formats)); an
+`Err` from `on_event` or a surface callback is shown to the user as a
+warning, so translate it.
+
+Overlay labels are also burned into exported images and copies of the
+view. Those travel beyond the interface's language, and eov draws their
+text with a font that cannot draw every letter: it has most Latin letters
+and the Greek alphabet, but not, for example, Romanian ș and ț, Vietnamese
+letters with two diacritics or Greek letters with an accent (eov writes
+its own labels in English, with `.` decimals). Give a translated label its
+English form for them:
+
+```rust
+let object = OverlayObject::new("region", shape)
+    .with_label(tr!("Region · {} mm²", i18n::format_decimal(area, 2)))
+    .with_export_label(format!(
+        "Region · {} mm²",
+        i18n::format_decimal_for(i18n::source(), area, 2)
+    ));
+```
+
+That is the English text filled in the same way, without `i18n::isolate`;
+labels that are names users wrote stay as they are. A `Shape::Text` is
+burned in as it is, so put translated text in labels. Hosts with plugin
+API 1.0 ignore `export_label`.
+
+eov's `tools/i18n/i18n.py update --plugin <dir>` extracts the texts into
+`translations/<domain>.pot` and merges every catalog. It reads the
+`@tr` texts of every `.slint` file in the plugin's folder (with
+`slint-tr-extractor`; not in `target/`, hidden folders, or the `tests/`,
+`benches/` and `examples/` folders of its crates), the `tr!` texts of the
+module tree of the plugin's crate (with `xtr`, from `[lib] path` in its
+`Cargo.toml`, else `src/lib.rs`), and the manifest's texts. It warns about
+Rust files that call `tr!` outside that tree: the texts of a plugin's
+other crates are not extracted. `i18n::check_catalog` checks a catalog in
+tests. A missing catalog or text shows in English. Insert file names and
+paths into translated texts with `i18n::isolate`, show decimal numbers
+with `i18n::format_decimal`, read numbers users type with
+`i18n::parse_decimal`, put separately translated sentences together with
+`i18n::join_sentences`, and never translate log messages (at any level),
+file contents or data from slides. eov hosts with plugin API 1.0 send no
+language: translated plugins run there in English.
+See [docs/translating.md](https://github.com/eosin-platform/eov/blob/master/docs/translating.md)
+for the whole workflow.
 
 ## Plugin manifest
 
@@ -263,6 +384,9 @@ data = "<svg xmlns='http://www.w3.org/2000/svg'/>"
 
 [ui]                                # optional, for plugins with .slint files
 slint = ">=1.17"
+
+[i18n]                              # optional: translations (see Translations)
+catalogs = "translations"
 ```
 
 Requirements without an upper bound are treated as `<next major>` so that a
@@ -280,8 +404,11 @@ A `.eop` package is a tar archive (optionally zstd-compressed) holding
 hello.eop
 ├── plugin.toml
 ├── libhello.so
-└── ui/
-    └── sidebar.slint
+├── ui/
+│   └── sidebar.slint
+└── translations/                 # with [i18n]; see Translations
+    ├── de/LC_MESSAGES/hello.po
+    └── ja/LC_MESSAGES/hello.po
 ```
 
 Install it with `eov plugin install ./hello.eop`, or copy it into
@@ -302,6 +429,20 @@ paths, `..`, links or special files.
   plugin built against 1.0 keeps loading into every 1.x eov.
 - A different major version, or a library that is not an eov plugin, is
   refused with a message in the Plugins panel; it never runs.
+- **Source:** minor releases add public fields to protocol and manifest
+  structs and to event variants (1.1: `PluginInit::language`,
+  `DisplayAdjustments::shown_badge` and `stain_colors`,
+  `OverlayObject::export_label`, `HostEvent::RegistrationRefused`'s
+  `shown_reason`, `PluginManifest::i18n`). Build such structs with
+  `..Default::default()`, `..OverlayObject::new(..)` or
+  `..testing::test_init(..)` (or with their constructors and `with_*`
+  methods), and match structs and event variants with `..`, so that a
+  minor update never stops your plugin compiling. (`PluginManifest` has a
+  `Default` since 1.1; `PluginManifest::from_toml` reads and validates a
+  manifest.) Minor releases may also add languages: `i18n::LANGUAGES` is a
+  slice (iterate `i18n::LANGUAGES`, not `&LANGUAGES`), and
+  `i18n::Language` is `#[non_exhaustive]`, so read its fields rather than
+  build or destructure one.
 
 ## Testing plugins
 
@@ -318,7 +459,22 @@ assert_eq!(harness.state().notifications.len(), 1);
 ```
 
 `test_init()` gives each plugin instance its own temporary data and cache
-directories, so tests never touch a real eov installation.
+directories, so tests never touch a real eov installation. Unlike eov, the
+mock does not turn `host.warn`/`host.error` into notifications: find them
+in `calls_to("log")` by their `level`.
+
+**Languages in tests.** The language `tr!` translates with belongs to the
+whole plugin library: creating any harness sets it from
+`PluginInit::language` (`test_init` gives English), and
+`HostEvent::LanguageChanged` switches it for every test in the binary.
+Since tests run in parallel, run the tests that switch languages in an
+integration-test binary of their own (`tests/language.rs`), one at a time
+behind a lock, as eov's own plugins do. Alternatively, the
+`thread-local-language` feature on the dev-dependency
+(`eov-plugin-api = { version = "1.1", features = ["thread-local-language"] }`
+under `[dev-dependencies]`) gives each test thread its own language; texts
+your plugin makes on threads of its own are then in English, since new
+threads start in English.
 
 The mock keeps a model store too: put models in it with
 `state().add_model(record)` (what `resolve_model` and `models` answer),

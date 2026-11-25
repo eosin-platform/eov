@@ -1,0 +1,301 @@
+term	translation	note
+(register)	رسمی؛ جمله‌ها با «شما»ی مؤدبانه (…کنید)	Buttons and menu items: infinitive or verbal noun (باز کردن، ذخیره، حذف); no Title Case; sentences in the polite plural imperative (لطفاً only where English says please).
+(digits)	0–9 (ارقام لاتین)	Write numbers in Latin digits, like the values eov inserts (eov uses ٫ as the decimal separator itself); units, ×, %, ° stay as written.
+(punctuation)	، ؛ ؟ « » …	Persian comma ، semicolon ؛ question mark ؟; quotation marks « » for quoted names; keep the ellipsis … of menu items that open a dialog.
+(spelling)	ی ک، نیم‌فاصله، هٔ	Persian ی and ک (never ي ك); ZWNJ (نیم‌فاصله) in می‌، ‌ها، ‌های، ‌ای and compounds (پیش‌نمایش); ezafe after silent ه written هٔ (اندازهٔ پیکسل).
+(direction)	برنامهٔ eov …، فایل TIFF هرمی	The paragraph direction follows the first strong letter: start a text with a Persian word rather than a Latin one (eov, GPU, H&E, TIFF, [shortcuts]), e.g. برنامهٔ eov راه‌اندازی نشد. Placeholders that eov isolates do not count.
+(plural forms)	{n} لام / {n} لام	Persian uses the singular noun after a number, so both plural forms are usually the same; both must show {n} (form 0 is used for 0 and 1).
+For research and education. Not a medical device; not for primary diagnosis.	برای پژوهش و آموزش. این نرم‌افزار وسیلهٔ پزشکی نیست و نباید برای تشخیص اولیه به کار رود.	Safety text: complete and explicit, never shortened.
+research use only (RUO)	فقط برای مصارف پژوهشی (RUO)	The phrase printed on RUO reagents; results must not be used for clinical decisions.
+not a medical device	وسیلهٔ پزشکی نیست	Regulatory term وسیلهٔ پزشکی (medical device).
+primary diagnosis	تشخیص اولیه	Regulatory term.
+diagnosis	تشخیص	Only for diagnosis; for detection use شناسایی.
+synthetic (image, channel, stain)	سنتزشده	Computed by an algorithm; never مصنوعی/ساختگی (could read as fake) and never شبیه‌سازی‌شده.
+predicted	پیش‌بینی‌شده	Computed by a model, not scanned.
+generated	تولیدشده	Computed by an algorithm, not scanned.
+computed	محاسبه‌شده	
+slide	لام	The glass microscope slide and its scan (pathology term); never اسلاید (presentation slide). Plural لام‌ها.
+whole-slide image (WSI)	تصویر تمام‌لام (WSI)	Keep the abbreviation WSI.
+WSI files	فایل‌های WSI	
+slide viewer, viewer	نمایشگر لام	
+tab	زبانه	One open slide in a pane.
+pane	قاب	One of the side-by-side viewing areas.
+view	نما	What a pane shows: position, zoom, rotation.
+viewport	ناحیهٔ نمایش	Where the slide is drawn in a pane.
+minimap	نقشهٔ کوچک	Overview image of the whole slide with the visible area marked.
+scale bar	نوار مقیاس	
+HUD	پانل شناور	The small panels floating over the slide.
+toolbar	نوار ابزار	
+sidebar	نوار کناری	
+status bar	نوار وضعیت	
+panel	پانل	
+dialog	کادر گفتگو	
+tooltip	راهنمای ابزار	
+menu	منو	
+zoom (screen scale)	بزرگ‌نمایی	Screen scale (100% = one slide pixel per screen pixel).
+zoom in / zoom out	بزرگ‌نمایی / کوچک‌نمایی	
+magnification (20×)	بزرگ‌نمایی	Objective-equivalent magnification; 20× stays 20×. Where it must be told apart from the screen zoom: بزرگ‌نمایی عدسی.
+objective	عدسی شیئی	The microscope objective (40×).
+pixel size	اندازهٔ پیکسل	
+MPP (µm per pixel)	MPP (میکرومتر بر پیکسل)	MPP stays; µm/px stays as written.
+calibration	کالیبراسیون	
+level, pyramid level	سطح، سطح هرم	One resolution of the image pyramid.
+pyramid	هرم	
+resolution	وضوح	Image resolution (also DPI).
+tile	کاشی	Piece of the image loaded at a time.
+patch (dataset)	پچ	Small image cut from a slide for machine learning.
+cache	حافظهٔ نهان	
+region of interest (ROI)	ناحیهٔ مورد نظر (ROI)	Keep ROI as the abbreviation.
+region	ناحیه	
+measurement	اندازه‌گیری	Plural اندازه‌گیری‌ها.
+measure (tool)	ابزار اندازه‌گیری	
+distance, path length, area, angle	فاصله، طول مسیر، مساحت، زاویه	
+annotation	حاشیه‌نویسی	A drawn mark with a meaning (point, region, line, text), not a free-text comment.
+class (annotation class)	کلاس	Tumour, Stroma…
+cell count, counting	شمارش سلول، شمارش	
+high-power field (HPF)	میدان با بزرگ‌نمایی بالا (HPF)	HPF stays as the abbreviation.
+rotation, rotate	چرخش، چرخاندن	Rotate left/right 90° = چرخاندن 90° به چپ/راست.
+flip horizontally	قرینه‌سازی افقی	Unflip = لغو قرینه‌سازی.
+fit (the slide)	نمایش کل لام	Zoom so that the whole slide fits.
+full screen	تمام‌صفحه	
+link panes / unlink panes	پیوند قاب‌ها / جدا کردن قاب‌ها	Linked panes follow the focused pane.
+align, alignment	هم‌ترازی	
+landmark (alignment)	نقطهٔ نشانه	Landmark-based registration (نقاط نشانه).
+series, series bar	سری، نوار سری	The strip of slides of a folder.
+case (accession)	کیس	A pathology case; slides grouped by their case.
+H&E	H&E	Never translated.
+hematoxylin	هماتوکسیلین	
+eosin	ائوزین	
+IHC (immunohistochemistry)	ایمونوهیستوشیمی (IHC)	Keep IHC.
+DAB	DAB	Never translated.
+stain (staining: H&E, IHC, special stains)	رنگ‌آمیزی	
+stain (one dye of a stain: hematoxylin, eosin, DAB)	رنگینه	e.g. isolated stain = رنگینهٔ جداشده.
+stain normalization (Macenko, Vahadane)	نرمال‌سازی رنگ‌آمیزی	Macenko and Vahadane stay.
+stain target	هدف رنگ‌آمیزی	The stain appearance a slide is normalised to.
+reference (stain)	مرجع	
+stain model, basis	مدل رنگ‌آمیزی، پایه	
+color deconvolution	واپیچش رنگ	Separating the dyes into channels (Ruifrok–Johnston).
+intensity, concentration	شدت، غلظت	
+H-score, weak (1+), moderate (2+), strong (3+)	H-score، ضعیف (1+)، متوسط (2+)، قوی (3+)	H-score stays.
+positive (marker-positive)	مثبت	{}-positive = {}-مثبت.
+quantify, quantification	کمّی‌سازی	
+channel	کانال	
+multiplex immunofluorescence (mIF)	ایمونوفلورسانس چندگانه (mIF)	
+fluorescence	فلورسانس	
+marker	نشانگر	Marker names (CD3, Ki-67, PanCK) are never translated.
+solo (show only this channel)	تکی	Button; its description: نمایش {} به‌تنهایی.
+focal plane (Z)	صفحهٔ کانونی	
+time point (T)	نقطهٔ زمانی	
+heat map	نقشهٔ حرارتی	
+overlay	پوشش	Graphics or colour laid over the slide.
+layer	لایه	
+opacity	کدری	0–100 %.
+colour, color	رنگ	
+colour management	مدیریت رنگ	
+colour profile (ICC)	نمایهٔ رنگ (ICC)	ICC and sRGB stay.
+colour palette, colour map	پالت رنگ، نگاشت رنگ	
+colour-blind safe	مناسب برای کوررنگی	
+sharpness	تیزی	
+gamma	گاما	
+brightness	روشنایی	
+contrast, auto contrast	کنتراست، کنتراست خودکار	
+image adjustments	تنظیمات تصویر	
+histogram	هیستوگرام	
+threshold	آستانه	white threshold = آستانهٔ سفیدی.
+tissue	بافت	Never use بافت for a GPU texture.
+tissue QC	کنترل کیفیت بافت	
+pen marks	اثر ماژیک	
+folds	چین‌خوردگی	
+blur, blurred	تاری، تار	
+tissue detection, tissue mask	شناسایی بافت، ماسک بافت	Detection = شناسایی, never تشخیص (diagnosis).
+dataset	مجموعه‌داده	
+patch extraction	استخراج پچ	
+stride	گام	The step between patches.
+tile size	اندازهٔ کاشی	
+thread (CPU)	رشته	Threads = رشته‌های پردازشی / رشته‌ها.
+export	صدور، صادر کردن	Export Image… = صدور تصویر…
+import	وارد کردن	
+save a copy	ذخیرهٔ رونوشت	
+convert	تبدیل	
+de-identify, de-identified	شناسه‌زدایی، شناسه‌زدایی‌شده	Removing data that could identify a patient (label image, metadata).
+label image	تصویر برچسب	Photo of the slide's paper label.
+macro image	تصویر ماکرو	Photo of the whole glass slide.
+thumbnail	تصویر کوچک	
+metadata	فراداده	
+properties	ویژگی‌ها	
+vendor (scanner)	سازنده	
+scan, scanner, scanned	اسکن، اسکنر، اسکن‌شده	
+format	قالب	
+compression, lossless	فشرده‌سازی، بی‌اتلاف	
+quality	کیفیت	
+dimensions	ابعاد	
+figure (export)	عناصر شکل	Elements of a publication figure (scale bar…).
+bookmark	نشانک	A saved view of a slide.
+session	نشست	Slides and views restored at the next start.
+plugin	افزونه	
+package (.eop)	بسته	
+model, model store	مدل، مخزن مدل‌ها	
+inference	استنتاج	
+render, rendering	رندر، رندر کردن	
+renderer (CPU, GPU)	موتور رندر	Use CPU renderer = استفاده از موتور رندر CPU.
+backend (CPU, GPU)	موتور (CPU، GPU)	
+filtering (bilinear, trilinear, Lanczos)	فیلترینگ (دوخطی، سه‌خطی، Lanczos)	Lanczos stays.
+theme (dark, light, high contrast)	پوسته (تیره، روشن، کنتراست بالا)	
+Home screen	صفحهٔ اصلی	
+Check for Updates…	بررسی به‌روزرسانی‌ها…	Asks before going online.
+update, updated	به‌روزرسانی، به‌روز شد	
+release, release notes	نسخهٔ منتشرشده، یادداشت‌های انتشار	
+version	نسخه	
+prerelease	پیش‌انتشار	
+signature, verified, key	امضا، تأییدشده، کلید	
+log, log folder	گزارش، پوشهٔ گزارش‌ها	
+configuration (config)	پیکربندی	config.toml stays.
+keyboard shortcuts	میان‌برهای صفحه‌کلید	
+notifications, messages	اعلان‌ها، پیام‌ها	
+language	زبان	
+file, folder, path	فایل، پوشه، مسیر	
+file manager	مدیر فایل	
+clipboard	کلیپ‌بورد	
+recent files, recently opened	فایل‌های اخیر، اخیراً باز شده	
+Open, Open…	باز کردن، باز کردن…	
+Open File / Open Folder	باز کردن فایل / باز کردن پوشه	
+Close, Close All, Close Others	بستن، بستن همه، بستن بقیه	
+Cancel	لغو	
+OK	تأیید	
+Done	تمام	Button; as a status (finished) انجام شد.
+Save, Save…	ذخیره، ذخیره…	
+Delete	حذف	Removes data for good (file, bookmark, measurement).
+Remove	برداشتن	Takes out of a list or off the slide; the data itself stays.
+Remove (a plugin: deletes its files)	حذف	Remove {}? = {} حذف شود؟
+Add	افزودن	
+Edit	ویرایش	
+Change	تغییر	
+Settings	تنظیمات	
+Apply	اعمال	
+Reset, Reset to Defaults	بازنشانی، بازنشانی به پیش‌فرض‌ها	
+Default	پیش‌فرض	
+Show / Hide	نمایش / پنهان کردن	Toggle X = نمایش/پنهان کردن X.
+Enable / Disable	فعال کردن / غیرفعال کردن	States: فعال / غیرفعال.
+Copy, Copy Path	کپی، کپی مسیر	
+Paste	چسباندن	
+Undo / Redo	واگرد / ازنو	
+Clear	پاک کردن	
+Download	بارگیری	
+Install / Uninstall	نصب / حذف نصب	
+Restart	راه‌اندازی دوباره	
+Quit	خروج	Quit eov = خروج از eov.
+Browse	مرور	
+Filter	فیلتر	
+Search	جستجو	
+Help	راهنما	
+Window, Maximize, Minimize	پنجره، بزرگ کردن، کوچک کردن	
+Back, Forward, Up	عقب، جلو، بالا	
+Next, Previous	بعدی، قبلی	
+Error, Warning, Information	خطا، هشدار، اطلاعات	
+Note	توجه	
+Loading…	در حال بارگذاری…	
+Preview	پیش‌نمایش	
+Ready	آماده	
+None	هیچ	
+Unknown, N/A	نامعلوم، نامشخص	
+Tools	ابزارها	
+Navigation, navigate	پیمایش	
+Units	واحدها	
+Thickness, font size	ضخامت، اندازهٔ قلم	
+Solid, dashed, dotted	پیوسته، خط‌چین، نقطه‌چین	
+Pick a colour	انتخاب رنگ	
+focused pane	قاب فعال	
+fit (stain fit), fitted	برازش، برازش‌شده	Statistical fitting of the stain vectors.
+stain vector	بردار رنگینه	
+optical density	چگالی نوری	
+chromogen	کروموژن	
+colour-normalised, stain-adjusted, display-adjusted, sharpened	رنگ نرمال‌شده، رنگینه‌های تنظیم‌شده، نمایش تنظیم‌شده، تیزشده	Status labels of a pane.
+isolated stain / isolated channel	رنگینهٔ جداشده / کانال جداشده	
+ill-conditioned, condition number, converge	بدحالت، عدد حالت، همگرا شدن	
+Masson trichrome	تری‌کروم ماسون	
+Giemsa, Gram, Reticulin, Elastic	گیمسا، گرم، رتیکولین، الاستیک	
+Congo red, Alcian blue, Methyl blue	قرمز کنگو، آلسین بلو، متیل بلو	
+Van Gieson, Ziehl–Neelsen, Mucicarmine	ون گیسون، زیل–نلسون، موسیکارمین	
+Perls' Prussian blue, Grocott methenamine silver, Ponceau-fuchsin	آبی پروس پرلز، نقرهٔ متنامین گروکوت، پونسو-فوشین	
+grid cell (tissue QC)	خانهٔ شبکه	Not a biological cell.
+fibrin, necrosis	فیبرین، نکروز	
+out of focus	خارج از فوکوس	
+downsample (heat map placement)	ضریب کاهش وضوح	
+colour scale	مقیاس رنگ	
+zoom (the zoom field's name)	میزان بزرگ‌نمایی	
+Pyramidal TIFF	فایل TIFF هرمی	
+inch, mil	اینچ، میل	{} in = {} اینچ; in/mil = اینچ/میل.
+A–Z (sort order)	الف–ی	
+stroke style, caps (round, square, flat)	سبک خط، انتهای خط (گرد، مربعی، صاف)	
+dash length / gap / dot spacing, as one letter	ط / ف / ف	طول، فاصله; R, G, B, H, E stay as they are.
+outline	خط دور	
+figure (export section)	عناصر شکل	
+hotkey, modifier key	کلید میان‌بر، کلید اصلاح‌کننده	
+graphics adapter	آداپتور گرافیکی	
+crash report	گزارش خرابی	
+safe mode	حالت امن	
+administrator, administrator policy	سرپرست سیستم، سیاست سرپرست سیستم	
+self-update	به‌روزرسانی درون‌برنامه‌ای	Never به‌روزرسانی خودکار (it always asks first).
+update helper	برنامهٔ کمکی به‌روزرسانی	
+staged (update)	آمادهٔ نصب	Installed after eov exits.
+rolled back	برگردانده شد	
+release manifest, artifact	مانیفست انتشار، آرتیفکت	
+plugin catalog, plugin registry	فهرست افزونه‌ها، فهرست ثبت افزونه‌ها	
+platform, architecture	پلتفرم، معماری	
+sandbox (Flatpak)	محیط ایزوله	
+official, local, unmanaged, system (plugin origin)	رسمی، محلی، مدیریت‌نشده، سیستمی	
+Active, Disabled, Failed, Stopped (plugin status)	فعال، غیرفعال، ناموفق، متوقف‌شده	
+job (a plugin's task)	عملیات	{title} failed = عملیات «{title}» ناموفق بود.
+drag and drop	کشیدن و رها کردن	
+right-click	راست‌کلیک	
+pan (the view)	جابه‌جایی	
+mirror (the view)	قرینه کردن	
+landmark (place)	قرار دادن نقطهٔ نشانه	
+percent	{}%	No space before %; % stays the Latin sign.
+annotation layer, lock / unlock, locked	لایهٔ حاشیه‌نویسی، قفل کردن / باز کردن قفل، قفل‌شده	Plugins: Layer "{}" is locked = لایهٔ «{}» قفل است.
+point, line, arrow, polygon, rectangle, ellipse, text label	نقطه، خط، پیکان، چندضلعی، مستطیل، بیضی، برچسب متنی	Annotation kinds.
+shape, vertex / vertices, coordinates, hole	شکل، رأس / رئوس، مختصات، حفره	Geometry of annotations.
+regions (plural)	نواحی	As in eov; singular ناحیه.
+comment (on an annotation)	نظر	Plural نظرها; Add comment = افزودن نظر.
+author	نویسنده	Author of an annotation.
+review status: draft, verified, rejected	وضعیت بازبینی: پیش‌نویس، تأییدشده، ردشده	Mark verified = علامت‌گذاری به‌عنوان تأییدشده.
+reader, second reader	ارزیاب، ارزیاب دوم	A pathologist reading the same slide independently.
+blinded copy	رونوشت کورسازی‌شده	Copy without authors, comments and statuses, for a second reader.
+HPF field	میدان HPF	A high-power field placed on the slide; per HPF field = در هر میدان HPF.
+field number (FN), objective magnification	عدد میدان، بزرگ‌نمایی عدسی شیئی	Eyepiece field number in mm.
+count point, counts	نقطهٔ شمارش، شمارش‌ها	Clear counts = پاک کردن شمارش‌ها.
+density (cells per mm²)	تراکم	For optical density use چگالی.
+combined positive score (CPS)	امتیاز مثبت ترکیبی (CPS)	PD-L1-positive = PD-L1-مثبت.
+brush, eraser, brush stroke	قلم‌مو، پاک‌کن، ضربهٔ قلم‌مو	
+freehand	دست‌آزاد	
+database, read-only	پایگاه داده، فقط‌خواندنی	Ezafe: پایگاه دادهٔ حاشیه‌نویسی‌ها.
+merge, back up / backup	ادغام، پشتیبان‌گیری / نسخهٔ پشتیبان	
+attach (annotations of another slide)	پیوست کردن	
+character (text length)	نویسه	Names are limited to {n} characters = حداکثر {n} نویسه.
+DICOM study, attributes, modality	مطالعه، مشخصه‌ها، مدالیته	DICOM bulk annotations = حاشیه‌نویسی‌های انبوه DICOM.
+feature (GeoJSON)	عارضه (feature)	
+unreadable, skipped	ناخوانا، رد شد	
+Retry	تلاش دوباره	Button.
+Not now	بعداً	Button.
+readout, region readout (Cellaris)	خوانش، خوانش ناحیه	
+window (model input)	پنجره	One square image a model predicts from.
+cell (Cellaris grid cell)	خانهٔ شبکه	A small square of the slide predicted at once; not a biological cell.
+tissue block (5 µm square)	قطعهٔ بافت	Never بلوک (paraffin block).
+display window (of a marker)	بازهٔ نمایش	
+model card, sidecar file	کارت مدل، فایل همراه	
+runtime (ONNX Runtime)	محیط اجرا	The library itself: کتابخانهٔ ONNX Runtime.
+reconstruction, reconstruction error, error map	بازسازی، خطای بازسازی، نقشهٔ خطا	VAE (eovae).
+training data	داده‌های آموزشی	
+batch (inference), embedding	دسته، بردار تعبیه	
+bright-field	میدان روشن	
+resampled, upsampled	بازنمونه‌برداری‌شده، بزرگ‌شده	
+your site's copy / model	رونوشت / مدل مؤسسهٔ شما	
+address (URL)	نشانی	
+gamepad, game controller	دستهٔ بازی	Plural دسته‌های بازی.
+stick, trigger, D-pad, shoulder button	استیک، ماشه، جهت‌نما، دکمهٔ شانه	Face buttons by position: دکمهٔ جنوبی / شرقی / شمالی / غربی.
+dead zone, response curve, mapping	ناحیهٔ مرده، منحنی پاسخ، نگاشت	
+profile (saved gamepad settings)	نمایه	Same word as colour profile.
+pointer (mouse)	اشاره‌گر	Never نشانگر (= marker).
+marker (example plugin point)	نشانه	A placed point, not a biomarker.
+host (eov, as a plugin sees it)	برنامهٔ میزبان	A plugin's host application (eovae: the host returned …). The host system of a Flatpak is سیستم میزبان.
+low / high end (display window)	حد پایین / حد بالا	The ends of a channel's or marker's display window (Cellaris Low / High; eov Lower end of {} = حد پایین {}).

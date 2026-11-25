@@ -73,7 +73,11 @@ fn store_in(path: &Path, key: &str, um_per_px: Option<f64>, name: &str) -> Resul
                 },
             );
         }
-        Some(_) => return Err("the pixel size must be a positive number".to_string()),
+        Some(_) => {
+            return Err(eov_plugin_api::i18n::tr!(
+                "the pixel size must be a positive number"
+            ));
+        }
         None => {
             store.slide.remove(key);
         }
@@ -81,20 +85,17 @@ fn store_in(path: &Path, key: &str, um_per_px: Option<f64>, name: &str) -> Resul
     write(path, &store)
 }
 
-/// Parses a typed pixel size in µm/px ("0.25", "0,25", "0.25 µm").
+/// Parses a typed pixel size in µm/px ("0.25", "0,25", "0.25 µm"; also
+/// with the decimal separator of the interface's language).
 pub(crate) fn parse_um_per_px(text: &str) -> Option<f64> {
-    let cleaned: String = text
+    let cleaned = text
         .trim()
         .trim_end_matches("µm/px")
         .trim_end_matches("um/px")
         .trim_end_matches("µm")
         .trim_end_matches("um")
-        .trim()
-        .replace(',', ".");
-    cleaned
-        .parse::<f64>()
-        .ok()
-        .filter(|um| um.is_finite() && *um > 0.0 && *um < 1000.0)
+        .trim();
+    eov_plugin_api::i18n::parse_decimal(cleaned).filter(|um| *um > 0.0 && *um < 1000.0)
 }
 
 #[cfg(test)]

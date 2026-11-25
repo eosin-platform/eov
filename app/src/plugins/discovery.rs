@@ -9,7 +9,9 @@
 #[path = "package_cache.rs"]
 pub(crate) mod package_cache;
 
-use eov_plugin_api::{PluginDescriptor, PluginError, PluginManifest, PluginResult};
+use eov_plugin_api::i18n::{isolate, tr};
+use eov_plugin_api::{PluginDescriptor, PluginManifest, PluginResult};
+use package_cache::{PackageError, PackageResult};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,12 +36,17 @@ pub struct InspectedPluginPackage {
 pub fn inspect_plugin_package(
     package_path: &Path,
     calculate_sha256: bool,
-) -> PluginResult<InspectedPluginPackage> {
+) -> PackageResult<InspectedPluginPackage> {
     if !is_plugin_package(package_path) {
-        return Err(PluginError::Other(format!(
-            "plugin package must have a .eop extension: {}",
-            package_path.display()
-        )));
+        return Err(PackageError::unusable({
+            let package_path = package_path.to_path_buf();
+            move || {
+                tr!(
+                    "plugin package must have a .eop extension: {}",
+                    isolate(package_path.display())
+                )
+            }
+        }));
     }
     inspect_plugin_archive(package_path, calculate_sha256)
 }
@@ -48,14 +55,14 @@ pub fn inspect_plugin_package(
 pub(crate) fn inspect_staged_plugin_package(
     package_path: &Path,
     calculate_sha256: bool,
-) -> PluginResult<InspectedPluginPackage> {
+) -> PackageResult<InspectedPluginPackage> {
     inspect_plugin_archive(package_path, calculate_sha256)
 }
 
 fn inspect_plugin_archive(
     package_path: &Path,
     calculate_sha256: bool,
-) -> PluginResult<InspectedPluginPackage> {
+) -> PackageResult<InspectedPluginPackage> {
     // Extraction is content-addressed, so the package hash is always known.
     let extracted = package_cache::ensure_extracted(package_path)?;
     let manifest_path = extracted
@@ -101,7 +108,7 @@ fn plugin_cache_dir(_plugin_dir: &Path) -> PathBuf {
 /// Extracts (or reuses the extraction of) one package and reads its
 /// manifest, for the GUI's start-up; also schedules the cache's start-up
 /// garbage collection.
-pub fn load_descriptor(package_path: &Path) -> PluginResult<PluginDescriptor> {
+pub fn load_descriptor(package_path: &Path) -> PackageResult<PluginDescriptor> {
     try_load_descriptor_from_package(package_path, &plugin_cache_dir(package_path))
 }
 
@@ -109,7 +116,7 @@ pub fn load_descriptor(package_path: &Path) -> PluginResult<PluginDescriptor> {
 fn try_load_descriptor_from_package(
     package_path: &Path,
     cache_dir: &Path,
-) -> PluginResult<PluginDescriptor> {
+) -> PackageResult<PluginDescriptor> {
     let plugin_root = ensure_extracted_plugin_root(package_path, cache_dir)?;
     let manifest_path = plugin_root.join(eov_plugin_api::manifest::MANIFEST_FILENAME);
     let manifest = PluginManifest::from_file(&manifest_path)?;
@@ -119,7 +126,7 @@ fn try_load_descriptor_from_package(
     })
 }
 
-fn ensure_extracted_plugin_root(package_path: &Path, cache_dir: &Path) -> PluginResult<PathBuf> {
+fn ensure_extracted_plugin_root(package_path: &Path, cache_dir: &Path) -> PackageResult<PathBuf> {
     package_cache::PackageCache::at(cache_dir)
         .ensure_extracted(package_path)
         .map(|extracted| extracted.root)

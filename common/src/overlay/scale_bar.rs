@@ -157,15 +157,29 @@ pub fn layout_scale_bar(
     })
 }
 
-/// A scale bar for an on-screen view: the nicest length (1, 2 or 5 × 10ⁿ in
-/// the unit shown) that fits in `max_px` pixels of `um_per_px` µm each, as
-/// `(length in pixels, label)`. In µm mode, lengths of a millimetre or
-/// more are shown in mm. `None` when uncalibrated.
-pub fn scale_bar_for_view(
-    um_per_px: f64,
-    max_px: f64,
-    unit: MeasurementUnit,
-) -> Option<(f64, String)> {
+/// A scale bar for an on-screen view, as data: what [`scale_bar_for_view`]
+/// gives, with its label's number and unit apart (for interfaces that write
+/// numbers and units in another language).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ViewScaleBar {
+    /// Length of the bar in screen pixels.
+    pub width_px: f64,
+    /// The length the bar stands for, in `unit`, as the label writes it
+    /// (`.` before decimals): `"0.05"`, `"200"`.
+    pub value: String,
+    /// The label's unit.
+    pub unit: MeasurementUnit,
+}
+
+impl ViewScaleBar {
+    /// The label, e.g. `"0.05 mm"`.
+    pub fn label(&self) -> String {
+        format!("{} {}", self.value, unit_symbol(self.unit))
+    }
+}
+
+/// [`scale_bar_for_view`] as data.
+pub fn view_scale_bar(um_per_px: f64, max_px: f64, unit: MeasurementUnit) -> Option<ViewScaleBar> {
     if !(um_per_px.is_finite() && um_per_px > 0.0 && max_px > 0.0) {
         return None;
     }
@@ -175,12 +189,23 @@ pub fn scale_bar_for_view(
         unit => unit,
     };
     let length_um = nice_scale_length_um(max_um, unit)?;
-    let label = format!(
-        "{} {}",
-        format_significant(length_um / unit_um(unit), 3, true),
-        unit_symbol(unit)
-    );
-    Some((length_um / um_per_px, label))
+    Some(ViewScaleBar {
+        width_px: length_um / um_per_px,
+        value: format_significant(length_um / unit_um(unit), 3, true),
+        unit,
+    })
+}
+
+/// A scale bar for an on-screen view: the nicest length (1, 2 or 5 × 10ⁿ in
+/// the unit shown) that fits in `max_px` pixels of `um_per_px` µm each, as
+/// `(length in pixels, label)`. In µm mode, lengths of a millimetre or
+/// more are shown in mm. `None` when uncalibrated.
+pub fn scale_bar_for_view(
+    um_per_px: f64,
+    max_px: f64,
+    unit: MeasurementUnit,
+) -> Option<(f64, String)> {
+    view_scale_bar(um_per_px, max_px, unit).map(|bar| (bar.width_px, bar.label()))
 }
 
 /// Draws a laid-out scale bar.
@@ -227,6 +252,22 @@ mod tests {
         let (_, label) = scale_bar_for_view(20.0, 110.0, MeasurementUnit::Um).unwrap();
         assert_eq!(label, "2 mm");
         assert_eq!(scale_bar_for_view(0.0, 110.0, MeasurementUnit::Um), None);
+        // The same bar as data: its number and unit apart.
+        assert_eq!(
+            view_scale_bar(0.25, 110.0, MeasurementUnit::Mm),
+            Some(ViewScaleBar {
+                width_px: 80.0,
+                value: "0.02".into(),
+                unit: MeasurementUnit::Mm,
+            })
+        );
+        let inches = view_scale_bar(200.0, 140.0, MeasurementUnit::Inches).unwrap();
+        assert_eq!(
+            (inches.value.as_str(), inches.unit),
+            ("1", MeasurementUnit::Inches)
+        );
+        assert_eq!(inches.label(), "1 in");
+        assert_eq!(view_scale_bar(f64::NAN, 110.0, MeasurementUnit::Um), None);
     }
     use crate::overlay::embedded_font;
 

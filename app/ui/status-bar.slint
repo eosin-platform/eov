@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { JobData, NotificationData } from "types.slint";
 
@@ -33,6 +34,7 @@ export component StatusBar inherits Rectangle {
             text: root.status-text + (root.plugin-status-text != "" ? (root.status-text != "" ? "  ·  " : "") + root.plugin-status-text : "");
             color: Theme.text-secondary;
             font-size: 11px;
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -77,7 +79,8 @@ export component StatusBar inherits Rectangle {
                 background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
                 border-radius: 3px;
                 accessible-role: button;
-                accessible-label: @tr("Cancel {}", job.title);
+                // Translators: the accessible name of the × button that cancels a job; {} is the job's title ("Exporting region").
+                accessible-label: @tr("Cancel: {}", job.title);
                 accessible-action-default => {
                     root.job-cancel-requested(job.id);
                 }
@@ -166,6 +169,7 @@ export component NotificationsPopup inherits Rectangle {
                 color: Theme.text-primary;
                 font-size: 13px;
                 font-weight: 600;
+                horizontal-alignment: Locale.start;
                 vertical-alignment: center;
             }
 
@@ -258,6 +262,7 @@ export component NotificationsPopup inherits Rectangle {
                     text: @tr("No messages.");
                     color: Theme.text-secondary;
                     font-size: 12px;
+                    horizontal-alignment: Locale.start;
                 }
 
                 for item in root.items: HorizontalLayout {
@@ -277,6 +282,7 @@ export component NotificationsPopup inherits Rectangle {
                             color: Theme.text-primary;
                             font-size: 12px;
                             wrap: word-wrap;
+                            horizontal-alignment: Locale.start;
                             // The stripe's colour, for assistive technology.
                             accessible-description: item.level == 3 ? @tr("Error") : item.level == 2 ? @tr("Warning") : item.level == 1 ? @tr("Done") : @tr("Information");
                         }
@@ -286,12 +292,14 @@ export component NotificationsPopup inherits Rectangle {
                             color: Theme.text-secondary;
                             font-size: 11px;
                             wrap: word-wrap;
+                            horizontal-alignment: Locale.start;
                         }
 
                         Text {
                             text: item.source + (item.source != "" ? " · " : "") + item.time;
                             color: Theme.text-secondary;
                             font-size: 10px;
+                            horizontal-alignment: Locale.start;
                         }
                     }
                 }

@@ -158,11 +158,41 @@ pub(crate) fn start_session_log() {
     }
 }
 
+thread_local! {
+    /// Set while code that may panic on bad input runs under
+    /// `catch_unwind` (see [`catching_panics`]).
+    static CATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f`, turning a panic into `Err` with its message. The panic hook
+/// logs such panics as errors instead of writing a crash report: they are
+/// caught and handled (a plugin's malformed translation or surface), and
+/// eov goes on.
+pub(crate) fn catching_panics<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    let before = CATCHING.with(|catching| catching.replace(true));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    CATCHING.with(|catching| catching.set(before));
+    result.map_err(|payload| {
+        payload
+            .downcast_ref::<&str>()
+            .map(|text| text.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_string())
+    })
+}
+
 /// Writes a crash report when the process panics, then runs the default
 /// hook (which prints the panic).
 pub(crate) fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        // Panics eov catches and handles are not crashes: rspolib's on
+        // malformed translation catalogs (the plugin API turns them into
+        // errors) and those under `catching_panics`.
+        if eov_plugin_api::i18n::reading_catalog() || CATCHING.with(std::cell::Cell::get) {
+            tracing::error!("Caught: {info}");
+            return;
+        }
         let backtrace = std::backtrace::Backtrace::force_capture();
         let thread = std::thread::current();
         let report = format!(
@@ -213,7 +243,10 @@ pub(crate) fn take_crash_report() -> Option<PathBuf> {
 pub(crate) fn open_log_folder() -> Result<(), String> {
     let dir = log_dir();
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    crate::desktop::open_folder(dir, "Could not open the log folder");
+    crate::desktop::open_folder(
+        dir,
+        &eov_plugin_api::i18n::tr!("Could not open the log folder"),
+    );
     Ok(())
 }
 

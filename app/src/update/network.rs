@@ -10,6 +10,7 @@
 use super::policy::Policy;
 use super::prompt::Interaction;
 use super::transport::{HttpResponse, Transport, UreqTransport};
+use eov_plugin_api::i18n::{isolate, tr};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -112,29 +113,50 @@ impl FetchError {
 
 impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound { url } => write!(f, "{url} does not exist (HTTP 404)"),
-            Self::Http { url, status } => write!(f, "GitHub returned HTTP {status} for {url}"),
-            Self::Network { url, message } => write!(
-                f,
-                "could not reach {url}: {message}\nCheck the network connection. Behind a proxy, set HTTPS_PROXY (and NO_PROXY); behind a TLS-inspecting firewall, install its root certificate in the operating system or set SSL_CERT_FILE."
+        // In the language of the interface: the window shows these.
+        let text = match self {
+            Self::NotFound { url } => tr!("{} does not exist (HTTP 404)", isolate(url)),
+            Self::Http { url, status } => tr!(
+                "GitHub returned HTTP {status} for {url}",
+                status = status,
+                url = isolate(url)
             ),
-            Self::TooLarge { url, limit } => {
-                write!(f, "{url} is larger than the {limit}-byte limit")
-            }
-            Self::Rejected { url, reason } => write!(f, "refused to fetch {url}: {reason}"),
+            // Translators: {message} is the error of the network library. HTTPS_PROXY, NO_PROXY and SSL_CERT_FILE are names of settings: keep them as they are.
+            Self::Network { url, message } => tr!(
+                "could not reach {url}: {message}\nCheck the network connection. Behind a proxy, set HTTPS_PROXY (and NO_PROXY); behind a TLS-inspecting firewall, install its root certificate in the operating system or set SSL_CERT_FILE.",
+                url = isolate(url),
+                message = message
+            ),
+            Self::TooLarge { url, limit } => tr!(
+                "{url} is larger than the limit of {n} byte"
+                    | "{url} is larger than the limit of {n} bytes" % *limit,
+                url = isolate(url)
+            ),
+            // Translators: {reason} says why eov does not download from {url}.
+            Self::Rejected { url, reason } => tr!(
+                "refused to fetch {url}: {reason}",
+                url = isolate(url),
+                reason = reason
+            ),
             Self::Integrity {
                 url,
                 expected,
                 actual,
-            } => write!(
-                f,
-                "SHA-256 mismatch for {url}: expected {expected}, got {actual}"
+                // Translators: {expected} and {actual} are SHA-256 checksums.
+            } => tr!(
+                "SHA-256 mismatch for {url}: expected {expected}, got {actual}",
+                url = isolate(url),
+                expected = expected,
+                actual = actual
             ),
-            Self::Local { path, message } => {
-                write!(f, "could not write {}: {message}", path.display())
-            }
-        }
+            // Translators: {message} is the error of the operating system.
+            Self::Local { path, message } => tr!(
+                "could not write {path}: {message}",
+                path = isolate(path.display()),
+                message = message
+            ),
+        };
+        f.write_str(&text)
     }
 }
 
@@ -177,7 +199,7 @@ impl ReleaseClient {
         let bytes = self.get_limited(url, "text/plain, application/toml", MAX_METADATA_BYTES)?;
         String::from_utf8(bytes).map_err(|_| FetchError::Rejected {
             url: url.to_string(),
-            reason: "the response is not valid UTF-8".into(),
+            reason: tr!("the response is not valid UTF-8"),
         })
     }
 
@@ -189,7 +211,7 @@ impl ReleaseClient {
         let bytes = self.get_limited(url, "application/vnd.github+json", MAX_API_BYTES)?;
         serde_json::from_slice(&bytes).map_err(|error| FetchError::Rejected {
             url: url.to_string(),
-            reason: format!("invalid JSON: {error}"),
+            reason: tr!("invalid JSON: {}", error),
         })
     }
 
@@ -277,7 +299,7 @@ impl ReleaseClient {
     fn open(&self, url: &str, accept: &str) -> Result<(Url, HttpResponse), FetchError> {
         let mut current = Url::parse(url).map_err(|error| FetchError::Rejected {
             url: url.to_string(),
-            reason: format!("invalid URL: {error}"),
+            reason: tr!("invalid URL: {}", error),
         })?;
         for _ in 0..=MAX_REDIRECTS {
             validate_request_url(&current)?;
@@ -294,13 +316,18 @@ impl ReleaseClient {
                 300..=399 => {
                     let location = response.location.ok_or_else(|| FetchError::Rejected {
                         url: current.to_string(),
-                        reason: "redirect without a Location header".into(),
+                        // Translators: Location is the name of an HTTP header: keep it as it is.
+                        reason: tr!("redirect without a Location header"),
                     })?;
                     current = current
                         .join(&location)
                         .map_err(|error| FetchError::Rejected {
                             url: current.to_string(),
-                            reason: format!("invalid redirect target '{location}': {error}"),
+                            reason: tr!(
+                                "invalid redirect target '{location}': {error}",
+                                location = isolate(&location),
+                                error = error
+                            ),
                         })?;
                 }
                 404 | 410 => {
@@ -318,7 +345,7 @@ impl ReleaseClient {
         }
         Err(FetchError::Rejected {
             url: url.to_string(),
-            reason: "too many redirects".into(),
+            reason: tr!("too many redirects"),
         })
     }
 
@@ -372,7 +399,7 @@ pub fn validate_request_url(url: &Url) -> Result<(), FetchError> {
     if url.scheme() != "https" {
         return Err(FetchError::Rejected {
             url: url.to_string(),
-            reason: "updater requests must use HTTPS".into(),
+            reason: tr!("updater requests must use HTTPS"),
         });
     }
     let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
@@ -385,7 +412,7 @@ pub fn validate_request_url(url: &Url) -> Result<(), FetchError> {
     if !allowed {
         return Err(FetchError::Rejected {
             url: url.to_string(),
-            reason: format!("{host} is not a GitHub release host"),
+            reason: tr!("{} is not a GitHub release host", isolate(&host)),
         });
     }
     Ok(())

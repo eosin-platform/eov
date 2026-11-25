@@ -26,15 +26,17 @@
 //! rejected; permissions are masked with `0o022`; and the total size and
 //! entry count are bounded.
 
+use eov_plugin_api::i18n::{self, isolate, tr};
 use eov_plugin_api::{PluginError, PluginResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
 
@@ -65,6 +67,96 @@ const MAX_EXTRACTED_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: u64 = 500_000;
 /// How long to wait for another process that is extracting the same package.
 const EXCLUSIVE_LOCK_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Why a plugin package cannot be used. eov words its own reasons
+/// ([`Reason`]) whenever they are given: in English for `Display` (the log,
+/// the audit log, the command line), and in the interface's language of the
+/// moment for [`PackageError::localized`] (the window); what the plugin API
+/// (a manifest) and the system (I/O) say is the same in both.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PackageError {
+    /// What the plugin API (a manifest) or the system (I/O) said.
+    #[error(transparent)]
+    Plugin(#[from] PluginError),
+    /// eov's own reason.
+    #[error("{0}")]
+    Unusable(Reason),
+}
+
+impl From<io::Error> for PackageError {
+    fn from(error: io::Error) -> Self {
+        Self::Plugin(PluginError::Io(error))
+    }
+}
+
+impl PackageError {
+    /// eov's reason, as `write` words it (a `tr!`, see [`Reason`]).
+    pub(crate) fn unusable(write: impl Fn() -> String + Send + Sync + 'static) -> Self {
+        Self::Unusable(Reason::new(write))
+    }
+
+    /// Why, in the interface's language.
+    pub(crate) fn localized(&self) -> String {
+        self.reason().shown()
+    }
+
+    /// Why, to word later (a reason kept for a while follows a change of
+    /// language).
+    pub(crate) fn reason(&self) -> Reason {
+        match self {
+            Self::Plugin(error) => Reason::fixed(error.to_string()),
+            Self::Unusable(reason) => reason.clone(),
+        }
+    }
+}
+
+/// eov's words for why a package cannot be used, made by the code that words
+/// them (a `tr!`) whenever they are given: in the interface's language of the
+/// moment ([`Reason::shown`]), or in English (`Display`, through
+/// [`i18n::in_english`]) for the log, the audit log and the command line,
+/// without the marks that keep text in order in right-to-left languages.
+/// Reasons are equal when their English is.
+#[derive(Clone)]
+pub(crate) struct Reason(Arc<dyn Fn() -> String + Send + Sync>);
+
+impl Reason {
+    pub(crate) fn new(write: impl Fn() -> String + Send + Sync + 'static) -> Self {
+        Self(Arc::new(write))
+    }
+
+    /// A text that is the same in every language (what the system said).
+    pub(crate) fn fixed(text: String) -> Self {
+        Self::new(move || text.clone())
+    }
+
+    /// In the interface's language.
+    pub(crate) fn shown(&self) -> String {
+        (self.0)()
+    }
+}
+
+impl fmt::Display for Reason {
+    /// In English.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&i18n::in_english(|| (self.0)()))
+    }
+}
+
+impl fmt::Debug for Reason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Reason").field(&self.to_string()).finish()
+    }
+}
+
+impl PartialEq for Reason {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
+impl Eq for Reason {}
+
+pub(crate) type PackageResult<T> = Result<T, PackageError>;
 
 /// Compression of a plugin package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,13 +260,18 @@ impl PackageCache {
 
     /// Returns the SHA-256 of `package`, re-hashing only when the file's
     /// identity changed since it was last seen.
-    pub(crate) fn sha256(&self, package: &Path) -> PluginResult<String> {
+    pub(crate) fn sha256(&self, package: &Path) -> PackageResult<String> {
         let metadata = fs::metadata(package)?;
         if !metadata.is_file() {
-            return Err(PluginError::Other(format!(
-                "plugin package is not a regular file: {}",
-                package.display()
-            )));
+            return Err(PackageError::unusable({
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package is not a regular file: {}",
+                        isolate(package.display())
+                    )
+                }
+            }));
         }
         let identity = identity_of(&metadata);
         let key = index_key(package);
@@ -186,10 +283,15 @@ impl PackageCache {
         let sha256 = sha256_file(package)?;
         // The file must not have changed while it was hashed.
         if identity_of(&fs::metadata(package)?) != identity {
-            return Err(PluginError::Other(format!(
-                "plugin package changed while it was being read: {}",
-                package.display()
-            )));
+            return Err(PackageError::unusable({
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package changed while it was being read: {}",
+                        isolate(package.display())
+                    )
+                }
+            }));
         }
         if let Some(key) = key {
             self.record(&key, identity, &sha256);
@@ -199,7 +301,7 @@ impl PackageCache {
 
     /// Extracts `package` (if this content has not been extracted yet) and
     /// marks the extraction as in use by this process.
-    pub(crate) fn ensure_extracted(&self, package: &Path) -> PluginResult<ExtractedPackage> {
+    pub(crate) fn ensure_extracted(&self, package: &Path) -> PackageResult<ExtractedPackage> {
         let sha256 = self.sha256(package)?;
         let entry = self.entry_dir(&sha256);
         let lock_path = self.lock_path(&sha256);
@@ -256,10 +358,15 @@ impl PackageCache {
             }
             None => {
                 lock.unlock()?;
-                Err(PluginError::Other(format!(
-                    "plugin cache entry {} disappeared during extraction; retry the operation",
-                    entry.display()
-                )))
+                Err(PackageError::unusable({
+                    let entry = entry.to_path_buf();
+                    move || {
+                        tr!(
+                            "plugin cache entry {} disappeared during extraction; retry the operation",
+                            isolate(entry.display())
+                        )
+                    }
+                }))
             }
         }
     }
@@ -404,7 +511,7 @@ impl PackageCache {
         }
     }
 
-    fn extract_entry(&self, package: &Path, sha256: &str, entry: &Path) -> PluginResult<PathBuf> {
+    fn extract_entry(&self, package: &Path, sha256: &str, entry: &Path) -> PackageResult<PathBuf> {
         fs::create_dir_all(&self.root)?;
         let staging = tempfile::Builder::new()
             .prefix(&format!(".extract-{}-", &sha256[..12]))
@@ -424,7 +531,7 @@ impl PackageCache {
         Ok(join_root(entry, &relative_root))
     }
 
-    fn extract_private(&self, package: &Path, sha256: String) -> PluginResult<ExtractedPackage> {
+    fn extract_private(&self, package: &Path, sha256: String) -> PackageResult<ExtractedPackage> {
         fs::create_dir_all(&self.root)?;
         let private = tempfile::Builder::new()
             .prefix(&format!("{PRIVATE_PREFIX}{}-", &sha256[..12]))
@@ -524,7 +631,7 @@ fn upsert(index: &mut Index, key: &str, identity: FileIdentity, sha256: &str) {
 }
 
 /// Extracts the default-cache entry for `package`.
-pub(crate) fn ensure_extracted(package: &Path) -> PluginResult<ExtractedPackage> {
+pub(crate) fn ensure_extracted(package: &Path) -> PackageResult<ExtractedPackage> {
     PackageCache::default().ensure_extracted(package)
 }
 
@@ -575,23 +682,30 @@ pub(crate) fn package_format(package: &Path) -> io::Result<PackageFormat> {
     })
 }
 
-fn open_package_reader(package: &Path) -> PluginResult<Box<dyn Read>> {
+fn open_package_reader(package: &Path) -> PackageResult<Box<dyn Read>> {
     let file = BufReader::with_capacity(1 << 20, File::open(package)?);
     Ok(match package_format(package)? {
         PackageFormat::Tar => Box::new(file),
         PackageFormat::ZstdTar => Box::new(
             zstd::stream::read::Decoder::with_buffer(file).map_err(|error| {
-                PluginError::Other(format!(
-                    "plugin package '{}' is not a valid zstd stream: {error}",
-                    package.display()
-                ))
+                PackageError::unusable({
+                    let package = package.to_path_buf();
+                    let error = error.to_string();
+                    move || {
+                        tr!(
+                            "plugin package '{package}' is not a valid zstd stream: {error}",
+                            package = isolate(package.display()),
+                            error = error
+                        )
+                    }
+                })
             })?,
         ),
     })
 }
 
 /// Extracts a package archive into `destination` (which must be empty).
-pub(crate) fn extract_package(package: &Path, destination: &Path) -> PluginResult<()> {
+pub(crate) fn extract_package(package: &Path, destination: &Path) -> PackageResult<()> {
     let mut archive = tar::Archive::new(open_package_reader(package)?);
     archive.set_mask(0o022);
     archive.set_preserve_permissions(false);
@@ -603,60 +717,104 @@ pub(crate) fn extract_package(package: &Path, destination: &Path) -> PluginResul
 
     for entry in archive.entries()? {
         let mut entry = entry.map_err(|error| {
-            PluginError::Other(format!(
-                "plugin package '{}' is not a valid archive: {error}",
-                package.display()
-            ))
+            PackageError::unusable({
+                let package = package.to_path_buf();
+                let error = error.to_string();
+                move || {
+                    tr!(
+                        "plugin package '{package}' is not a valid archive: {error}",
+                        package = isolate(package.display()),
+                        error = error
+                    )
+                }
+            })
         })?;
         entries += 1;
         if entries > MAX_ARCHIVE_ENTRIES {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' has more than {MAX_ARCHIVE_ENTRIES} entries",
-                package.display()
-            )));
+            return Err(PackageError::unusable({
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package '{package}' has more than {n} entry"
+                            | "plugin package '{package}' has more than {n} entries"
+                                % MAX_ARCHIVE_ENTRIES,
+                        package = isolate(package.display())
+                    )
+                }
+            }));
         }
         let archive_path = entry.path()?.into_owned();
         validate_archive_path(package, &archive_path)?;
         let entry_type = entry.header().entry_type();
         if !(entry_type.is_file() || entry_type.is_dir()) {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains unsupported archive entry '{}'",
-                package.display(),
-                archive_path.display()
-            )));
+            return Err(PackageError::unusable({
+                let archive_path = archive_path.to_path_buf();
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package '{package}' contains unsupported archive entry '{entry}'",
+                        package = isolate(package.display()),
+                        entry = isolate(archive_path.display())
+                    )
+                }
+            }));
         }
         total_bytes = total_bytes.saturating_add(entry.size());
         if total_bytes > MAX_EXTRACTED_BYTES {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' expands to more than {} GiB",
-                package.display(),
-                MAX_EXTRACTED_BYTES >> 30
-            )));
+            return Err(PackageError::unusable({
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package '{package}' expands to more than {size} GiB",
+                        package = isolate(package.display()),
+                        size = MAX_EXTRACTED_BYTES >> 30
+                    )
+                }
+            }));
         }
         let normalized = normalize_archive_path(&archive_path);
         if normalized.file_name() == Some(OsStr::new(eov_plugin_api::manifest::MANIFEST_FILENAME))
             && entry_type.is_file()
             && !manifest_paths.insert(normalized)
         {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains duplicate {} entries",
-                package.display(),
-                eov_plugin_api::manifest::MANIFEST_FILENAME
-            )));
+            return Err(PackageError::unusable({
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package '{package}' contains duplicate {manifest} entries",
+                        package = isolate(package.display()),
+                        manifest = eov_plugin_api::manifest::MANIFEST_FILENAME
+                    )
+                }
+            }));
         }
         let unpacked = entry.unpack_in(destination).map_err(|error| {
-            PluginError::Other(format!(
-                "could not extract '{}' from plugin package '{}': {error}",
-                archive_path.display(),
-                package.display()
-            ))
+            PackageError::unusable({
+                let archive_path = archive_path.to_path_buf();
+                let package = package.to_path_buf();
+                let error = error.to_string();
+                move || {
+                    tr!(
+                        "could not extract '{entry}' from plugin package '{package}': {error}",
+                        entry = isolate(archive_path.display()),
+                        package = isolate(package.display()),
+                        error = error
+                    )
+                }
+            })
         })?;
         if !unpacked {
-            return Err(PluginError::Other(format!(
-                "plugin package '{}' contains an invalid path '{}'",
-                package.display(),
-                archive_path.display()
-            )));
+            return Err(PackageError::unusable({
+                let archive_path = archive_path.to_path_buf();
+                let package = package.to_path_buf();
+                move || {
+                    tr!(
+                        "plugin package '{package}' contains an invalid path '{path}'",
+                        package = isolate(package.display()),
+                        path = isolate(archive_path.display())
+                    )
+                }
+            }));
         }
     }
     Ok(())
@@ -669,12 +827,17 @@ fn normalize_archive_path(path: &Path) -> PathBuf {
 }
 
 /// Rejects archive paths that could escape the extraction directory.
-pub(crate) fn validate_archive_path(package_path: &Path, archive_path: &Path) -> PluginResult<()> {
+pub(crate) fn validate_archive_path(package_path: &Path, archive_path: &Path) -> PackageResult<()> {
     if archive_path.as_os_str().is_empty() {
-        return Err(PluginError::Other(format!(
-            "plugin package '{}' contains an empty path",
-            package_path.display()
-        )));
+        return Err(PackageError::unusable({
+            let package_path = package_path.to_path_buf();
+            move || {
+                tr!(
+                    "plugin package '{}' contains an empty path",
+                    isolate(package_path.display())
+                )
+            }
+        }));
     }
 
     let raw_path = archive_path.to_string_lossy();
@@ -683,22 +846,34 @@ pub(crate) fn validate_archive_path(package_path: &Path, archive_path: &Path) ->
         || raw_path.starts_with('\\')
         || raw_path.contains(':');
     if has_windows_prefix {
-        return Err(PluginError::Other(format!(
-            "plugin package '{}' contains an unsafe Windows path '{}'",
-            package_path.display(),
-            archive_path.display()
-        )));
+        return Err(PackageError::unusable({
+            let archive_path = archive_path.to_path_buf();
+            let package_path = package_path.to_path_buf();
+            move || {
+                tr!(
+                    "plugin package '{package}' contains an unsafe Windows path '{path}'",
+                    package = isolate(package_path.display()),
+                    path = isolate(archive_path.display())
+                )
+            }
+        }));
     }
 
     for component in archive_path.components() {
         match component {
             Component::Normal(_) | Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(PluginError::Other(format!(
-                    "plugin package '{}' contains an unsafe path '{}'",
-                    package_path.display(),
-                    archive_path.display()
-                )));
+                return Err(PackageError::unusable({
+                    let archive_path = archive_path.to_path_buf();
+                    let package_path = package_path.to_path_buf();
+                    move || {
+                        tr!(
+                            "plugin package '{package}' contains an unsafe path '{path}'",
+                            package = isolate(package_path.display()),
+                            path = isolate(archive_path.display())
+                        )
+                    }
+                }));
             }
         }
     }
@@ -729,7 +904,7 @@ fn join_root(base: &Path, relative_root: &Path) -> PathBuf {
     }
 }
 
-fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
+fn find_manifest_root_relative(extracted_dir: &Path) -> PackageResult<PathBuf> {
     let mut dirs_to_visit = vec![extracted_dir.to_path_buf()];
     let mut manifest_roots = Vec::new();
 
@@ -749,10 +924,17 @@ fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
                         .strip_prefix(extracted_dir)
                         .map(Path::to_path_buf)
                         .map_err(|err| {
-                            PluginError::Other(format!(
-                                "failed to resolve plugin manifest root in {}: {err}",
-                                extracted_dir.display()
-                            ))
+                            PackageError::unusable({
+                                let extracted_dir = extracted_dir.to_path_buf();
+                                let err = err.to_string();
+                                move || {
+                                    tr!(
+                                        "failed to resolve plugin manifest root in {dir}: {error}",
+                                        dir = isolate(extracted_dir.display()),
+                                        error = err
+                                    )
+                                }
+                            })
                         })?,
                 );
             }
@@ -760,24 +942,34 @@ fn find_manifest_root_relative(extracted_dir: &Path) -> PluginResult<PathBuf> {
     }
 
     match manifest_roots.len() {
-        0 => Err(PluginError::Other(format!(
-            "plugin package extraction '{}' does not contain {}",
-            extracted_dir.display(),
-            eov_plugin_api::manifest::MANIFEST_FILENAME
-        ))),
+        0 => Err(PackageError::unusable({
+            let extracted_dir = extracted_dir.to_path_buf();
+            move || {
+                tr!(
+                    "plugin package extraction '{dir}' does not contain {manifest}",
+                    dir = isolate(extracted_dir.display()),
+                    manifest = eov_plugin_api::manifest::MANIFEST_FILENAME
+                )
+            }
+        })),
         1 => Ok(manifest_roots.pop().unwrap_or_default()),
-        _ => Err(PluginError::Other(format!(
-            "plugin package extraction '{}' contains multiple {} files",
-            extracted_dir.display(),
-            eov_plugin_api::manifest::MANIFEST_FILENAME
-        ))),
+        _ => Err(PackageError::unusable({
+            let extracted_dir = extracted_dir.to_path_buf();
+            move || {
+                tr!(
+                    "plugin package extraction '{dir}' contains multiple {manifest} files",
+                    dir = isolate(extracted_dir.display()),
+                    manifest = eov_plugin_api::manifest::MANIFEST_FILENAME
+                )
+            }
+        })),
     }
 }
 
-fn write_complete_marker(entry: &Path, sha256: &str, relative_root: &Path) -> PluginResult<()> {
+fn write_complete_marker(entry: &Path, sha256: &str, relative_root: &Path) -> PackageResult<()> {
     let root = relative_root
         .to_str()
-        .ok_or_else(|| PluginError::Other("plugin manifest root is not valid UTF-8".into()))?
+        .ok_or_else(|| PackageError::unusable(|| tr!("plugin manifest root is not valid UTF-8")))?
         .replace('\\', "/");
     let marker = CompleteMarker {
         format: CACHE_FORMAT,
@@ -1066,6 +1258,54 @@ mod tests {
             assert!(error.to_string().contains("unsafe"), "{path}: {error}");
         }
         validate_archive_path(temp.path(), Path::new("./ui/panel.slint")).unwrap();
+    }
+
+    /// Why a package cannot be used is kept in English, as eov wrote it
+    /// before it was translated (the log, the audit log, the command line),
+    /// and in the interface's language for the window; I/O errors read as
+    /// they did.
+    #[test]
+    fn package_errors_are_english_and_localized() {
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let package = Path::new("/plugins/x.eop");
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "plugin package '{package}' contains an unsafe path '{path}'",
+            &["Plugin-Paket „{package}“ enthält einen unsicheren Pfad „{path}“"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let error = validate_archive_path(package, Path::new("../escape")).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "plugin package '/plugins/x.eop' contains an unsafe path '../escape'"
+        );
+        assert_eq!(
+            error.localized(),
+            "Plugin-Paket „/plugins/x.eop“ enthält einen unsicheren Pfad „../escape“"
+        );
+        i18n::set_catalog(i18n::by_tag("he").unwrap(), None);
+        let error = validate_archive_path(package, Path::new("../escape")).unwrap_err();
+        assert!(!error.to_string().contains('\u{2068}'));
+        assert!(error.localized().contains('\u{2068}'));
+
+        let io = || io::Error::new(io::ErrorKind::NotFound, "gone");
+        let error = PackageError::from(io());
+        assert_eq!(error.localized(), "IO error: gone");
+        assert_eq!(
+            format!("{:#}", anyhow::Error::new(error)),
+            format!("{:#}", anyhow::Error::new(PluginError::Io(io())))
+        );
     }
 
     #[test]

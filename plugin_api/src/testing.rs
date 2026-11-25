@@ -37,7 +37,32 @@
 //!
 //! The mock answers every method the real host knows with a plausible
 //! result, keeps layers, surfaces, settings and contributions in memory so
-//! tests can inspect them, and records every call.
+//! tests can inspect them, and records every call. Unlike eov, it does not
+//! turn `host.warn`/`host.error` into notifications: find those among the
+//! recorded `log` calls by their `level`.
+//!
+//! # Languages in tests
+//!
+//! The language and catalog [`tr!`](crate::tr!) translates with belong to
+//! the whole plugin library, not to one harness: every
+//! [`TestHarness::new`] or [`TestHarness::with_init`] sets them from
+//! [`PluginInit::language`] ([`test_init`] gives English), and
+//! [`HostEvent::LanguageChanged`] switches them for every test of the
+//! binary. Tests run in parallel, so a test that changes the language can
+//! change the texts another test compares, and creating a harness can put
+//! it back to English in the middle of that test. Run the tests that
+//! change languages in an integration-test binary of their own
+//! (`tests/language.rs`), one at a time behind a lock, as eov's own plugins
+//! do; or hold the same lock while every harness is created and used.
+//!
+//! The `thread-local-language` feature of this crate, on its
+//! dev-dependency (`eov-plugin-api = { version = "1.1", features =
+//! ["thread-local-language"] }` under `[dev-dependencies]`), gives each
+//! thread its own language and catalog instead. A harness then sets them
+//! for the thread that creates it, and `LanguageChanged` for the thread
+//! that sends it; texts a plugin makes on threads of its own are in
+//! English, since new threads start in English. It suits plugins that make
+//! their texts on the thread that delivers events.
 
 use crate::abi::{
     FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostFfi, HostFfi_TO, Pixels,
@@ -290,6 +315,14 @@ impl MockHost {
                 }
                 if let Some(menu) = update.menu {
                     button.menu = menu;
+                }
+                // As eov does (plugins re-send tooltips when the language
+                // changes).
+                if let Some(tooltip) = update.tooltip {
+                    button.tooltip = tooltip;
+                }
+                if let Some(icon) = update.icon_svg {
+                    button.icon_svg = icon;
                 }
                 null
             }
@@ -709,7 +742,10 @@ impl HostFfi for MockHost {
     }
 }
 
-/// Default init for tests: unique, writable temporary directories.
+/// Default init for tests: unique, writable temporary directories, and no
+/// language, so the plugin's texts are in English (see the
+/// [module documentation](self#languages-in-tests) on tests that switch
+/// languages).
 pub fn test_init(plugin_id: &str) -> PluginInit {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -733,6 +769,7 @@ pub fn test_init(plugin_id: &str) -> PluginInit {
         settings: Map::new(),
         legacy_config_dir: None,
         headless: false,
+        language: None,
     }
 }
 
@@ -744,15 +781,22 @@ pub struct TestHarness<P: Plugin> {
 }
 
 impl<P: Plugin> TestHarness<P> {
+    /// Creates the plugin with [`test_init`]. Like eov, this sets the
+    /// language `tr!` translates with, here English, for the whole plugin
+    /// library (see the [module documentation](self#languages-in-tests)).
     pub fn new() -> Result<Self, String> {
         Self::with_init(test_init("test_plugin"))
     }
 
+    /// Creates the plugin with `init`, switching `tr!` to `init.language`
+    /// (English when `None`) for the whole plugin library, or for this
+    /// thread with the `thread-local-language` feature.
     pub fn with_init(init: PluginInit) -> Result<Self, String> {
         Self::with_host(MockHost::new(), init)
     }
 
     /// Uses a prepared mock (e.g. with a snapshot or region reader set).
+    /// Sets the language as [`Self::with_init`] does.
     pub fn with_host(host: MockHost, init: PluginInit) -> Result<Self, String> {
         let init_json = serde_json::to_string(&init).map_err(|e| e.to_string())?;
         let instance =

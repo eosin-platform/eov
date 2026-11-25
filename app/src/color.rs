@@ -19,13 +19,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 
 use eov_common::WsiFile;
-use eov_common::color_management::DisplayTransform;
+use eov_common::color_management::{ColorProfileError, DisplayTransform};
 use eov_common::postprocess::ToneAdjustments;
 use eov_common::processing::{ColorSettings, ProcessingPipeline};
 use eov_common::stain::{
     StainCacheKey, StainEstimate, StainEstimateOptions, StainFitMethod, estimate_slide_stain,
     file_identity, global_stain_cache,
 };
+use eov_plugin_api::i18n::{isolate, tr};
 use parking_lot::Mutex;
 use tracing::{debug, warn};
 
@@ -95,7 +96,7 @@ struct FitJobs {
     /// Colour profiles being read, by slide identity.
     profiles_running: HashSet<String>,
     /// Colour profiles read: their conversion to sRGB, or why there is none.
-    profiles: HashMap<String, Result<Arc<DisplayTransform>, Arc<str>>>,
+    profiles: HashMap<String, Result<Arc<DisplayTransform>, ProfileProblem>>,
     /// Completed jobs (fits and profile reads, successful or not) per slide
     /// identity.
     finished: HashMap<String, u64>,
@@ -269,7 +270,67 @@ pub(crate) enum SlideProfile {
     Pending,
     Ready(Arc<DisplayTransform>),
     /// eov cannot use the profile: the slide is shown as scanned.
-    Unsupported(Arc<str>),
+    Unsupported(ProfileProblem),
+}
+
+/// Why eov cannot use a slide's colour profile.
+#[derive(Clone, Debug)]
+pub(crate) enum ProfileProblem {
+    /// The slide said it had a profile, but has none.
+    Missing,
+    /// Reading the profile from the slide failed (the reader's error).
+    Unreadable(Arc<str>),
+    /// The profile cannot be converted to sRGB.
+    Unusable(ColorProfileError),
+    /// Reading the profile failed unexpectedly.
+    Failed,
+    /// No worker thread could be started to read it.
+    NoThread(Arc<str>),
+}
+
+impl ProfileProblem {
+    /// Why, in the interface's language (the errors of the profile's
+    /// reader and converter as they come).
+    pub(crate) fn localized(&self) -> String {
+        match self {
+            Self::Missing => tr!("the slide has no colour profile"),
+            // Translators: {} is the error reading the slide gave.
+            Self::Unreadable(error) => tr!("the colour profile cannot be read: {}", error),
+            Self::Unusable(ColorProfileError::Unreadable(detail)) => {
+                // Translators: {} is the error of the profile, as the
+                // program that reads profiles words it.
+                tr!("the colour profile cannot be read ({})", detail)
+            }
+            Self::Unusable(ColorProfileError::NotRgb(detail)) => {
+                // Translators: {} says which kind of profile it is instead.
+                tr!("the colour profile is not an RGB profile ({})", detail)
+            }
+            Self::Unusable(ColorProfileError::Unconvertible(detail)) => {
+                // Translators: {} is the error of the conversion, as the
+                // program that converts colours words it.
+                tr!(
+                    "the colour profile cannot be converted to sRGB ({})",
+                    detail
+                )
+            }
+            Self::Failed => tr!("reading the colour profile failed unexpectedly"),
+            // Translators: {} is the system's error.
+            Self::NoThread(error) => tr!("cannot start a worker thread: {}", error),
+        }
+    }
+}
+
+/// In English, for the log.
+impl std::fmt::Display for ProfileProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing => f.write_str("the slide has no colour profile"),
+            Self::Unreadable(error) => write!(f, "the colour profile cannot be read: {error}"),
+            Self::Unusable(error) => error.fmt(f),
+            Self::Failed => f.write_str("reading the colour profile failed unexpectedly"),
+            Self::NoThread(error) => write!(f, "cannot start a worker thread: {error}"),
+        }
+    }
 }
 
 /// The colour profile of the slide open as `file_id`: from the shared
@@ -283,7 +344,7 @@ pub(crate) fn slide_profile(file_id: i32, wsi: &WsiFile) -> SlideProfile {
     let mut jobs = FIT_JOBS.lock();
     match jobs.profiles.get(&identity) {
         Some(Ok(transform)) => return SlideProfile::Ready(Arc::clone(transform)),
-        Some(Err(error)) => return SlideProfile::Unsupported(Arc::clone(error)),
+        Some(Err(problem)) => return SlideProfile::Unsupported(problem.clone()),
         None => {}
     }
     if jobs.profiles_running.insert(identity.clone()) {
@@ -296,7 +357,7 @@ pub(crate) fn slide_profile(file_id: i32, wsi: &WsiFile) -> SlideProfile {
             jobs.profiles_running.remove(&identity);
             jobs.profiles.insert(
                 identity,
-                Err(format!("cannot start a worker thread: {err}").into()),
+                Err(ProfileProblem::NoThread(err.to_string().into())),
             );
         }
     }
@@ -308,11 +369,11 @@ fn read_profile(wsi: WsiFile, identity: String) {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match wsi.icc_profile() {
             Ok(Some(bytes)) => DisplayTransform::from_icc(&bytes)
                 .map(Arc::new)
-                .map_err(|error| error.to_string()),
-            Ok(None) => Err("the slide has no colour profile".to_string()),
-            Err(error) => Err(format!("the colour profile cannot be read: {error}")),
+                .map_err(ProfileProblem::Unusable),
+            Ok(None) => Err(ProfileProblem::Missing),
+            Err(error) => Err(ProfileProblem::Unreadable(error.to_string().into())),
         }))
-        .unwrap_or_else(|_| Err("reading the colour profile failed unexpectedly".to_string()));
+        .unwrap_or(Err(ProfileProblem::Failed));
     match &result {
         Ok(transform) => debug!(
             "colour profile of {}: {:?}",
@@ -327,8 +388,7 @@ fn read_profile(wsi: WsiFile, identity: String) {
     let mut jobs = FIT_JOBS.lock();
     jobs.profiles_running.remove(&identity);
     *jobs.finished.entry(identity.clone()).or_default() += 1;
-    jobs.profiles
-        .insert(identity, result.map_err(|error| error.into()));
+    jobs.profiles.insert(identity, result);
 }
 
 /// Open files whose slide finished a fit or a profile read since the last
@@ -494,7 +554,7 @@ pub(crate) enum ColorManagementInfo {
     On(String),
     /// Colours as scanned; the slide has the named profile.
     Off(String),
-    /// The profile cannot be used, and why.
+    /// The profile cannot be used, and why (in the interface's language).
     Unsupported(String),
 }
 
@@ -511,20 +571,22 @@ impl ColorManagementInfo {
         }
     }
 
-    /// The indicator's tooltip.
+    /// The indicator's tooltip, in the interface's language.
     pub(crate) fn tooltip(&self) -> String {
         match self {
             Self::NoProfile => String::new(),
-            Self::Pending => "Reading the slide's colour profile…".to_string(),
-            Self::On(name) => format!(
-                "Colour-managed: the slide's profile \"{name}\" is converted to sRGB. Click to show the colours as scanned"
+            Self::Pending => tr!("Reading the slide's colour profile…"),
+            // Translators: {} is the name of the slide's ICC colour profile.
+            Self::On(name) => tr!(
+                "Colour-managed: the slide's profile \"{}\" is converted to sRGB. Click to show the colours as scanned",
+                isolate(name)
             ),
-            Self::Off(name) => format!(
-                "Colours as scanned. Click to convert the slide's profile \"{name}\" to sRGB"
+            // Translators: {} is the name of the slide's ICC colour profile.
+            Self::Off(name) => tr!(
+                "Colours as scanned. Click to convert the slide's profile \"{}\" to sRGB",
+                isolate(name)
             ),
-            Self::Unsupported(reason) => {
-                format!("Not colour-managed: {reason}")
-            }
+            Self::Unsupported(reason) => tr!("Not colour-managed: {}", reason),
         }
     }
 }
@@ -534,9 +596,16 @@ impl ColorManagementInfo {
 pub(crate) struct HudColorInfo {
     /// Any processing is requested (lights the adjustments indicator).
     pub(crate) modified: bool,
-    /// Persistent badge, e.g. "Colour-normalised (Macenko) · Sharpened";
-    /// empty when the colours are as scanned.
+    /// Persistent badge, e.g. "Colour-normalised (Macenko) · Sharpened",
+    /// in the interface's language; empty when the colours are as scanned.
     pub(crate) badge: String,
+    /// The same badge in English, as plugins built against plugin API 1.0
+    /// read it (`DisplayAdjustments::badge`).
+    pub(crate) badge_english: String,
+    /// Stain normalisation, deconvolution adjustments or an isolated stain
+    /// change the slide's stain colours in the pane (as applied: not while
+    /// a normalisation is pending).
+    pub(crate) stain_colors: bool,
     /// Problems: stain-label mismatches, unavailable normalisation, …
     pub(crate) warnings: Vec<String>,
     /// The slide's colour management.
@@ -551,18 +620,26 @@ pub(crate) fn hud_color_info(file: &OpenFile, pane: PaneId) -> HudColorInfo {
     )
 }
 
+/// The HUD's texts are in the interface's language (see
+/// [`crate::processing_text`]): made again whenever the HUD is.
 fn describe(color: &PaneColor, stain_label: Option<&str>) -> HudColorInfo {
-    let mut warnings = color.settings.warnings(stain_label);
+    let mut warnings: Vec<String> = color
+        .settings
+        .warning_list(stain_label)
+        .iter()
+        .map(crate::processing_text::warning)
+        .collect();
     if let Some(error) = &color.fit_error {
-        warnings.push(format!(
-            "Colour normalisation is unavailable for this slide: {error}"
+        warnings.push(tr!(
+            "Stain normalisation is unavailable for this slide: {}",
+            error
         ));
     }
     let color_management = match (&color.profile, color.pipeline.color_management()) {
         (SlideProfile::None, _) => ColorManagementInfo::NoProfile,
         (SlideProfile::Pending, _) => ColorManagementInfo::Pending,
-        (SlideProfile::Unsupported(reason), _) => {
-            ColorManagementInfo::Unsupported(reason.to_string())
+        (SlideProfile::Unsupported(problem), _) => {
+            ColorManagementInfo::Unsupported(problem.localized())
         }
         (SlideProfile::Ready(transform), Some(_)) => {
             ColorManagementInfo::On(transform.description().to_string())
@@ -571,9 +648,12 @@ fn describe(color: &PaneColor, stain_label: Option<&str>) -> HudColorInfo {
             ColorManagementInfo::Off(transform.description().to_string())
         }
     };
+    let summary = color.pipeline.summary();
     HudColorInfo {
         modified: color.settings.is_modified(),
-        badge: color.pipeline.summary().badge().unwrap_or_default(),
+        badge: crate::processing_text::badge(summary).unwrap_or_default(),
+        badge_english: summary.badge().unwrap_or_default(),
+        stain_colors: summary.alters_stain_colors(),
         warnings,
         color_management,
     }
@@ -725,6 +805,8 @@ mod tests {
 
         // Normalisation is pending until the fit lands, then applied.
         settings.normalization = Some(StainFitMethod::Macenko);
+        let toned = describe(&c, None);
+        assert!(toned.modified && !toned.stain_colors, "tone only");
         let first = resolve(file_id, &wsi, PaneId(0), &settings, None);
         let info = describe(&first, None);
         assert!(info.modified);
@@ -742,6 +824,8 @@ mod tests {
             "{}",
             info.badge
         );
+        // What plugins are told besides the (translated) badge.
+        assert!(info.stain_colors);
         assert!(info.warnings.is_empty(), "{:?}", info.warnings);
         // An IHC label warns that the H&E model is being used.
         assert_eq!(describe(&ready, Some("IHC")).warnings.len(), 1);
@@ -774,7 +858,11 @@ mod tests {
             }
             SlideFit::Ready(estimate) => {
                 assert!(estimate.fallback.is_some(), "glass has no tissue to fit");
-                assert!(info.badge.contains("reference vectors"), "{}", info.badge);
+                assert!(
+                    info.badge.contains("fallback stain vectors"),
+                    "{}",
+                    info.badge
+                );
             }
             SlideFit::Pending => panic!("the fit did not finish"),
         }
@@ -861,7 +949,9 @@ mod tests {
         let SlideProfile::Unsupported(reason) = wait_for_profile(9006, &wsi) else {
             panic!("a broken profile is not used");
         };
-        assert!(reason.contains("profile"), "{reason}");
+        assert!(reason.to_string().contains("profile"), "{reason}");
+        // The window says it as the log does (in English).
+        assert_eq!(reason.localized(), reason.to_string());
         retain_files(&HashSet::new());
     }
 }

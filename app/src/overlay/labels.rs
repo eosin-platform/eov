@@ -1,8 +1,9 @@
 //! Text labels of overlay objects.
 //!
 //! On screen, labels are drawn by Slint (crisp text in the UI font at any
-//! scale factor); exports draw the same list with glyphs. Placement is
-//! computed here so both agree.
+//! scale factor); exports draw the same list with glyphs, using a label's
+//! [`Label::export_text`] when it has one. Placement is computed here so
+//! both agree.
 
 use super::geometry::{self, Point};
 use super::raster::{FrameScene, ViewTransform, resolve_style};
@@ -28,7 +29,12 @@ pub struct Label {
     pub x: f32,
     pub y: f32,
     pub anchor: LabelAnchor,
+    /// As shown on screen.
     pub text: String,
+    /// What images (exports, copies of the view) draw instead of `text`:
+    /// the object's English label when `text` is translated
+    /// ([`OverlayObject::export_label`](eov_plugin_api::protocol::OverlayObject::export_label)).
+    pub export_text: Option<String>,
     pub color: Rgba,
     /// Draw a rounded backdrop behind the text.
     pub backdrop: bool,
@@ -134,6 +140,7 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
                     y,
                     anchor,
                     text: text.clone(),
+                    export_text: None,
                     color: style.text_color,
                     backdrop: false,
                     font_size: style.font_size,
@@ -153,6 +160,7 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
                         anchor
                     },
                     text: text.clone(),
+                    export_text: object.object.export_label.clone(),
                     color: style.text_color,
                     backdrop: true,
                     font_size: style.font_size,
@@ -173,6 +181,7 @@ pub fn collect_labels(view: &ViewTransform, scene: &FrameScene) -> Vec<Label> {
             y: y - 4.0,
             anchor,
             text: text.clone(),
+            export_text: None,
             color: transient.style.text_color,
             backdrop: true,
             font_size: transient.style.font_size,
@@ -254,5 +263,50 @@ mod tests {
         assert_eq!(labels[0].anchor, LabelAnchor::Right);
         assert!(labels[0].x > 20.0);
         assert_eq!((labels[2].x, labels[2].anchor), (20.0, LabelAnchor::Above));
+        assert!(labels.iter().all(|l| l.export_text.is_none()));
+    }
+
+    /// The screen shows a label as the plugin wrote it; images get its
+    /// English form when the plugin gave one.
+    #[test]
+    fn labels_carry_their_english_form_for_images() {
+        let store = OverlayStore::new();
+        let owner = Owner::plugin("p");
+        store
+            .create_layer(owner.clone(), LayerSpec::new("l", 1))
+            .unwrap();
+        store
+            .upsert(
+                &owner,
+                "l",
+                vec![
+                    OverlayObject::new("a", Shape::Point { x: 10.0, y: 10.0 })
+                        .with_label("Область Cellaris")
+                        .with_export_label("Cellaris region"),
+                    OverlayObject::new("b", Shape::Point { x: 10.0, y: 30.0 })
+                        .with_label("Опухоль"),
+                    // Without a label, nothing is drawn anywhere.
+                    OverlayObject::new("c", Shape::Point { x: 10.0, y: 50.0 })
+                        .with_export_label("Unlabelled"),
+                ],
+                false,
+            )
+            .unwrap();
+        let scene = FrameScene {
+            layers: store.file_layers(1).layers,
+            ..Default::default()
+        };
+        let labels = collect_labels(&view(), &scene);
+        let texts: Vec<_> = labels
+            .iter()
+            .map(|l| (l.text.as_str(), l.export_text.as_deref()))
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                ("Область Cellaris", Some("Cellaris region")),
+                ("Опухоль", None)
+            ]
+        );
     }
 }

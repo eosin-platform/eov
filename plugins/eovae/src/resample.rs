@@ -7,7 +7,9 @@
 //! bilinear interpolation in the rare case that the slide is coarser than
 //! the model. The result is opaque RGBA for [`crate::contract::prepare`].
 
+use crate::message::Message;
 use crate::tiling::ReadPlan;
+use eov_plugin_api::i18n::tr;
 
 /// Source pixels contributing to one output pixel, with their weights.
 #[derive(Clone, Debug, PartialEq)]
@@ -112,18 +114,25 @@ impl Resampler {
     }
 
     /// Adds the region's next whole rows (straight-alpha RGBA).
-    pub fn add_rows(&mut self, rgba: &[u8]) -> Result<(), String> {
+    pub fn add_rows(&mut self, rgba: &[u8]) -> Result<(), Message> {
         let stride = self.width * 4;
         if stride == 0
             || !rgba.len().is_multiple_of(stride)
             || self.added + rgba.len() / stride > self.height
         {
-            return Err(format!(
-                "the host returned {} bytes for rows of a {}×{} region",
-                rgba.len(),
-                self.width,
-                self.height
-            ));
+            let (width, height) = (self.width, self.height);
+            return Err(Message::new(|| {
+                // Translators: why a part of the slide could not be read: the
+                // host (eov) gave {n} bytes of pixel data, the wrong size for
+                // rows of a region of {width} × {height} pixels.
+                tr!(
+                    "the host returned {n} byte for rows of a {width}×{height} region"
+                        | "the host returned {n} bytes for rows of a {width}×{height} region"
+                            % rgba.len(),
+                    width = width,
+                    height = height
+                )
+            }));
         }
         let (width, side) = (self.width, self.side);
         for row in rgba.chunks_exact(stride) {
@@ -166,9 +175,12 @@ impl Resampler {
     }
 
     /// The window, once every row is in: opaque RGBA.
-    pub fn finish(self) -> Result<Vec<u8>, String> {
+    pub fn finish(self) -> Result<Vec<u8>, Message> {
         if self.added != self.height {
-            return Err(format!("{} of {} rows were read", self.added, self.height));
+            return Err(Message::plain(format!(
+                "{} of {} rows were read",
+                self.added, self.height
+            )));
         }
         let side = self.side;
         let mut window = vec![255u8; side * side * 4];
@@ -193,13 +205,20 @@ pub fn resample(
     plan: &ReadPlan,
     tile: u32,
     background: [u8; 3],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, Message> {
     let (width, height) = (plan.width as usize, plan.height as usize);
     if width == 0 || height == 0 || rgba.len() != width * height * 4 {
-        return Err(format!(
-            "the host returned {} bytes for a {width}×{height} region",
-            rgba.len()
-        ));
+        return Err(Message::new(|| {
+            // Translators: why a part of the slide could not be read: the
+            // host (eov) gave {n} bytes of pixel data, the wrong size for a
+            // region of {width} × {height} pixels.
+            tr!(
+                "the host returned {n} byte for a {width}×{height} region"
+                    | "the host returned {n} bytes for a {width}×{height} region" % rgba.len(),
+                width = width,
+                height = height
+            )
+        }));
     }
     let mut resampler = Resampler::new(plan, tile, background);
     resampler.add_rows(rgba)?;

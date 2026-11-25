@@ -301,6 +301,46 @@ impl Setup {
             .map(|l| l.rasters.keys().cloned().collect())
             .unwrap_or_default()
     }
+
+    /// The notifications that say `message`.
+    fn notified(&self, message: &str) -> Vec<NotifyArgs> {
+        self.harness
+            .state()
+            .notifications
+            .iter()
+            .filter(|n| n.message == message)
+            .cloned()
+            .collect()
+    }
+
+    /// The warnings shown that start with `start`.
+    fn warnings(&self, start: &str) -> Vec<String> {
+        self.harness
+            .state()
+            .notifications
+            .iter()
+            .filter(|n| n.level == NotifyLevel::Warning && n.message.starts_with(start))
+            .map(|n| n.message.clone())
+            .collect()
+    }
+
+    /// What was written to eov's log at `level` (`"info"`, `"warn"`, …).
+    fn logged(&self, level: &str) -> Vec<String> {
+        self.harness
+            .calls_to("log")
+            .iter()
+            .filter(|l| l["level"] == json!(level))
+            .filter_map(|l| l["message"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// eov shows the warnings and errors a plugin logs to the user as they
+    /// are (PLG-15), so in English: eovae logs none, it notifies in the
+    /// user's language.
+    fn assert_no_logged_problems(&self) {
+        let problems = [self.logged("warn"), self.logged("error")].concat();
+        assert!(problems.is_empty(), "{problems:?}");
+    }
 }
 
 #[test]
@@ -322,6 +362,56 @@ fn registers_its_contributions_without_host_ui_special_cases() {
     );
     // No CPU viewport filter: overlays are host-drawn rasters (VAE-16).
     assert!(state.filters.is_empty());
+}
+
+#[test]
+fn a_change_of_language_hands_the_texts_over_again() {
+    let s = setup();
+    s.start();
+    wait_until("the error map layer", || {
+        s.harness
+            .state()
+            .layers
+            .contains_key(&crate::plugin::heat_layer(1))
+    });
+    let menus = s.harness.calls_to("hud.update").len();
+    // eov has switched eovae's `tr!` when the event arrives (to English
+    // here, as tests run in English): what eov keeps is handed over again.
+    s.harness
+        .send(HostEvent::LanguageChanged {
+            language: "en".into(),
+        })
+        .unwrap();
+    let toolbar = s.harness.calls_to("toolbar.update");
+    assert!(
+        toolbar.iter().any(|call| {
+            call["button_id"] == json!(crate::plugin::TOOLBAR_BUTTON)
+                && call["tooltip"] == json!("VAE reconstruction analysis")
+        }),
+        "{toolbar:?}"
+    );
+    let hud = s.harness.calls_to("hud.update");
+    assert!(
+        hud.iter().any(|call| {
+            call["button_id"] == json!(crate::plugin::HUD_VIEW)
+                && call["tooltip"] == json!("VAE overlay")
+                && call["menu"][2]["label"] == json!("Error map")
+        }),
+        "{hud:?}"
+    );
+    assert_eq!(s.harness.calls_to("batch.register").len(), 2);
+    // The presenter: each pane's overlay menu and the layers' names.
+    wait_until("the pane's menu again", || {
+        s.harness.calls_to("hud.update")[menus..]
+            .iter()
+            .any(|call| call["pane"] == json!(PANE) && call["menu"].is_array())
+    });
+    wait_until("the layers' names again", || {
+        s.harness.calls_to("layer.update").iter().any(|call| {
+            call["layer_id"] == json!(crate::plugin::heat_layer(1))
+                && call["name"] == json!("VAE error map")
+        })
+    });
 }
 
 #[test]
@@ -600,6 +690,15 @@ fn typed_values_are_validated_by_the_plugin() {
     );
     assert_eq!(
         s.callback(&surface, "threads-committed", vec![json!("abc")]),
+        json!("auto")
+    );
+    // Persian digits, as a Persian keyboard types them.
+    assert_eq!(
+        s.callback(&surface, "threads-committed", vec![json!("۱")]),
+        json!("1")
+    );
+    assert_eq!(
+        s.callback(&surface, "threads-committed", vec![json!("۰")]),
         json!("auto")
     );
     // A fixed-batch model ignores the batch setting.
@@ -919,13 +1018,101 @@ fn hosts_without_pane_visibility_share_overlays() {
                 && call["active"] == json!(true)
         })
     });
-    let logs = s.harness.calls_to("log");
+    // The user is told once, as a warning; the log has the English line.
+    let warning = "This eov cannot show layers in some panes only: every pane of a slide shows the same VAE overlay.";
+    wait_until("the warning", || !s.notified(warning).is_empty());
+    let shown = s.notified(warning);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert_eq!(shown[0].level, NotifyLevel::Warning);
+    assert!(s.logged("info").iter().any(|m| m == warning));
+    s.assert_no_logged_problems();
+}
+
+#[test]
+fn a_failed_analysis_is_reported_once() {
+    let s = setup_with("vae.onnx", json!({"device": "cpu"}), Reads::Fail);
+    let surface = s.start();
+    // A job in eov's job panel: eov says that it failed, with the error.
+    s.analyse_viewport(&surface);
+    let finished = s.harness.calls_to("job.finish");
     assert!(
-        logs.iter().any(|l| l["message"]
-            .as_str()
-            .is_some_and(|m| m.contains("same VAE overlay"))),
-        "{logs:?}"
+        finished.iter().any(|call| call["error"].is_string()),
+        "{finished:?}"
     );
+    wait_until("the English line in the log", || {
+        s.logged("info")
+            .iter()
+            .any(|m| m.starts_with("VAE analysis failed: ") && m.contains("corrupt JPEG"))
+    });
+    assert!(s.notified("VAE analysis failed").is_empty(), "eov said so");
+    // A job that fails before it is in the job panel: eovae says so.
+    s.callback(&surface, "analyze-roi", vec![]);
+    wait_until("the notification", || {
+        !s.notified("VAE analysis failed").is_empty()
+    });
+    let failures = s.notified("VAE analysis failed");
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(failures[0].level, NotifyLevel::Error);
+    assert_eq!(
+        failures[0].detail.as_deref(),
+        Some("Draw a region of interest on the slide first.")
+    );
+    assert_eq!(s.harness.calls_to("job.start").len(), 1);
+    s.wait_property("the summary", "last-result", |v| {
+        v == &json!("Region of interest failed: Draw a region of interest on the slide first.")
+    });
+    s.assert_no_logged_problems();
+}
+
+#[test]
+fn a_failed_automatic_analysis_is_reported_once() {
+    let s = setup_with("vae.onnx", json!({"device": "cpu"}), Reads::Fail);
+    s.start();
+    // Automatic analyses are never in eov's job panel: eovae says it.
+    s.hud_view(PANE, "error_map");
+    wait_until("the notification", || {
+        !s.notified("VAE analysis failed").is_empty()
+    });
+    s.wait_property("the job to stop", "job-running", |v| v == &json!(false));
+    let failures = s.notified("VAE analysis failed");
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert!(
+        failures[0]
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("could not be read")),
+        "{failures:?}"
+    );
+    assert!(s.harness.calls_to("job.start").is_empty());
+    s.assert_no_logged_problems();
+}
+
+#[test]
+fn settings_problems_are_notified_and_logged_in_english() {
+    // Settings that cannot be read are reset when eovae starts.
+    let s = setup_with("vae.onnx", json!({"device": "warp-drive"}), Reads::Slide);
+    let reset = s.warnings("eovae settings were unreadable and were reset (");
+    assert_eq!(reset.len(), 1, "{reset:?}");
+    assert!(reset[0].contains("warp-drive"), "{reset:?}");
+    assert!(
+        s.logged("info").contains(&reset[0]),
+        "the same English line"
+    );
+    // Settings that cannot be saved.
+    s.harness
+        .state()
+        .unsupported
+        .push("settings.set".to_string());
+    s.callback("", "section-toggled", vec![json!("cache"), json!(true)]);
+    wait_until("the warning", || {
+        !s.warnings("eovae settings could not be saved: ").is_empty()
+    });
+    assert!(
+        s.logged("info")
+            .iter()
+            .any(|m| m.starts_with("eovae settings could not be saved: "))
+    );
+    s.assert_no_logged_problems();
 }
 
 #[test]
@@ -1862,7 +2049,8 @@ fn a_stored_model_is_offered_and_a_site_model_can_be_set() {
         args.url.as_deref(),
         Some("https://models.example.org/our-vae.onnx")
     );
-    assert!(args.name.unwrap().contains("our-vae.onnx"));
+    // eov's dialogs name the model by its file, in every language.
+    assert_eq!(args.name.as_deref(), Some("our-vae.onnx"));
 }
 
 #[test]

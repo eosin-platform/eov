@@ -11,12 +11,14 @@
 //! the same way, with [`Quantification`].
 
 use crate::state::{AppState, OpenFile};
+use crate::ui_update::localized_number;
 use crate::{AppWindow, ChoiceItem, ResultRow};
 use eov_common::stain::od::estimate_background;
 use eov_common::stain::{
     BackgroundOptions, PixelFilter, StainPreset, StainQuantification, quantify_stain,
     suggested_preset,
 };
+use eov_plugin_api::i18n::{format_decimal, isolate, parse_decimal, tr};
 use eov_plugin_api::protocol::{NotifyLevel, Rect};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -163,16 +165,62 @@ fn levels(wsi: &eov_common::WsiFile) -> Vec<(u32, f64)> {
         .collect()
 }
 
-/// Thresholds a quantification can use: positive and rising from weak to
-/// moderate to strong.
-pub(crate) fn check_thresholds(values: [f32; 3]) -> Result<[f32; 3], String> {
-    if !values.iter().all(|v| v.is_finite() && *v > 0.0) {
-        return Err("Thresholds must be positive numbers".to_string());
+/// Why thresholds cannot be used.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ThresholdProblem {
+    /// The weak (0), moderate (1) or strong (2) threshold typed is not a
+    /// positive number.
+    Typed(usize),
+    NotPositive,
+    NotRising,
+}
+
+impl ThresholdProblem {
+    /// For scripts.
+    fn english(self) -> String {
+        match self {
+            ThresholdProblem::Typed(_) | ThresholdProblem::NotPositive => {
+                "Thresholds must be positive numbers".to_string()
+            }
+            ThresholdProblem::NotRising => {
+                "Thresholds must rise from weak to moderate to strong".to_string()
+            }
+        }
     }
-    if values[0] <= values[1] && values[1] <= values[2] {
-        Ok(values)
+
+    /// For the panel, in the interface's language.
+    fn localized(self) -> String {
+        match self {
+            ThresholdProblem::Typed(0) => tr!("The weak threshold must be a positive number"),
+            ThresholdProblem::Typed(1) => {
+                tr!("The moderate threshold must be a positive number")
+            }
+            ThresholdProblem::Typed(_) => tr!("The strong threshold must be a positive number"),
+            ThresholdProblem::NotPositive => tr!("Thresholds must be positive numbers"),
+            ThresholdProblem::NotRising => {
+                tr!("Thresholds must rise from weak to moderate to strong")
+            }
+        }
+    }
+}
+
+/// Why `values` cannot be thresholds, if they cannot.
+fn threshold_problem(values: [f32; 3]) -> Option<ThresholdProblem> {
+    if !values.iter().all(|v| v.is_finite() && *v > 0.0) {
+        Some(ThresholdProblem::NotPositive)
+    } else if values[0] <= values[1] && values[1] <= values[2] {
+        None
     } else {
-        Err("Thresholds must rise from weak to moderate to strong".to_string())
+        Some(ThresholdProblem::NotRising)
+    }
+}
+
+/// Thresholds a quantification can use: positive and rising from weak to
+/// moderate to strong (the reason in English, for scripts).
+pub(crate) fn check_thresholds(values: [f32; 3]) -> Result<[f32; 3], String> {
+    match threshold_problem(values) {
+        None => Ok(values),
+        Some(problem) => Err(problem.english()),
     }
 }
 
@@ -182,7 +230,9 @@ struct Panel {
     roi: Rect,
     preset: StainPreset,
     stain: usize,
-    thresholds: Result<[f32; 3], String>,
+    thresholds: Result<[f32; 3], ThresholdProblem>,
+    /// The last result, and its stain as the preset names it (shown in the
+    /// interface's language: [`crate::processing_text::stain_name`]).
     result: Option<(StainQuantification, String)>,
     /// Set to stop a run in progress.
     cancel: Option<Arc<AtomicBool>>,
@@ -207,20 +257,23 @@ pub(crate) fn default_stain(preset: StainPreset) -> usize {
         .unwrap_or(names.len().saturating_sub(1))
 }
 
-fn parse_thresholds(weak: &str, moderate: &str, strong: &str) -> Result<[f32; 3], String> {
-    let parse = |text: &str, what: &str| {
-        text.trim()
-            .replace(',', ".")
-            .parse::<f32>()
-            .ok()
+/// Thresholds as typed (with `.`, `,` or the language's decimal separator).
+fn parse_thresholds(
+    weak: &str,
+    moderate: &str,
+    strong: &str,
+) -> Result<[f32; 3], ThresholdProblem> {
+    let parse = |text: &str, index: usize| {
+        parse_decimal(text)
+            .map(|value| value as f32)
             .filter(|v| v.is_finite() && *v > 0.0)
-            .ok_or_else(|| format!("The {what} threshold must be a positive number"))
+            .ok_or(ThresholdProblem::Typed(index))
     };
-    check_thresholds([
-        parse(weak, "weak")?,
-        parse(moderate, "moderate")?,
-        parse(strong, "strong")?,
-    ])
+    let values = [parse(weak, 0)?, parse(moderate, 1)?, parse(strong, 2)?];
+    match threshold_problem(values) {
+        None => Ok(values),
+        Some(problem) => Err(problem),
+    }
 }
 
 /// The level whose region of `roi` is at most [`MAX_PIXELS`]: the finest
@@ -236,27 +289,37 @@ fn level_for(levels: &[(u32, f64)], roi: &Rect) -> (u32, f64) {
         .unwrap_or((0, 1.0))
 }
 
+/// The results as label and value, in the interface's language (the panel
+/// shows them, and copies them as text).
 fn result_rows(q: &StainQuantification, stain: &str) -> Vec<(String, String)> {
     let percent = |n: u64| {
         if q.analysed_pixels == 0 {
             "–".to_string()
         } else {
-            format!("{:.1} %", 100.0 * n as f64 / q.analysed_pixels as f64)
+            // Translators: a percentage ("12.5 %").
+            tr!(
+                "{} %",
+                format_decimal(100.0 * n as f64 / q.analysed_pixels as f64, 1)
+            )
         }
     };
+    // The stain's name (DAB, AEC, PAS in every language) keeps its own
+    // writing direction, and does not decide the label's.
+    let stain = isolate(stain);
     vec![
+        (tr!("Tissue pixels analysed"), q.analysed_pixels.to_string()),
+        // Translators: the pixels positive for a stain ("DAB-positive").
+        (tr!("{}-positive", stain), percent(q.positive_pixels)),
+        // Translators: weak, moderate and strong staining are the 1+, 2+ and
+        // 3+ intensity classes of an H-score.
+        (tr!("Weak (1+)"), percent(q.bins[0])),
+        (tr!("Moderate (2+)"), percent(q.bins[1])),
+        (tr!("Strong (3+)"), percent(q.bins[2])),
+        // Translators: the H-score of immunohistochemistry, from 0 to 300.
+        (tr!("H-score (0–300)"), format!("{:.0}", q.h_score)),
         (
-            "Tissue pixels analysed".into(),
-            q.analysed_pixels.to_string(),
-        ),
-        (format!("{stain}-positive"), percent(q.positive_pixels)),
-        ("Weak (1+)".into(), percent(q.bins[0])),
-        ("Moderate (2+)".into(), percent(q.bins[1])),
-        ("Strong (3+)".into(), percent(q.bins[2])),
-        ("H-score (0–300)".into(), format!("{:.0}", q.h_score)),
-        (
-            format!("Mean {stain} concentration"),
-            format!("{:.3}", q.mean_concentration),
+            tr!("Mean {} concentration", stain),
+            format_decimal(f64::from(q.mean_concentration), 3),
         ),
     ]
 }
@@ -283,11 +346,14 @@ pub(crate) fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         crate::host_ui::with_host(|host| host.status(text));
     };
     let Some((file_id, roi, stain_label, dab)) = found else {
-        notify("Open a slide to quantify a stain");
+        notify(&tr!("Open a slide to quantify a stain"));
         return;
     };
     let Some(roi) = roi else {
-        notify("Draw a region of interest first (R), then quantify the stain in it");
+        // Translators: R is the key of the region-of-interest tool.
+        notify(&tr!(
+            "Draw a region of interest first (R), then quantify the stain in it"
+        ));
         return;
     };
     // The model and stain chosen last for this slide, else one suggested by
@@ -321,9 +387,9 @@ pub(crate) fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         })
     });
     let [weak, moderate, strong] = DEFAULT_THRESHOLDS;
-    ui.set_quantify_weak(format!("{weak}").into());
-    ui.set_quantify_moderate(format!("{moderate}").into());
-    ui.set_quantify_strong(format!("{strong}").into());
+    ui.set_quantify_weak(localized_number(&format!("{weak}")).into());
+    ui.set_quantify_moderate(localized_number(&format!("{moderate}")).into());
+    ui.set_quantify_strong(localized_number(&format!("{strong}")).into());
     refresh(ui, state);
     ui.set_quantify_visible(true);
 }
@@ -343,7 +409,7 @@ fn refresh(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
             .iter()
             .map(|preset| ChoiceItem {
                 id: preset.id().into(),
-                label: preset.label().into(),
+                label: crate::processing_text::preset_label(*preset).into(),
             })
             .collect();
         let basis = panel.preset.basis();
@@ -353,26 +419,39 @@ fn refresh(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
             .enumerate()
             .map(|(index, name)| ChoiceItem {
                 id: index.to_string().into(),
-                label: (*name).into(),
+                label: crate::processing_text::stain_name(name).into(),
             })
             .collect();
         let (level, downsample) =
             level_for(&levels(&file.wsi.without_synthetic_levels()), &panel.roi);
-        let mpp = crate::host_ui::calibration(file)
-            .average()
-            .map(|um| format!(", {:.2} µm/px", um * downsample))
-            .unwrap_or_default();
-        ui.set_quantify_title(format!("Quantify Stain · {}", file.filename).into());
-        ui.set_quantify_region_text(
-            format!(
-                "The region of interest, {} × {} px, read at level {level} ({:.0} × {:.0} px{mpp}).",
-                panel.roi.width.ceil(),
-                panel.roi.height.ceil(),
-                (panel.roi.width / downsample).ceil(),
-                (panel.roi.height / downsample).ceil(),
-            )
-            .into(),
+        let (width, height) = (panel.roi.width.ceil(), panel.roi.height.ceil());
+        let (level_width, level_height) = (
+            (panel.roi.width / downsample).ceil(),
+            (panel.roi.height / downsample).ceil(),
         );
+        let region_text = match crate::host_ui::calibration(file).average() {
+            // Translators: the region's size in level-0 pixels, then the
+            // pyramid level it is read at, its size there and the pixel size.
+            Some(um) => tr!(
+                "The region of interest, {width} × {height} px, read at level {level} ({level_width} × {level_height} px, {mpp} µm/px).",
+                width = width,
+                height = height,
+                level = level,
+                level_width = level_width,
+                level_height = level_height,
+                mpp = format_decimal(um * downsample, 2)
+            ),
+            None => tr!(
+                "The region of interest, {width} × {height} px, read at level {level} ({level_width} × {level_height} px).",
+                width = width,
+                height = height,
+                level = level,
+                level_width = level_width,
+                level_height = level_height
+            ),
+        };
+        ui.set_quantify_title(tr!("Quantify Stain · {}", isolate(&file.filename)).into());
+        ui.set_quantify_region_text(region_text.into());
         ui.set_quantify_presets(ModelRc::from(Rc::new(VecModel::from(presets))));
         ui.set_quantify_preset(panel.preset.id().into());
         ui.set_quantify_stains(ModelRc::from(Rc::new(VecModel::from(stains))));
@@ -381,7 +460,7 @@ fn refresh(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         let rows: Vec<ResultRow> = panel
             .result
             .as_ref()
-            .map(|(q, stain)| result_rows(q, stain))
+            .map(|(q, stain)| result_rows(q, &crate::processing_text::stain_name(stain)))
             .unwrap_or_default()
             .into_iter()
             .map(|(label, value)| ResultRow {
@@ -391,8 +470,8 @@ fn refresh(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
             .collect();
         ui.set_quantify_results(ModelRc::from(Rc::new(VecModel::from(rows))));
         let note = match &panel.thresholds {
-            Err(problem) => problem.clone(),
-            Ok(_) if panel.cancel.is_some() => "Reading the region…".to_string(),
+            Err(problem) => problem.localized(),
+            Ok(_) if panel.cancel.is_some() => tr!("Reading the region…"),
             Ok(_) => String::new(),
         };
         ui.set_quantify_note(note.into());
@@ -448,24 +527,41 @@ pub(crate) fn run(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
         if panel.cancel.is_some() {
             return None;
         }
-        let thresholds = panel.thresholds.clone().ok()?;
+        let thresholds = panel.thresholds.ok()?;
         let state = state.read();
         let file = state.get_file(panel.file_id)?;
         let job = Quantification::of_file(file, panel.roi, panel.preset, panel.stain, thresholds);
+        // Refused here, in the interface's language (scripts get the reason
+        // from `measure`).
+        if let Some(too_large) = TooLarge::check(&job.wsi, &job.region) {
+            return Some(Err(too_large));
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         panel.cancel = Some(Arc::clone(&cancel));
         panel.result = None;
-        Some((job, cancel))
+        Some(Ok((job, cancel)))
     });
-    let Some((job, cancel)) = job else {
-        return;
+    let (job, cancel) = match job {
+        Some(Ok(job)) => job,
+        Some(Err(too_large)) => {
+            crate::host_ui::with_host(|host| {
+                host.notify(
+                    NotifyLevel::Error,
+                    &tr!("Could not quantify the stain"),
+                    Some(&too_large.localized()),
+                    None,
+                )
+            });
+            return;
+        }
+        None => return,
     };
     let (preset, stain) = (job.preset, job.stain);
     refresh(ui, state);
     let stop = Arc::clone(&cancel);
     let job_id = crate::host_ui::with_host(|host| {
         host.start_host_job(
-            "Quantifying the stain",
+            &tr!("Quantifying the stain"),
             Some(Box::new(move || stop.store(true, Ordering::Relaxed))),
         )
     })
@@ -489,6 +585,49 @@ pub(crate) fn run(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     }
 }
 
+/// A region too large to read, even at the slide's coarsest level.
+struct TooLarge {
+    width: f64,
+    height: f64,
+    level: u32,
+}
+
+impl TooLarge {
+    /// The region `roi` of `wsi`, if it is too large to read.
+    fn check(wsi: &eov_common::WsiFile, roi: &Rect) -> Option<Self> {
+        let (level, downsample) = level_for(&levels(wsi), roi);
+        let (width, height) = (
+            (roi.width / downsample).ceil(),
+            (roi.height / downsample).ceil(),
+        );
+        let pixels = width * height;
+        (!pixels.is_finite() || pixels > MAX_READ_PIXELS as f64).then_some(Self {
+            width,
+            height,
+            level,
+        })
+    }
+
+    /// For scripts.
+    fn english(&self) -> String {
+        format!(
+            "the region is {:.0} × {:.0} pixels at the slide's coarsest level {}; quantify a \
+             smaller region",
+            self.width, self.height, self.level
+        )
+    }
+
+    /// For the window, in the interface's language.
+    fn localized(&self) -> String {
+        tr!(
+            "the region is {width} × {height} pixels at the slide's coarsest level {level}; quantify a smaller region",
+            width = format!("{:.0}", self.width),
+            height = format!("{:.0}", self.height),
+            level = self.level
+        )
+    }
+}
+
 /// Reads the region in chunks and quantifies it (worker thread).
 fn measure(
     wsi: &eov_common::WsiFile,
@@ -506,12 +645,8 @@ fn measure(
     );
     // Even the coarsest level of a shallow pyramid: never allocate without
     // bound (a whole-slide region of a single-level slide).
-    let pixels = width * height;
-    if !pixels.is_finite() || pixels > MAX_READ_PIXELS as f64 {
-        return Err(format!(
-            "the region is {width:.0} × {height:.0} pixels at the slide's coarsest level \
-             {level}; quantify a smaller region"
-        ));
+    if let Some(too_large) = TooLarge::check(wsi, roi) {
+        return Err(too_large.english());
     }
     let width = width.max(1.0) as u32;
     let height = height.max(1.0) as u32;
@@ -576,7 +711,7 @@ fn finished(
         crate::host_ui::with_host(|host| {
             host.notify(
                 NotifyLevel::Error,
-                "Could not quantify the stain",
+                &tr!("Could not quantify the stain"),
                 Some(error),
                 None,
             )
@@ -596,24 +731,55 @@ pub(crate) fn copy(state: &Arc<RwLock<AppState>>) {
             .get_file(panel.file_id)
             .map(|file| file.filename.clone())
             .unwrap_or_default();
-        let thresholds = panel.thresholds.clone().unwrap_or(DEFAULT_THRESHOLDS);
-        let mut lines = vec![format!(
-            "{name}: {stain} in the region of interest ({} model; thresholds {}, {}, {})",
-            panel.preset.label(),
-            thresholds[0],
-            thresholds[1],
-            thresholds[2]
-        )];
-        lines.extend(
-            result_rows(q, stain)
-                .into_iter()
-                .map(|(label, value)| format!("{label}: {value}")),
-        );
-        Some(lines.join("\n"))
+        let thresholds = panel.thresholds.unwrap_or(DEFAULT_THRESHOLDS);
+        Some(results_text(&name, panel.preset, stain, thresholds, q))
     });
     if let Some(text) = text {
         crate::clipboard::copy_text(text);
-        crate::host_ui::with_host(|host| host.status("Copied the results"));
+        crate::host_ui::with_host(|host| host.status(&tr!("Copied the results")));
+    }
+}
+
+/// The results as text for people (the panel's Copy), in the interface's
+/// language: the slide `name`, the stain measured, the model and the
+/// thresholds, then the panel's rows.
+fn results_text(
+    name: &str,
+    preset: StainPreset,
+    stain: &str,
+    thresholds: [f32; 3],
+    q: &StainQuantification,
+) -> String {
+    let stain = crate::processing_text::stain_name(stain);
+    let threshold = |index: usize| localized_number(&format!("{}", thresholds[index]));
+    let mut lines = vec![tr!(
+        // Translators: the first line of the results copied as text: the
+        // slide, the stain measured, the stain model and the thresholds
+        // of weak, moderate and strong staining. The thresholds are
+        // decimal numbers with your language's decimal separator
+        // ("0,15" in German): keep a separator between them that cannot
+        // be taken for it (not a comma).
+        "{name}: {stain} in the region of interest ({model} model; thresholds {weak} / {moderate} / {strong})",
+        name = isolate(name),
+        stain = isolate(&stain),
+        model = isolate(crate::processing_text::preset_label(preset)),
+        weak = threshold(0),
+        moderate = threshold(1),
+        strong = threshold(2)
+    )];
+    lines.extend(
+        result_rows(q, &stain)
+            .into_iter()
+            .map(|(label, value)| format!("{label}: {value}")),
+    );
+    lines.join("\n")
+}
+
+/// Writes the open panel's texts again, in the language of the interface
+/// (after it changed).
+pub(crate) fn refresh_texts(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    if ui.get_quantify_visible() {
+        refresh(ui, state);
     }
 }
 
@@ -759,6 +925,78 @@ mod tests {
             )
             .unwrap(),
             None
+        );
+    }
+
+    /// The copied results are written as the panel shows them: in the
+    /// interface's language, with its decimal separator (never one the
+    /// thresholds are separated by), and with the values that are written
+    /// left to right isolated in right-to-left languages.
+    #[test]
+    fn copied_results_follow_the_interface_s_language() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let q = StainQuantification {
+            stain: 1,
+            analysed_pixels: 1000,
+            positive_pixels: 250,
+            positive_fraction: 0.25,
+            mean_concentration: 0.5,
+            bins: [100, 100, 50],
+            h_score: 45.0,
+        };
+        let text = |thresholds| {
+            results_text(
+                "case 7.svs",
+                StainPreset::HematoxylinDab,
+                "DAB",
+                thresholds,
+                &q,
+            )
+        };
+        assert_eq!(
+            text(DEFAULT_THRESHOLDS),
+            "case 7.svs: DAB in the region of interest (H-DAB model; thresholds 0.15 / 0.5 / 1)\n\
+             Tissue pixels analysed: 1000\n\
+             DAB-positive: 25.0 %\n\
+             Weak (1+): 10.0 %\n\
+             Moderate (2+): 10.0 %\n\
+             Strong (3+): 5.0 %\n\
+             H-score (0–300): 45\n\
+             Mean DAB concentration: 0.500"
+        );
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        i18n::set_catalog(german, None);
+        let german_text = text([0.25, 0.5, 1.5]);
+        assert!(
+            german_text.starts_with(
+                "case 7.svs: DAB in the region of interest (H-DAB model; thresholds 0,25 / 0,5 / 1,5)"
+            ),
+            "{german_text}"
+        );
+        assert!(german_text.ends_with("Mean DAB concentration: 0,500"));
+
+        let persian = i18n::by_tag("fa").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(None, "{}-positive", &["{}-مثبت"])];
+        i18n::set_catalog(
+            persian,
+            Some(i18n::Catalog::from_messages(persian, "", messages).unwrap()),
+        );
+        let persian_text = text(DEFAULT_THRESHOLDS);
+        assert!(
+            persian_text.starts_with("\u{2068}case 7.svs\u{2069}: \u{2068}DAB\u{2069} in"),
+            "{persian_text}"
+        );
+        assert!(persian_text.contains("0\u{66b}15 / 0\u{66b}5 / 1"));
+        assert!(
+            persian_text.contains("\n\u{2068}DAB\u{2069}-مثبت: "),
+            "{persian_text}"
         );
     }
 

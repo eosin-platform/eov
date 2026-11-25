@@ -12,6 +12,7 @@ use crate::{
 };
 use eov_common::viewport::ZOOM_FACTOR;
 use eov_common::{FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, TileCache};
+use eov_plugin_api::i18n::{format_decimal, isolate, tr};
 use parking_lot::RwLock;
 use rfd::FileDialog;
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -297,7 +298,9 @@ pub(crate) fn magnify_active_viewport(
         (None, _) => 1.0,
         (Some(target), Some(Some(native))) => target / native,
         (Some(_), Some(None)) => {
-            return Err("This slide records neither its objective nor its pixel size".into());
+            return Err(tr!(
+                "This slide records neither its objective nor its pixel size"
+            ));
         }
     };
     let Some(viewport) = state.active_viewport_mut() else {
@@ -436,9 +439,9 @@ pub(crate) fn toggle_slide_link(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -
     crate::host_ui::with_host(|host| host.sync_landmark_layers());
     ui.set_status_text(
         match (linked, split) {
-            (true, true) => "Panes linked: they follow the focused pane",
-            (true, false) => "Panes linked: split the view to compare slides",
-            (false, _) => "Panes unlinked",
+            (true, true) => tr!("Panes linked: they follow the focused pane"),
+            (true, false) => tr!("Panes linked: split the view to compare slides"),
+            (false, _) => tr!("Panes unlinked"),
         }
         .into(),
     );
@@ -459,11 +462,11 @@ pub(crate) fn toggle_alignment_adjust(ui: &AppWindow, state: &Arc<RwLock<AppStat
     ui.set_alignment_adjust_enabled(adjusting);
     ui.set_status_text(
         if !linked {
-            "Link the panes first"
+            tr!("Link the panes first")
         } else if adjusting {
-            "Adjusting the alignment: move a pane to align it to the others"
+            tr!("Adjusting the alignment: move a pane to align it to the others")
         } else {
-            "Alignment saved"
+            tr!("Alignment saved")
         }
         .into(),
     );
@@ -484,7 +487,9 @@ pub(crate) fn align_linked_panes(ui: &AppWindow, state: &Arc<RwLock<AppState>>) 
 /// panes stay aligned as they are now. For key bindings.
 pub(crate) fn reset_linked_alignment(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
     crate::slide_link::reset_alignment(&mut state.write());
-    ui.set_status_text("The panes are aligned as they are now".into());
+    // Translators: the saved alignment of the linked panes was forgotten; they
+    // stay where they are now.
+    ui.set_status_text(tr!("Alignment reset: the linked panes stay as they are now.").into());
 }
 
 /// Turns the pixel view on or off: above 100%, panes show the slide's
@@ -506,9 +511,11 @@ pub(crate) fn toggle_pixel_view(ui: &AppWindow, state: &Arc<RwLock<AppState>>) -
     ui.set_pixel_view(on);
     ui.set_status_text(
         if on {
-            "Above 100%, the slide's pixels show as squares"
+            // Translators: about the zoom, 100% showing one slide pixel per
+            // screen pixel.
+            tr!("Above 100%, the slide's pixels show as squares")
         } else {
-            "Above 100%, the slide is smoothed"
+            tr!("Above 100%, the slide is smoothed")
         }
         .into(),
     );
@@ -528,7 +535,7 @@ pub(crate) fn toggle_pane_color_management(
     let crate::color::SlideProfile::Ready(transform) =
         crate::color::slide_profile(file.id, &file.wsi)
     else {
-        ui.set_status_text("This slide has no colour profile eov can use".into());
+        ui.set_status_text(tr!("This slide has no colour profile eov can use").into());
         return None;
     };
     file.color_management = !file.color_management;
@@ -537,12 +544,13 @@ pub(crate) fn toggle_pane_color_management(
     state.request_render();
     ui.set_status_text(
         if on {
-            format!(
+            // Translators: {} is the name of the slide's ICC colour profile.
+            tr!(
                 "Colour-managed: the slide's profile \"{}\" is converted to sRGB",
-                transform.description()
+                isolate(transform.description())
             )
         } else {
-            "Colours as scanned (colour management off)".to_string()
+            tr!("Colours as scanned (colour management off)")
         }
         .into(),
     );
@@ -636,9 +644,11 @@ fn focus_existing_file(
     }
 
     ui.set_is_loading(false);
-    ui.set_status_text(SharedString::from(format!(
-        "Focused {}",
-        normalized_path.display()
+    ui.set_status_text(SharedString::from(tr!(
+        // Translators: the status line when a slide that is open already is
+        // shown again (its tab is brought to the front).
+        "Switched to {}",
+        isolate(normalized_path.display())
     )));
     request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
     true
@@ -674,9 +684,9 @@ fn open_existing_file_in_new_tab(
     }
 
     ui.set_is_loading(false);
-    ui.set_status_text(SharedString::from(format!(
+    ui.set_status_text(SharedString::from(tr!(
         "Opened new tab for {}",
-        normalized_path.display()
+        isolate(normalized_path.display())
     )));
     request_render_loop(render_timer, &ui.as_weak(), state, tile_cache);
     true
@@ -864,8 +874,10 @@ pub fn setup_callbacks(
             // Plugins' slide formats included.
             let extensions = eov_common::dataset::slide_extensions();
             let dialog = FileDialog::new()
-                .add_filter("WSI Files", &extensions)
-                .add_filter("All Files", &["*"]);
+                // Translators: a file type in the Open dialog; WSI is a
+                // whole-slide image.
+                .add_filter(tr!("WSI Files"), &extensions)
+                .add_filter(tr!("All files"), &["*"]);
 
             if let Some(path) = dialog.pick_file() {
                 open_path_with_series(
@@ -1213,7 +1225,7 @@ pub fn setup_callbacks(
                         })
                     };
                     let Some((split_enabled, source_uid, new_uid)) = split else {
-                        ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                        ui.set_status_text(crate::state::max_panes_message().into());
                         return;
                     };
                     insert_pane_ui_state(new_uid, source_uid);
@@ -1266,9 +1278,9 @@ pub fn setup_callbacks(
                 let state = state_handle.read();
                 update_render_backend(&ui, &state);
                 if gpu_fallback {
-                    ui.set_status_text(SharedString::from(
-                        "GPU renderer unavailable; using CPU renderer",
-                    ));
+                    ui.set_status_text(SharedString::from(tr!(
+                        "GPU renderer unavailable; using CPU renderer"
+                    )));
                 }
             }
             if let Some(ui) = ui_weak.upgrade() {
@@ -1750,7 +1762,7 @@ pub fn setup_callbacks(
                     })
                 };
                 let Some((split_enabled, focused_pane, source_uid, new_uid)) = split else {
-                    ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                    ui.set_status_text(crate::state::max_panes_message().into());
                     return;
                 };
                 insert_pane_ui_state(new_uid, source_uid);
@@ -2124,7 +2136,7 @@ pub fn setup_callbacks(
                     )
                 };
                 if full {
-                    ui.set_status_text(crate::state::MAX_PANES_MESSAGE.into());
+                    ui.set_status_text(crate::state::max_panes_message().into());
                 }
                 insert_pane_ui_state(new_uid, source_uid);
                 let state = state_handle.read();
@@ -2472,9 +2484,10 @@ pub fn setup_callbacks(
             }
             if let Some(ui) = ui_weak.upgrade() {
                 if parsed.is_none() {
-                    ui.set_status_text(SharedString::from(format!(
-                        "“{}” is not an angle: type degrees clockwise, such as 37.5",
-                        text.trim()
+                    ui.set_status_text(SharedString::from(tr!(
+                        "“{text}” is not an angle: type degrees clockwise, such as {example}",
+                        text = isolate(text.trim()),
+                        example = format_decimal(37.5, 1)
                     )));
                 }
                 // The field closed: keys are shortcuts again.

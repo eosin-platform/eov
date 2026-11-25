@@ -12,6 +12,7 @@ use crate::model_store::{
 };
 use crate::plugin_runtime::EventTarget;
 use crate::update::policy::redacted_url;
+use eov_plugin_api::i18n::{format_decimal, isolate, tr};
 use slint::{Timer, TimerMode};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,6 +21,24 @@ use std::time::Duration;
 
 /// How often the status bar shows a download's progress.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
+/// A size as the window shows it: in KiB, MiB, GiB or TiB with one
+/// decimal, written with the language's decimal separator, or in bytes
+/// below 1 KiB (`crate::cli::format_bytes` writes it for the command line).
+fn shown_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
+    if bytes < 1024 {
+        // Translators: a size in bytes ("512 bytes"), below 1 KiB.
+        return tr!("{n} byte" | "{n} bytes" % bytes);
+    }
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{} {}", format_decimal(value, 1), UNITS[unit])
+}
 
 /// The models being asked about or downloaded, by the SHA-256 of their
 /// main file.
@@ -76,7 +95,7 @@ impl UiHost {
             Err(error) => {
                 self.notify(
                     NotifyLevel::Warning,
-                    &format!("{} cannot be downloaded", request.label()),
+                    &tr!("Cannot download {}", isolate(request.label())),
                     Some(&error.to_string()),
                     Some(&name),
                 );
@@ -96,25 +115,34 @@ impl UiHost {
                 timer: None,
             },
         );
-        let size = plan
-            .known_size()
-            .map(|bytes| format!(" ({})", crate::cli::format_bytes(bytes)))
-            .unwrap_or_default();
         let urls: Vec<String> = plan
             .files
             .iter()
             .map(|file| redacted_url(&file.url))
             .collect();
-        let message = format!(
-            "{name} asks eov to download {label}{size} from {}:\n{}\n\nThe files are checked against their SHA-256 and kept in eov's model store ({}), where every plugin finds them.",
-            plan.hosts().join(", "),
-            urls.join("\n"),
-            store.root().display()
-        );
+        let message = match plan.known_size() {
+            Some(bytes) => tr!(
+                "{name} asks eov to download {model} ({size}) from {hosts}:\n{urls}\n\nThe files are checked against their SHA-256 and kept in eov's model store ({store}), where every plugin finds them.",
+                name = isolate(&name),
+                model = isolate(&label),
+                size = isolate(shown_size(bytes)),
+                hosts = plan.hosts().join(", "),
+                urls = urls.join("\n"),
+                store = isolate(store.root().display())
+            ),
+            None => tr!(
+                "{name} asks eov to download {model} from {hosts}:\n{urls}\n\nThe files are checked against their SHA-256 and kept in eov's model store ({store}), where every plugin finds them.",
+                name = isolate(&name),
+                model = isolate(&label),
+                hosts = plan.hosts().join(", "),
+                urls = urls.join("\n"),
+                store = isolate(store.root().display())
+            ),
+        };
         self.confirm(
-            &format!("Download {label}?"),
+            &tr!("Download {}?", isolate(&label)),
             &message,
-            "Download",
+            &tr!("Button" => "Download"),
             false,
             move |agreed| {
                 with_host(|host| host.start_model_download(&sha256, plan, agreed));
@@ -141,7 +169,7 @@ impl UiHost {
         let job = {
             let cancel = Arc::clone(&cancel);
             self.start_host_job(
-                &format!("Downloading {label}"),
+                &tr!("Downloading {}", isolate(&label)),
                 Some(Box::new(move || cancel.store(true, Ordering::SeqCst))),
             )
         };
@@ -202,10 +230,17 @@ impl UiHost {
         let (Some(job), Some(progress)) = (job, progress) else {
             return;
         };
-        let done = crate::cli::format_bytes(progress.done);
+        let done = shown_size(progress.done);
         let message = match progress.total {
-            Some(total) => format!("{done} of {}", crate::cli::format_bytes(total)),
-            None => done,
+            // Translators: how much of a download is done, e.g.
+            // "12.3 MiB of 80.0 MiB".
+            Some(total) => tr!(
+                "{done} of {total}",
+                done = isolate(&done),
+                total = isolate(shown_size(total))
+            ),
+            // The status bar puts it after the job's title.
+            None => isolate(done),
         };
         self.update_host_job(&job, progress.fraction(), Some(message));
     }
@@ -228,17 +263,17 @@ impl UiHost {
         match &result {
             Ok(model) => self.notify(
                 NotifyLevel::Success,
-                &format!("Downloaded {}", model.label()),
-                Some(&format!(
+                &tr!("Downloaded {}", isolate(model.label())),
+                Some(&tr!(
                     "Verified against its SHA-256 and kept in {}.",
-                    model.dir.display()
+                    isolate(model.dir.display())
                 )),
                 names.first().map(String::as_str),
             ),
             Err(error) if error.is_cancelled() => {}
             Err(error) => self.notify(
                 NotifyLevel::Error,
-                &format!("Could not download {}", pending.label),
+                &tr!("Could not download {}", isolate(&pending.label)),
                 Some(&error.to_string()),
                 names.first().map(String::as_str),
             ),
@@ -430,5 +465,35 @@ mod tests {
             assert_eq!((last.0, last.2), (None, true));
             host.shutdown();
         });
+    }
+
+    /// Sizes are written as the interface writes numbers, and the word
+    /// for bytes is the language's.
+    #[test]
+    fn sizes_follow_the_interface_s_language() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        assert_eq!(shown_size(0), "0 bytes");
+        assert_eq!(shown_size(1), "1 byte");
+        assert_eq!(shown_size(1023), "1023 bytes");
+        assert_eq!(shown_size(1024), "1.0 KiB");
+        assert_eq!(shown_size(12_900_000), "12.3 MiB");
+        assert_eq!(shown_size(80 << 20), "80.0 MiB");
+        assert_eq!(shown_size(3 << 39), "1.5 TiB");
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] =
+            [(None, "{n} byte", &["{n} Byte", "{n} Byte"])];
+        i18n::set_catalog(
+            german,
+            Some(i18n::Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        assert_eq!(shown_size(512), "512 Byte");
+        assert_eq!(shown_size(12_900_000), "12,3 MiB");
     }
 }

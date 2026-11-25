@@ -21,6 +21,15 @@
 //! Overlays, bottom to top: overlay layers (the viewport's rasteriser) and
 //! their labels, then the host's ROI and measurements in the dialog's
 //! styles, the scale bar and the colour-processing note.
+//!
+//! Text burned into an image reads the same whatever the interface's
+//! language, as the image travels beyond it: `.` decimals, English units
+//! and notes, the English form of translated labels (plugins give one; the
+//! host's measurements have one in the unit the screen shows), Western
+//! digits, no marks for right-to-left text (the embedded export font has
+//! the letters of Latin-1, Latin Extended-A and the Greek alphabet only;
+//! the dialog names the letters of labels it lacks). The dialog's own notes
+//! are in the interface's language.
 
 use crate::color::SlideFit;
 use crate::host_ui::with_host;
@@ -52,6 +61,7 @@ use eov_common::{
     ExportSettings, FilteringMode, MeasurementUnit, RgbaImageData, StainNormalization, TileCache,
     TileManager, Viewport, WsiFile,
 };
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{NotifyLevel, Rect};
 use parking_lot::RwLock;
 use rfd::FileDialog;
@@ -188,28 +198,38 @@ fn export_color_space(capture: &Capture, request: &ExportRequest) -> ColorSpace 
     }
 }
 
-/// What the export does with the slide's colour profile, if it has one.
+/// What the export does with the slide's colour profile, if it has one
+/// (for the dialog, in the interface's language).
 fn color_management_note(capture: &Capture, request: &ExportRequest) -> Option<String> {
     let profile = capture.color_profile.as_ref()?;
     Some(if request.processing.color_management().is_some() {
-        format!(
+        // Translators: {} is the name of the slide's ICC colour profile.
+        tr!(
             "Colour-managed: \"{}\" converted to sRGB",
-            profile.description()
+            isolate(profile.description())
         )
     } else {
-        "Colours as scanned; the slide's colour profile is embedded".to_string()
+        tr!("Colours as scanned; the slide's colour profile is embedded")
     })
 }
 
 /// Why the stain normalisation the settings ask for is not applied, if it
 /// cannot be.
-fn fit_note(capture: &Capture) -> Option<String> {
+fn fit_error(capture: &Capture) -> Option<&str> {
     match &capture.fit {
-        Some((_, SlideFit::Failed(error))) => Some(format!(
-            "Stain normalisation is unavailable for this slide: {error}"
-        )),
+        Some((_, SlideFit::Failed(error))) => Some(error),
         _ => None,
     }
+}
+
+/// [`fit_error`], as the dialog says it (in the interface's language).
+fn fit_note(capture: &Capture) -> Option<String> {
+    fit_error(capture).map(|error| {
+        tr!(
+            "Stain normalisation is unavailable for this slide: {}",
+            error
+        )
+    })
 }
 
 // -- settings ---------------------------------------------------------------
@@ -367,14 +387,27 @@ fn overlay_color(color: slint::Color, opacity_pct: f32) -> OverlayColor {
     OverlayColor::new(color.red(), color.green(), color.blue(), alpha)
 }
 
+/// The shortest dash, gap or spacing of dots, in screen pixels: a dash of
+/// length 0 would leave a dashed line with nothing to draw.
+const MIN_STROKE_PATTERN: f32 = 0.5;
+
 fn stroke_style(style: SlintStrokeStyle, dash: f32, gap: f32, dot: f32, k: f32) -> StrokeStyle {
+    let pattern = |length: f32| {
+        if length.is_finite() {
+            length.max(MIN_STROKE_PATTERN) * k
+        } else {
+            MIN_STROKE_PATTERN * k
+        }
+    };
     match style {
         SlintStrokeStyle::Solid => StrokeStyle::Solid,
         SlintStrokeStyle::Dashed => StrokeStyle::Dashed {
-            length: dash * k,
-            gap: gap * k,
+            length: pattern(dash),
+            gap: pattern(gap),
         },
-        SlintStrokeStyle::Dotted => StrokeStyle::Dotted { spacing: dot * k },
+        SlintStrokeStyle::Dotted => StrokeStyle::Dotted {
+            spacing: pattern(dot),
+        },
     }
 }
 
@@ -413,11 +446,127 @@ fn export_view(request: &ExportRequest, calibration: &Calibration) -> ViewTransf
     }
 }
 
+/// `text` as the export font can draw it. It keeps Western digits and `.`
+/// decimals, like the scale bar: the font has neither Arabic-Indic digits
+/// nor the Arabic decimal sign, and a sign it lacks is drawn as a gap that
+/// changes a number. The invisible marks that order right-to-left text are
+/// left out (the renderer draws text in the order it is stored, and would
+/// draw them as gaps too).
+fn burn_in_text(text: &str) -> String {
+    text.chars()
+        .filter_map(|c| match c {
+            // Directional marks, embeddings and isolates; zero-width
+            // characters.
+            '\u{061C}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}' => None,
+            // The Arabic decimal and thousands separators.
+            '\u{066B}' => Some('.'),
+            '\u{066C}' => Some(','),
+            // Arabic-Indic and Persian digits.
+            '\u{0660}'..='\u{0669}' => char::from_digit(c as u32 - 0x0660, 10),
+            '\u{06F0}'..='\u{06F9}' => char::from_digit(c as u32 - 0x06F0, 10),
+            c => Some(c),
+        })
+        .collect()
+}
+
+/// Whether the export font has the letter `c`: it has those of Basic Latin,
+/// Latin-1 and Latin Extended-A, and the Greek alphabet without accents
+/// (`eov_common::overlay::embedded_font`). It lacks, among others, the
+/// Romanian ș and ț, most Vietnamese letters, and Greek letters with a
+/// tonos (ά, Ό).
+fn font_has_letter(c: char) -> bool {
+    matches!(
+        c,
+        'A'..='Z'
+            | 'a'..='z'
+            | 'ª'
+            | 'µ'
+            | 'º'
+            | '\u{00C0}'..='\u{017F}'
+            | '\u{0391}'..='\u{03A9}'
+            | '\u{03B1}'..='\u{03C9}'
+    )
+}
+
+/// Adds the letters of `text` the export font cannot draw to `lacking`,
+/// each once, in the order they come.
+fn letters_the_font_lacks(text: &str, lacking: &mut Vec<char>) {
+    for c in text.chars() {
+        if c.is_alphabetic() && !font_has_letter(c) && !lacking.contains(&c) {
+            lacking.push(c);
+        }
+    }
+}
+
+/// How many of the letters the font lacks the export dialog lists.
+const LISTED_LETTERS: usize = 12;
+
+/// The export dialog's note on the letters of labels the font cannot draw
+/// (see [`letters_the_font_lacks`]), naming them.
+fn lacking_letters_note(lacking: &[char]) -> Option<String> {
+    if lacking.is_empty() {
+        return None;
+    }
+    let mut letters = lacking
+        .iter()
+        .take(LISTED_LETTERS)
+        .map(char::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if lacking.len() > LISTED_LETTERS {
+        letters.push_str(" …");
+    }
+    // Translators: a note of the Export Image dialog. {letters} lists the
+    // letters (or characters) of labels people wrote on overlays (annotations,
+    // plugins) that the font of exported images does not have, such as "ș ț".
+    Some(tr!(
+        "This letter of the labels cannot be drawn into the image and is left blank: {letters}"
+            | "These letters of the labels cannot be drawn into the image and are left blank: {letters}"
+                % lacking.len(),
+        letters = isolate(letters)
+    ))
+}
+
+/// The labels of `layers` as they are burned into an image (in draw
+/// order): in English where the objects have an English form (the
+/// [`export_label`](eov_plugin_api::protocol::OverlayObject::export_label)
+/// of a translated label: a plugin's, or a measurement of the host's in the
+/// unit its label shows), every one as the export font can draw it. Other
+/// labels (names users wrote) are drawn as they are shown.
+fn burned_in_labels(view: &ViewTransform, layers: &[Arc<Layer>]) -> Vec<labels::Label> {
+    let mut found = Vec::new();
+    for layer in layers {
+        let scene = FrameScene {
+            layers: vec![Arc::clone(layer)],
+            ..FrameScene::default()
+        };
+        let mut layer_labels = labels::collect_labels(view, &scene);
+        for label in &mut layer_labels {
+            if let Some(text) = label.export_text.take() {
+                label.text = text;
+            }
+        }
+        found.extend(layer_labels);
+        if found.len() >= labels::MAX_LABELS {
+            break;
+        }
+    }
+    found.truncate(labels::MAX_LABELS);
+    for label in &mut found {
+        label.text = burn_in_text(&label.text);
+    }
+    found
+}
+
 /// Labels of the rasterised layers as glyph items (on screen Slint draws
 /// them).
-fn layer_label_items(view: &ViewTransform, scene: &FrameScene) -> Vec<OverlayItem> {
+fn layer_label_items(view: &ViewTransform, labels: Vec<labels::Label>) -> Vec<OverlayItem> {
     let k = view.scale as f32;
-    labels::collect_labels(view, scene)
+    labels
         .into_iter()
         .map(|label| {
             let color =
@@ -592,7 +741,12 @@ fn host_items(
                     });
                 }
             }
-            // Calibrated per axis, in the pane's unit (EXP-5).
+            // Calibrated per axis, in the pane's unit (EXP-5). Text burned
+            // into images keeps `.` decimals whatever the interface's
+            // language, like the scale bar's: the embedded export font has
+            // the letters of Latin-1, Latin Extended-A and Greek only (not
+            // the Persian decimal sign), and figures travel beyond the
+            // language they were made in.
             let value = measure::measure(m.mode, &m.shape, &capture.calibration);
             let text = measure::label(m.mode, &value, capture.unit);
             let (anchor, _) = labels::label_anchor(&m.shape);
@@ -618,12 +772,16 @@ fn host_items(
                 }
                 .scaled(k),
             }),
-            None => notes.push("No scale bar: the slide has no pixel size.".to_string()),
+            None => notes.push(tr!("No scale bar: the slide has no pixel size.")),
         }
     }
 
     let summary = request.processing.summary();
     if settings.show_processing_note {
+        // Burned into the image in English, as the file's description:
+        // the export font has the letters of Latin-1, Latin Extended-A and
+        // Greek only, and the image travels beyond the language it was
+        // made in.
         let text = summary.badge().unwrap_or_else(|| summary.provenance());
         items.push(OverlayItem::TextBlock {
             corner: Corner::BottomLeft,
@@ -637,12 +795,46 @@ fn host_items(
             },
         });
     }
-    if let Some(badge) = summary.badge() {
+    // The dialog's notes are in the interface's language.
+    if let Some(badge) = crate::processing_text::badge(summary) {
         notes.push(badge);
     }
-    for item in &summary.not_applied {
-        notes.push(format!("Not applied: {item}"));
+    for item in crate::processing_text::not_applied_reasons(summary) {
+        // Translators: a step of the colour processing the export cannot
+        // apply.
+        notes.push(tr!("Not applied: {}", item));
     }
+}
+
+/// What an export could not render ([`ExportReport::shortfall_message`]),
+/// in the interface's language. The plural form follows the tiles that
+/// could not be read, which the verb and the pronoun agree with; the
+/// number of tiles is a bare number after them.
+fn shortfall(report: &ExportReport) -> Option<String> {
+    let total = report.tiles_drawn + report.tiles_failed;
+    (report.tiles_failed > 0).then(|| {
+        if report.used_fallback {
+            // Translators: {n} tiles of the slide could not be read for an
+            // export (the form follows {n}); {total} is the number of tiles
+            // of the image. A coarser level of the slide filled their areas.
+            tr!(
+                "{n} tile of {total} could not be read; its area was filled from a lower-resolution level."
+                    | "{n} tiles of {total} could not be read; their areas were filled from a lower-resolution level."
+                    % report.tiles_failed,
+                total = total
+            )
+        } else {
+            // Translators: {n} tiles of the slide could not be read for an
+            // export (the form follows {n}); {total} is the number of tiles
+            // of the image. Their areas show the background.
+            tr!(
+                "{n} tile of {total} could not be read and is left as background."
+                    | "{n} tiles of {total} could not be read and are left as background."
+                    % report.tiles_failed,
+                total = total
+            )
+        }
+    })
 }
 
 /// Builds the request for `capture` at `dpi` with `settings`' processing.
@@ -707,10 +899,16 @@ fn prepare(
         layers: capture.layers.clone(),
         ..FrameScene::default()
     };
-    let mut items = layer_label_items(&view, &scene);
+    let labels = burned_in_labels(&view, &capture.layers);
+    let mut lacking = Vec::new();
+    for label in &labels {
+        letters_the_font_lacks(&label.text, &mut lacking);
+    }
+    let mut items = layer_label_items(&view, labels);
     let mut notes = Vec::new();
     if dialog {
         host_items(capture, settings, request, &mut items, &mut notes);
+        notes.extend(lacking_letters_note(&lacking));
     }
     Prepared {
         scene,
@@ -832,11 +1030,12 @@ fn run_export(
         return Err(ExportError::Cancelled);
     }
     let prepared = prepare(capture, settings, &request, true);
+    // The file's description stays in English, as the processing summary.
     let mut provenance = request.processing.summary().provenance();
-    if let Some(note) = fit_note(capture) {
-        provenance.push(' ');
-        provenance.push_str(&note);
-        provenance.push('.');
+    if let Some(error) = fit_error(capture) {
+        provenance.push_str(&format!(
+            " Stain normalisation is unavailable for this slide: {error}."
+        ));
     }
     let color_space = export_color_space(capture, &request);
     if matches!(color_space, ColorSpace::Profile(_)) {
@@ -965,7 +1164,7 @@ pub(crate) fn open(
     let (settings, file_id, viewport) = {
         let state = state.read();
         let Some(file_id) = state.active_file_id_for_pane(pane) else {
-            ui.set_status_text(SharedString::from("Open a slide to export an image"));
+            ui.set_status_text(SharedString::from(tr!("Open a slide to export an image")));
             return;
         };
         let viewport = state
@@ -1056,6 +1255,18 @@ pub(crate) fn close(ui: &AppWindow) {
     ui.set_export_dialog_visible(false);
 }
 
+/// Renders the open dialog's preview again, for its notes in the language of
+/// the interface (after it changed).
+pub(crate) fn refresh_texts(
+    ui: &AppWindow,
+    state: &Arc<RwLock<AppState>>,
+    tile_cache: &Arc<TileCache>,
+) {
+    if ui.get_export_dialog_visible() {
+        request_preview(ui, state, tile_cache);
+    }
+}
+
 /// Renders a new preview on a worker; requests made while one renders are
 /// coalesced into one more render with the latest settings.
 pub(crate) fn request_preview(
@@ -1143,7 +1354,7 @@ fn preview_done(
                 info.note = notes.join("  ·  ").into();
             }
             Err(err) => {
-                info.note = format!("Preview failed: {err}").into();
+                info.note = tr!("Preview failed: {}", err).into();
             }
         }
         ui.set_export_preview_info(info);
@@ -1167,16 +1378,17 @@ pub(crate) fn export(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         false,
         &settings,
     ) else {
-        ui.set_status_text(SharedString::from(
-            "The slide is no longer shown in this pane",
-        ));
+        ui.set_status_text(SharedString::from(tr!(
+            "The slide is no longer shown in this pane"
+        )));
         return;
     };
     let format = export_format(&settings);
     let (filter_name, extensions) = match format {
-        ExportFormat::Png => ("PNG image", ["png"].as_slice()),
-        ExportFormat::Jpeg { .. } => ("JPEG image", ["jpg", "jpeg"].as_slice()),
-        ExportFormat::Tiff { .. } => ("TIFF image", ["tif", "tiff"].as_slice()),
+        // Translators: a file type in the Export Image dialog.
+        ExportFormat::Png => (tr!("PNG image"), ["png"].as_slice()),
+        ExportFormat::Jpeg { .. } => (tr!("JPEG image"), ["jpg", "jpeg"].as_slice()),
+        ExportFormat::Tiff { .. } => (tr!("TIFF image"), ["tif", "tiff"].as_slice()),
     };
     let stem = Path::new(&captured.file_name)
         .file_stem()
@@ -1203,7 +1415,7 @@ pub(crate) fn export(ui: &AppWindow, state: &Arc<RwLock<AppState>>, tile_cache: 
         Box::new(move || control.cancel()) as Box<dyn Fn()>
     };
     let Some(job_id) =
-        with_host(|host| host.start_host_job(&format!("Exporting {name}"), Some(cancel)))
+        with_host(|host| host.start_host_job(&tr!("Exporting {}", isolate(&name)), Some(cancel)))
     else {
         return;
     };
@@ -1254,32 +1466,32 @@ fn export_done(job_id: String, path: PathBuf, result: Result<ExportReport, Expor
         host.finish_host_job(&job_id);
         match result {
             Ok(report) => {
-                let detail = format!(
-                    "{} × {} px, saved to {}",
-                    report.width,
-                    report.height,
-                    path.display()
+                let detail = tr!(
+                    "{width} × {height} px, saved to {path}",
+                    width = report.width,
+                    height = report.height,
+                    path = isolate(path.display())
                 );
                 host.notify(
                     NotifyLevel::Success,
-                    &format!("Exported {name}"),
+                    &tr!("Exported {}", isolate(&name)),
                     Some(&detail),
                     None,
                 );
                 // Never silently (EXP-1).
-                if let Some(warning) = report.shortfall_message() {
+                if let Some(warning) = shortfall(&report) {
                     host.notify(
                         NotifyLevel::Warning,
-                        &format!("{name} is incomplete"),
+                        &tr!("{} is incomplete", isolate(&name)),
                         Some(&warning),
                         None,
                     );
                 }
             }
-            Err(ExportError::Cancelled) => host.status("Export cancelled"),
+            Err(ExportError::Cancelled) => host.status(&tr!("Export cancelled")),
             Err(err) => host.notify(
                 NotifyLevel::Error,
-                &format!("Could not export {name}"),
+                &tr!("Could not export {}", isolate(&name)),
                 Some(&err.to_string()),
                 None,
             ),
@@ -1290,7 +1502,8 @@ fn export_done(job_id: String, path: PathBuf, result: Result<ExportReport, Expor
 // -- viewport copies ------------------------------------------------------------
 
 /// Copies the pane's view to the clipboard as shown: screen resolution,
-/// colour processing and every overlay layer.
+/// colour processing and every overlay layer (their labels burned in as
+/// exports have them: see [`burned_in_labels`]).
 pub(crate) fn copy_view(
     ui: &AppWindow,
     state: &Arc<RwLock<AppState>>,
@@ -1306,7 +1519,7 @@ pub(crate) fn copy_view(
         )
     };
     let Some(captured) = captured else {
-        ui.set_status_text(SharedString::from("No slide to copy in this pane"));
+        ui.set_status_text(SharedString::from(tr!("No slide to copy in this pane")));
         return;
     };
     settings.show_measurement = false;
@@ -1315,7 +1528,7 @@ pub(crate) fn copy_view(
     settings.show_scale_bar = false;
     settings.show_processing_note = false;
     let dpi = 96.0 * f64::from(ui.window().scale_factor());
-    ui.set_status_text(SharedString::from("Copying the view…"));
+    ui.set_status_text(SharedString::from(tr!("Copying the view…")));
     let spawned = std::thread::Builder::new()
         .name("eov-copy-view".to_string())
         .spawn(move || {
@@ -1348,7 +1561,7 @@ pub(crate) fn copy_view(
                                 with_host(|host| {
                                     host.notify(
                                         NotifyLevel::Error,
-                                        "Could not copy the view",
+                                        &tr!("Could not copy the view"),
                                         Some(&message),
                                         None,
                                     )
@@ -1360,7 +1573,7 @@ pub(crate) fn copy_view(
             }
         });
     if spawned.is_err() {
-        ui.set_status_text(SharedString::from("Could not copy the view"));
+        ui.set_status_text(SharedString::from(tr!("Could not copy the view")));
     }
 }
 
@@ -1370,7 +1583,7 @@ fn copied_notice(copied: bool) {
         if copied {
             host.notify(
                 NotifyLevel::Success,
-                "Viewport image copied to the clipboard",
+                &tr!("Viewport image copied to the clipboard"),
                 None,
                 None,
             );
@@ -1379,14 +1592,21 @@ fn copied_notice(copied: bool) {
             // needs it for images (SH-10).
             let flatpak_wayland = std::env::var_os("FLATPAK_ID").is_some()
                 && std::env::var_os("WAYLAND_DISPLAY").is_some();
+            let detail = if flatpak_wayland {
+                // Translators: "Export Image" is the menu item, Ctrl+E its
+                // key.
+                tr!(
+                    "The Flatpak cannot put images on the clipboard under Wayland yet. Export Image (Ctrl+E) saves the view to a file instead."
+                )
+            } else {
+                // Translators: "Export Image" is the menu item, Ctrl+E its
+                // key.
+                tr!("Export Image (Ctrl+E) saves the view to a file instead.")
+            };
             host.notify(
                 NotifyLevel::Error,
-                "Could not copy the image to the clipboard",
-                Some(if flatpak_wayland {
-                    "The Flatpak cannot put images on the clipboard under Wayland yet. Export Image (Ctrl+E) saves the view to a file instead."
-                } else {
-                    "Export Image (Ctrl+E) saves the view to a file instead."
-                }),
+                &tr!("Could not copy the image to the clipboard"),
+                Some(&detail),
                 None,
             );
         }
@@ -1877,5 +2097,390 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(export_format(&jpeg), ExportFormat::Jpeg { quality: 100 });
+    }
+
+    /// The window says what the export's report says, in a sentence whose
+    /// plural form follows the tiles that could not be read (the verb
+    /// agrees with them, not with all the tiles).
+    #[test]
+    fn shortfalls_are_reported_as_the_report_has_them() {
+        let mut report = ExportReport {
+            width: 100,
+            height: 80,
+            level: 0,
+            filtering: FilteringMode::Bilinear,
+            tiles_drawn: 11,
+            tiles_failed: 0,
+            failed_tiles: Vec::new(),
+            used_fallback: false,
+            elapsed: Duration::ZERO,
+        };
+        assert_eq!(shortfall(&report), None);
+        report.tiles_failed = 1;
+        assert_eq!(
+            shortfall(&report).as_deref(),
+            Some("1 tile of 12 could not be read and is left as background.")
+        );
+        report.tiles_drawn = 10;
+        report.tiles_failed = 2;
+        assert_eq!(
+            shortfall(&report).as_deref(),
+            Some("2 tiles of 12 could not be read and are left as background.")
+        );
+        report.used_fallback = true;
+        assert_eq!(
+            shortfall(&report).as_deref(),
+            Some(
+                "2 tiles of 12 could not be read; their areas were filled from a \
+                 lower-resolution level."
+            )
+        );
+        report.tiles_drawn = 11;
+        report.tiles_failed = 1;
+        assert_eq!(
+            shortfall(&report).as_deref(),
+            Some(
+                "1 tile of 12 could not be read; its area was filled from a lower-resolution level."
+            )
+        );
+    }
+
+    /// Sets English again when dropped (see [`interface_language`]).
+    struct EnglishAgain;
+
+    impl Drop for EnglishAgain {
+        fn drop(&mut self) {
+            use eov_plugin_api::i18n;
+            i18n::set_catalog(i18n::source(), None);
+        }
+    }
+
+    /// Sets this thread's interface language (without a catalog) until the
+    /// guard is dropped.
+    fn interface_language(tag: &str) -> EnglishAgain {
+        use eov_plugin_api::i18n;
+        i18n::set_catalog(i18n::by_tag(tag).unwrap(), None);
+        EnglishAgain
+    }
+
+    /// A capture of the view of a 512 × 512 slide, written into `dir`, with
+    /// `layers` (for preparing overlays: nothing is rendered).
+    fn label_capture(dir: &Path, layers: Vec<Arc<Layer>>) -> Capture {
+        let slide = dir.join("slide.tif");
+        if !slide.exists() {
+            eov_common::test_support::write_tiled_tiff(&slide, 512, 512, 256, |_, _| {
+                [200, 200, 200]
+            })
+            .unwrap();
+        }
+        Capture {
+            file_id: 1,
+            tile_file_id: 1,
+            wsi: WsiFile::open(&slide).unwrap(),
+            file_name: "slide.tif".to_string(),
+            viewport: Viewport::new(256.0, 256.0, 512.0, 512.0),
+            tile_cache: Arc::new(TileCache::with_limits(16, 16 << 20)),
+            roi: None,
+            measurements: Vec::new(),
+            calibration: Calibration::new(Some(0.5), Some(0.5)),
+            unit: MeasurementUnit::Um,
+            layers,
+            fit: None,
+            color_profile: None,
+            pixel_view: false,
+        }
+    }
+
+    fn label_settings() -> SlintExportSettings {
+        SlintExportSettings {
+            dpi: 96,
+            gamma: 1.0,
+            contrast: 1.0,
+            deconv_hematoxylin_intensity: 1.0,
+            deconv_hematoxylin_visible: true,
+            deconv_eosin_intensity: 1.0,
+            deconv_eosin_visible: true,
+            ..Default::default()
+        }
+    }
+
+    /// The labels `prepared` draws into the image, sorted.
+    fn burned_in_texts(prepared: &Prepared) -> Vec<String> {
+        let mut texts: Vec<String> = prepared
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                OverlayItem::Label { text, .. } | OverlayItem::Text { text, .. } => {
+                    Some(text.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        texts.sort();
+        texts
+    }
+
+    /// The dialog's note on letters that cannot be drawn, if it has one.
+    fn lacking_letters(prepared: &Prepared) -> Option<&String> {
+        prepared
+            .notes
+            .iter()
+            .find(|note| note.contains("cannot be drawn into the image"))
+    }
+
+    /// Whether the dialog says that letters cannot be drawn.
+    fn notes_lacking_letters(prepared: &Prepared) -> bool {
+        lacking_letters(prepared).is_some()
+    }
+
+    /// Labels burned into images (exports, copies of the view) read the
+    /// same in every language of the interface, like the scale bar: the
+    /// host's measurements with `.` decimals and English units, other
+    /// labels with Western digits and without the marks that order
+    /// right-to-left text; the dialog names the letters it cannot draw.
+    /// A copy of the view burns the measurements in the unit the screen
+    /// shows them in (that of the first pane showing the slide), whichever
+    /// pane is copied.
+    #[test]
+    fn burned_in_labels_do_not_depend_on_the_language() {
+        use crate::interaction::MeasureMode;
+        use crate::overlay::OverlayStore;
+        use eov_plugin_api::i18n;
+        use eov_plugin_api::protocol::{LayerSpec, OverlayObject, Shape};
+        let _language = interface_language("fa");
+
+        let dir = tempfile::tempdir().unwrap();
+        let calibration = Calibration::new(Some(0.5), Some(0.5));
+        let measurement = HostMeasurement {
+            id: "m1".into(),
+            mode: MeasureMode::Line,
+            shape: Shape::Polyline {
+                points: vec![[100.0, 100.0], [124.6, 100.0]],
+            },
+        };
+        // As the window shows it in Persian, in µm.
+        let object =
+            crate::host_ui::measurement_object(&measurement, &calibration, MeasurementUnit::Um);
+        assert_eq!(object.label.as_deref(), Some("12\u{66b}3 µm"));
+
+        let store = OverlayStore::new();
+        let layer = measure::measurement_layer_id(1);
+        store
+            .create_layer(Owner::Host, LayerSpec::new(layer.clone(), 1))
+            .unwrap();
+        store
+            .upsert(&Owner::Host, &layer, vec![object], true)
+            .unwrap();
+        let plugin = Owner::plugin("cells");
+        store
+            .create_layer(plugin.clone(), LayerSpec::new("counts-1", 1))
+            .unwrap();
+        store
+            .upsert(
+                &plugin,
+                "counts-1",
+                vec![
+                    OverlayObject::new("a", Shape::Point { x: 300.0, y: 300.0 })
+                        .with_label(format!("{} mm²", i18n::isolate("0\u{66b}0625"))),
+                    OverlayObject::new("b", Shape::Point { x: 300.0, y: 400.0 })
+                        .with_label("\u{6f3} 細胞"),
+                ],
+                false,
+            )
+            .unwrap();
+        let captured = Capture {
+            measurements: vec![measurement],
+            calibration,
+            ..label_capture(dir.path(), store.file_layers(1).layers)
+        };
+        let settings = label_settings();
+        let request = build_request(&captured, &settings, 96.0, None);
+        // A copy of the view: every layer as on screen.
+        let copied = prepare(&captured, &settings, &request, false);
+        assert_eq!(
+            burned_in_texts(&copied),
+            ["0.0625 mm²", "12.3 µm", "3 細胞"]
+        );
+        // A copy of another pane that shows the slide in mm: the screen
+        // still shows µm (the slide's measurement layer is labelled for
+        // the first pane), and so does the copy.
+        let other_pane = Capture {
+            unit: MeasurementUnit::Mm,
+            ..captured.clone()
+        };
+        let copied = prepare(&other_pane, &settings, &request, false);
+        assert_eq!(
+            burned_in_texts(&copied),
+            ["0.0625 mm²", "12.3 µm", "3 細胞"]
+        );
+        // The export dialog (without the host's layers) names what it
+        // cannot draw.
+        let mut dialog = captured.clone();
+        dialog.layers.retain(|layer| layer.key.owner != Owner::Host);
+        let exported = prepare(&dialog, &settings, &request, true);
+        assert_eq!(burned_in_texts(&exported), ["0.0625 mm²", "3 細胞"]);
+        let note = lacking_letters(&exported);
+        assert!(
+            note.is_some_and(|note| note.contains("細 胞")),
+            "{:?}",
+            exported.notes
+        );
+    }
+
+    /// The dialog names the letters of labels the export font lacks, also
+    /// Latin and Greek ones (Romanian, Vietnamese, Greek with accents).
+    #[test]
+    fn the_dialog_names_the_letters_the_font_lacks() {
+        let mut lacking = Vec::new();
+        for label in [
+            "Țesut tumoral",
+            "Mô ung thư",
+            "Όγκος",
+            "Tumour · 12.3 µm",
+            "Ärztin Łódź ß",
+            "Țesut",
+        ] {
+            letters_the_font_lacks(label, &mut lacking);
+        }
+        assert_eq!(lacking, ['Ț', 'ư', 'Ό']);
+        assert_eq!(
+            lacking_letters_note(&lacking).as_deref(),
+            Some(
+                "These letters of the labels cannot be drawn into the image and are left \
+                 blank: Ț ư Ό"
+            )
+        );
+        assert_eq!(
+            lacking_letters_note(&['ș']).as_deref(),
+            Some("This letter of the labels cannot be drawn into the image and is left blank: ș")
+        );
+        assert_eq!(lacking_letters_note(&[]), None);
+        // Many: the first ones.
+        let many: Vec<char> = "абвгдежзийклмн".chars().collect();
+        assert_eq!(
+            lacking_letters_note(&many).as_deref(),
+            Some(
+                "These letters of the labels cannot be drawn into the image and are left \
+                 blank: а б в г д е ж з и й к л …"
+            )
+        );
+    }
+
+    /// [`font_has_letter`] says what the embedded export font draws: the
+    /// letters it names leave ink, the others draw nothing (the font's
+    /// empty `.notdef`), so the dialog's note cannot drift from the font.
+    #[test]
+    fn the_letters_the_font_has_are_those_it_draws() {
+        let inks = |c: char| {
+            let mut pixels = vec![0u8; 48 * 48 * 4];
+            Canvas::new(&mut pixels, 48, 48).draw_text(
+                8.0,
+                8.0,
+                &c.to_string(),
+                OverlayColor::new(255, 255, 255, 255),
+                embedded_font(),
+                24.0,
+            );
+            pixels.iter().any(|&byte| byte != 0)
+        };
+        let letters = (0..0x3400)
+            .filter_map(char::from_u32)
+            .filter(|c| c.is_alphabetic());
+        for c in letters {
+            assert_eq!(font_has_letter(c), inks(c), "{c:?} U+{:04X}", c as u32);
+        }
+    }
+
+    /// A dash, gap or spacing of dots is never shorter than half a screen
+    /// pixel: a dashed line with dashes of length 0 would draw nothing.
+    #[test]
+    fn stroke_patterns_have_a_length() {
+        assert_eq!(
+            stroke_style(SlintStrokeStyle::Dashed, 0.0, 4.0, 0.0, 2.0),
+            StrokeStyle::Dashed {
+                length: 1.0,
+                gap: 8.0
+            }
+        );
+        assert_eq!(
+            stroke_style(SlintStrokeStyle::Dotted, 8.0, 4.0, f32::NAN, 2.0),
+            StrokeStyle::Dotted { spacing: 1.0 }
+        );
+    }
+
+    /// A plugin's translated label is burned into images as the English
+    /// form the plugin gave with it (`OverlayObject::export_label`), while
+    /// the view keeps showing it translated. Only labels without one, such
+    /// as names users wrote, make the dialog say what it cannot draw.
+    #[test]
+    fn translated_plugin_labels_are_burned_in_in_english() {
+        use crate::overlay::OverlayStore;
+        use eov_plugin_api::protocol::{LayerSpec, OverlayObject, Shape};
+        let _language = interface_language("ru");
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = OverlayStore::new();
+        let plugin = Owner::plugin("cellaris");
+        store
+            .create_layer(plugin.clone(), LayerSpec::new("cellaris-region-1", 1))
+            .unwrap();
+        // As a plugin hands its region over in Russian.
+        let region = OverlayObject::new(
+            "region",
+            Shape::Rectangle {
+                x: 200.0,
+                y: 200.0,
+                width: 100.0,
+                height: 80.0,
+            },
+        )
+        .with_label("Область Cellaris \u{b7} измерение 40 %")
+        .with_export_label("Cellaris region \u{b7} measuring 40 %");
+        store
+            .upsert(&plugin, "cellaris-region-1", vec![region], false)
+            .unwrap();
+        let captured = label_capture(dir.path(), store.file_layers(1).layers);
+        let settings = label_settings();
+        let request = build_request(&captured, &settings, 96.0, None);
+        // The view: as the plugin wrote it.
+        let shown = labels::collect_labels(
+            &export_view(&request, &captured.calibration),
+            &FrameScene {
+                layers: captured.layers.clone(),
+                ..FrameScene::default()
+            },
+        );
+        assert_eq!(shown[0].text, "Область Cellaris \u{b7} измерение 40 %");
+        // A copy of the view and an export: in English, with nothing the
+        // font lacks.
+        for dialog in [false, true] {
+            let prepared = prepare(&captured, &settings, &request, dialog);
+            assert_eq!(
+                burned_in_texts(&prepared),
+                ["Cellaris region \u{b7} measuring 40 %"]
+            );
+            assert!(!notes_lacking_letters(&prepared), "{:?}", prepared.notes);
+        }
+
+        // A name a user wrote has no English form: drawn as it is, and the
+        // dialog says that its letters are left blank.
+        store
+            .upsert(
+                &plugin,
+                "cellaris-region-1",
+                vec![
+                    OverlayObject::new("tumour", Shape::Point { x: 300.0, y: 400.0 })
+                        .with_label("Опухоль"),
+                ],
+                false,
+            )
+            .unwrap();
+        let captured = label_capture(dir.path(), store.file_layers(1).layers);
+        let exported = prepare(&captured, &settings, &request, true);
+        assert_eq!(
+            burned_in_texts(&exported),
+            ["Cellaris region \u{b7} measuring 40 %", "Опухоль"]
+        );
+        assert!(notes_lacking_letters(&exported), "{:?}", exported.notes);
     }
 }

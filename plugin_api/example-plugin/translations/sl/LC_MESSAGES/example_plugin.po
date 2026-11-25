@@ -1,0 +1,129 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Slovenian\n"
+"Language: sl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%100==1 ? 0 : n%100==2 ? 1 : n%100==3 || "
+"n%100==4 ? 2 : 3);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"Prikazuje gumbe v orodni vrstici, stransko vrstico, prekrivne plasti, orodje "
+"za točke z razveljavitvijo, filter in opravila v ozadju."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "Primer vtičnika"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "Primeri preparatov s šahovnico"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "Primer stranske vrstice"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "Postavi oznako"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "Obrni barve"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "Obrni"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "Delež tkiva in povprečna barva tkiva vsakega preparata"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "Preberi najfinejšo raven z največ toliko slikovnimi pikami"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "Oznake"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "Oznaka {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "Dodajanje oznake"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "Štetje do deset"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} od {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "Dodaj oznako tukaj"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "{n} oznaka na odprtih preparatih"
+msgstr[1] "{n} oznaki na odprtih preparatih"
+msgstr[2] "{n} oznake na odprtih preparatih"
+msgstr[3] "{n} oznak na odprtih preparatih"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "Primer vtičnika"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "Ni preparata"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} oznaka"
+msgstr[1] "{n} oznaki"
+msgstr[2] "{n} oznake"
+msgstr[3] "{n} oznak"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "Počisti oznake"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "Obrni barve"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "Zaženi opravilo v ozadju"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "Opiši"

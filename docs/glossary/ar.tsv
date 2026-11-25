@@ -1,0 +1,276 @@
+term	translation	note
+(buttons, menu items, tabs)	المصدر: فتح، حفظ، إغلاق، تصدير	Commands use the verbal noun (masdar), not the imperative; no capitalisation. Keep "…" when the English has it.
+(instructions in sentences)	افتح، ارسم، اكتب، أعد المحاولة	Instructions to the user use the singular imperative, as Arabic desktop software does; errors may use «يُرجى» + verbal noun.
+(punctuation)	، ؛ ؟ « » …	Arabic comma, semicolon and question mark; quotation marks «…» around names; colon and parentheses as in English.
+(numbers and units)	12.5%، 40×، 0.25 µm/px	Western digits as in the source; units, ×, ° and keys unchanged; no space before %.
+(message patterns)	تعذّر فتح {} · يتعذّر… · جارٍ تصدير {}… · تم حفظ {} · هل تريد حذف {}؟	Could not… (past failure) / Cannot… / …ing (progress) / Saved {} / question dialogs.
+(plural forms)	0: {n} شريحة · 1: شريحة واحدة · 2: {n} شريحتان · 3–10: {n} شرائح · 11–99: {n} شريحةً/{n} ملفًا · 100+: {n} شريحة	Six forms; every form except the one for 1 shows {n} (eov's check). Dual for 2 (ـين after prepositions), plural for 3–10, accusative singular for 11–99, genitive singular for 0 and 100+.
+For research and education. Not a medical device; not for primary diagnosis.	للبحث والتعليم. ليس جهازًا طبيًا، ولا يجوز استخدامه للتشخيص الأولي.	Safety text: never soften or shorten.
+research use only (RUO)	للاستخدام البحثي فقط (RUO)	Regulatory phrase printed on reagents.
+not a medical device	ليس جهازًا طبيًا	
+primary diagnosis	التشخيص الأولي	Regulatory term: the first, final diagnosis of a case.
+synthetic (image, channel, stain)	مُولَّد حاسوبيًا	Never اصطناعي/مزيّف/محاكى in a sense that reads as fake.
+predicted	مُتنبَّأ به	
+generated	مُولَّد	
+computed	محسوب	
+slide	شريحة (ج. شرائح)	The glass microscope slide and its scan; never a presentation slide.
+whole-slide image (WSI)	صورة الشريحة الكاملة (WSI)	Keep the abbreviation WSI.
+slide viewer, viewer	عارض الشرائح، العارض	
+tab	علامة تبويب (ج. علامات تبويب)	One open slide in a pane.
+pane	جزء (ج. أجزاء)	A side-by-side viewing area; «جزء العرض» where needed.
+panel	لوحة (ج. لوحات)	
+view	العرض	What a pane shows: position, magnification, rotation.
+viewport	منطقة العرض	
+minimap	الخريطة المصغّرة	
+scale bar	شريط المقياس	
+HUD	اللوحة العائمة	Panels floating over the slide.
+toolbar	شريط الأدوات	
+sidebar	الشريط الجانبي	
+status bar	شريط الحالة	
+series bar	شريط السلسلة	The strip of slides and folders of the current folder.
+zoom	التكبير/التصغير	Screen scale. Zoom in: تكبير; Zoom out: تصغير.
+magnification	قوة التكبير	Objective-equivalent; 20× stays 20×.
+digital zoom	التكبير الرقمي	
+objective	العدسة الشيئية	objective power: قوة العدسة الشيئية
+pixel	بكسل (ج. بكسلات)	px stays px.
+pixel size	حجم البكسل	
+MPP (µm per pixel)	MPP (ميكرومتر لكل بكسل)	MPP stays MPP.
+calibration	المعايرة	
+level, pyramid level	مستوى، مستوى الهرم	L0 = full resolution.
+pyramid	الهرم	Pyramidal TIFF: TIFF هرمي
+tile	بلاطة (ج. بلاطات)	A square piece of the image loaded at a time.
+patch (dataset)	رقعة (ج. رقع)	A small image cut from a slide for machine learning.
+cache	ذاكرة التخزين المؤقت	
+region of interest (ROI)	منطقة الاهتمام (ROI)	Keep ROI as the abbreviation.
+measurement	قياس (ج. قياسات)	
+Measure (tool)	القياس	
+distance, area, angle	المسافة، المساحة، الزاوية	
+annotation	تعليق توضيحي (ج. تعليقات توضيحية)	A drawn mark with a meaning; not «تعليق» alone (comment).
+class (annotation class)	فئة (ج. فئات)	
+cell count, counting	عدّ الخلايا	
+high-power field (HPF)	حقل التكبير العالي (HPF)	
+H&E	H&E	
+hematoxylin	الهيماتوكسيلين	H stays H.
+eosin	الإيوزين	E stays E.
+stain (dye)	صبغة (ج. صبغات)	
+staining	التلوين	weak/moderate/strong staining: تلوين ضعيف/متوسط/قوي
+IHC	الكيمياء النسيجية المناعية (IHC)	Keep IHC.
+DAB	DAB	DAB-positive: إيجابي لـ DAB
+stain normalization	تطبيع الصبغة	Macenko and Vahadane stay as they are.
+colour normalisation	تطبيع الألوان	
+stain target	هدف الصبغة	The appearance slides are normalised to; reference stain target: هدف الصبغة المرجعي
+stain model	نموذج الصبغة	
+stain vectors	متجهات الصبغة	
+stain fit	ملاءمة الصبغات	fitted: مُلاءَمة; fit rejected: رُفضت الملاءمة
+color deconvolution	فك الالتفاف اللوني	Ruifrok–Johnston.
+isolated stain / channel	الصبغة المعزولة / القناة المعزولة	Only that stain or channel is shown.
+channel	قناة (ج. قنوات)	Channel and marker names are never translated.
+multiplex immunofluorescence (mIF)	التألق المناعي المتعدد (mIF)	
+marker	واسم (ج. واسمات)	CD3, Ki-67, PanCK… stay as they are.
+focal plane (Z)	المستوى البؤري (Z)	
+Z-stack	مكدّس Z	
+time point (T)	النقطة الزمنية (T)	
+time series	سلسلة زمنية	
+heat map	خريطة حرارية	
+overlay	تراكب	
+layer	طبقة (ج. طبقات)	
+opacity	العتامة	
+tissue	النسيج	
+tissue QC	ضبط جودة النسيج	QC = ضبط الجودة
+pen marks	علامات القلم	
+folds	الطيّات	
+blur, out of focus	التشوّش، خارج البؤرة	
+tissue detection	كشف النسيج	
+tissue mask	قناع النسيج	
+background	الخلفية	
+dataset	مجموعة بيانات	
+patch extraction	استخراج الرقع	
+stride	الخطوة	The step between patches.
+threshold	عتبة (ج. عتبات)	white threshold: عتبة البياض
+export	تصدير	
+save a copy	حفظ نسخة	
+convert	تحويل	
+de-identify	إزالة بيانات التعريف	de-identified: بلا بيانات تعريف
+label image	صورة الملصق	
+macro image	صورة الماكرو	The photo of the whole glass slide.
+thumbnail	صورة مصغّرة	
+bookmark	إشارة مرجعية (ج. إشارات مرجعية)	
+session	جلسة	
+plugin	مكوّن إضافي (ج. مكوّنات إضافية)	
+package (.eop)	حزمة (ج. حزم)	
+plugin API	واجهة API للمكوّنات الإضافية	
+model	نموذج (ج. نماذج)	
+model store	مخزن النماذج	
+inference	الاستدلال	
+render, rendering	العرض	
+renderer	محرّك العرض	GPU renderer: محرّك العرض GPU; CPU renderer: محرّك العرض CPU
+backend	الواجهة الخلفية	
+filtering, filtering mode	التصفية، وضع التصفية	
+bilinear	ثنائي الخطية	
+trilinear	ثلاثي الخطية	
+Lanczos	Lanczos	Lanczos-3 stays.
+sharpness	الحدّة	
+gamma	غاما	γ stays γ.
+brightness	السطوع	
+contrast	التباين	auto contrast: تباين تلقائي
+image adjustments	ضبط الصورة	
+theme	السمة	
+dark, light, high contrast	داكن، فاتح، تباين عالٍ	
+Home screen	الشاشة الرئيسية	Home tab: الرئيسية
+Check for Updates…	التحقق من وجود تحديثات…	Asks before going online; never imply automatic updates.
+colour management	إدارة الألوان	colour-managed: بإدارة الألوان
+colour profile	ملف تعريف الألوان	ICC profile: ملف تعريف ICC
+as scanned	كما مُسحت	The colours the scanner recorded.
+scanner	الماسح الضوئي	
+metadata	البيانات الوصفية	
+property	خاصية (ج. خصائص)	
+landmark	معلَم (ج. معالم)	alignment landmark: معلَم المحاذاة
+alignment	المحاذاة	align: محاذاة
+link / unlink panes	ربط الأجزاء / إلغاء ربط الأجزاء	
+case	الحالة	The patient case the slides belong to.
+keyboard shortcuts	اختصارات لوحة المفاتيح	
+quantify	القياس الكمي	
+H-score	H-score	
+weak, moderate, strong	ضعيف، متوسط، قوي	
+optical density	الكثافة الضوئية	
+concentration	التركيز	
+update	تحديث	
+update helper	مساعد التحديث	
+release	إصدار	A published release of eov or a plugin.
+version	إصدار	
+release notes	ملاحظات الإصدار	
+release manifest	بيان الإصدار	
+artifact	ملف الإصدار	A file of a release for one platform.
+signature, signed	التوقيع، موقَّع	
+administrator policy	سياسة المسؤول	policy file: ملف السياسة
+official (plugin)	رسمي	
+registry	السجل	
+safe mode	الوضع الآمن	
+log folder	مجلد السجلات	
+Open	فتح	
+Open…	فتح…	
+Close	إغلاق	
+Cancel	إلغاء	
+OK	موافق	
+Confirm	تأكيد	
+Done	تم	
+Save	حفظ	
+Delete	حذف	
+Remove	إزالة	
+Add	إضافة	
+Settings	الإعدادات	
+Apply	تطبيق	
+Reset	إعادة تعيين	Reset to Defaults: استعادة الإعدادات الافتراضية
+Show	إظهار	For visibility (إظهار الملصق). To display a mode or open a view: عرض (عرض الألوان كما مُسحت، عرض القياسات…).
+Hide	إخفاء	
+Toggle (show/hide)	إظهار/إخفاء	
+Import	استيراد	
+Copy	نسخ	
+Undo	تراجع	
+Redo	إعادة	
+Fit	ملاءمة	Fit the slide: ملاءمة الشريحة
+Rotate	تدوير	Rotate left/right 90°: تدوير 90° لليسار/لليمين
+Flip horizontally	قلب أفقي	
+Pan	تحريك	
+Navigate (tool)	التنقل	
+Enable	تمكين	
+Disable	تعطيل	
+Download	تنزيل	
+Install	تثبيت	
+Clear	مسح	
+Filter	تصفية	
+Folder	مجلد	
+File	ملف	
+Path	مسار	
+Back, Forward, Up	رجوع، تقدّم، أعلى	
+Next, Previous	التالي، السابق	
+Quit	إنهاء	
+Restart	إعادة التشغيل	
+Messages	الرسائل	
+Error, Warning, Information	خطأ، تحذير، معلومات	
+Language	اللغة	
+Format	التنسيق	
+Quality	الجودة	
+Resolution	الدقة	
+Compression	الضغط	
+Lossless	بلا فقدان	
+Preview	معاينة	
+Loading…	جارٍ التحميل…	
+Unknown	غير معروف	
+N/A	غير متاح	
+Full screen	ملء الشاشة	
+Units	الوحدات	µm, mm, px stay as they are.
+inch, square inch	بوصة، بوصة مربعة	«{} بوصة»; mil: ميل (1/1000 بوصة)
+hours, minutes, seconds (short)	س، د، ث	«{hours} س {minutes} د»
+focused pane, focused slide	الجزء النشط، الشريحة النشطة	
+filters (dataset)	عوامل التصفية	The rules that skip patches.
+filter (image filter of a plugin)	مرشّح (ج. مرشّحات)	
+chromogen	كروموجين (ج. كروموجينات)	
+vendor (scanner)	المصنّع	
+downsample	معامل التصغير	
+threads	مؤشرات الترابط	
+clipboard	الحافظة	
+A–Z (sort order)	أ–ي	
+Open Containing Folder	فتح المجلد المحتوي	
+Maximize / Minimize window	تكبير النافذة / تصغير النافذة	
+right-click	انقر بزر الماوس الأيمن	
+grid cell (tissue QC)	خانة (ج. خانات)	Not a biological cell.
+self-update	التحديث الذاتي	
+staged (update)	مُجهَّز، بانتظار التثبيت	Installed by the update helper after eov exits.
+roll back (an update)	التراجع عن التحديث	
+proxy, root certificate	خادم وكيل، شهادة الجذر	
+lock file	ملف القفل	
+Not applied	لم يُطبَّق	
+annotation layer	طبقة (ج. طبقات)	Annotations plugin. "New layer" button: طبقة جديدة; as an undo label: إنشاء طبقة (same for class: فئة جديدة / إنشاء فئة).
+count point	نقطة عدّ (ج. نقاط عدّ)	Clear counts: مسح نقاط العدّ; the Count tab/tool: العدّ / أداة العدّ
+HPF field	حقل HPF (ج. حقول HPF)	Heading HIGH-POWER FIELDS: حقول التكبير العالي; per HPF: /حقل HPF
+field number (FN)	رقم الحقل (FN)	The eyepiece field number in mm; FN stays.
+outline (of a shape)	الحدود	The outline crossed itself: تقاطعت الحدود مع نفسها; Repair outline: إصلاح الحدود; to outline a region: حدّد منطقة
+annotation kinds	نقطة، خط، سهم، مضلع، مستطيل، قطع ناقص، نص، تسمية نصية	Point, Line, Arrow, Polygon, Rectangle, Ellipse, Text, Text label
+vertex	رأس (ج. رؤوس)	
+brush, eraser, brush stroke	الفرشاة، الممحاة، ضربة فرشاة	Erase: محو (Clear stays مسح).
+add to / cut from region	إضافة إلى المنطقة / اقتطاع من المنطقة	Shift: إضافة، Alt: اقتطاع
+even-odd rule	قاعدة الزوجي-الفردي	
+hotkey	مفتاح الاختصار	
+Unclassified	غير مصنّف	
+review status (Draft, Verified, Rejected)	حالة المراجعة (مسودة، مُتحقَّق منه، مرفوض)	Mark draft: تعيين كمسودة
+Lock, Unlock, Locked	قفل، إلغاء القفل، مقفل	
+comment (on an annotation)	تعليق (ج. تعليقات)	Never «تعليق توضيحي», which is the annotation itself.
+second reader, blinded copy	القارئ الثاني، نسخة معمّاة	
+attach (annotations of another slide)	إلحاق	Attach annotations: إلحاق التعليقات التوضيحية
+merge, back up (database)	دمج، نسخ احتياطي	Back up the database…: نسخ قاعدة البيانات احتياطيًا…
+DICOM bulk annotations	التعليقات التوضيحية المجمّعة في DICOM	Microscopy Bulk Simple Annotations and DICOM attribute names stay in English.
+combined positive score (CPS)	درجة الإيجابية المجمّعة (CPS)	PD-L1; CPS stays.
+tumour cells, immune cells	الخلايا الورمية، الخلايا المناعية	PD-L1-positive: الإيجابية لـ PD-L1
+95% confidence interval	فترة ثقة 95%	
+Shift+click, Alt+click, Ctrl+click	Shift+نقر، Alt+نقر، Ctrl+نقر	
+region readout (Cellaris)	قراءة المنطقة	Tool name: قراءة منطقة Cellaris
+window (square model input)	نافذة (ج. نوافذ)	Cellaris: the square images the model predicts from.
+cell (Cellaris grid square)	خانة (ج. خانات)	Not a biological cell.
+tissue block (5 µm square)	مربّع نسيج (ج. مربّعات نسيج)	Not a paraffin block.
+display window (marker colour range)	نطاق العرض	Not «نافذة».
+PREDICTED — research use only, not for diagnosis	تنبؤ حاسوبي — للاستخدام البحثي فقط، وليس للتشخيص	Safety banner: keep all three parts. Predicted (adjective): متنبَّأ به/بها.
+reconstruction, reconstruction error	إعادة البناء، خطأ إعادة البناء	VAE overlays Original, Reconstruction, Error map, Difference: الأصل، إعادة البناء، خريطة الخطأ، الفرق
+batch (inference)	دفعة (ج. دفعات)	batch size: حجم الدفعة
+input, output (of a model)	مُدخل، مُخرج (ج. مُدخلات، مُخرجات)	
+runtime (ONNX Runtime library)	بيئة التشغيل	ONNX Runtime stays.
+model card, sidecar file	بطاقة النموذج، الملف المرافق	
+preprocessing	المعالجة المسبقة	
+resample	إعادة الاعتيان	upsampled: مكبَّرة بإعادة الاعتيان
+tensor	موتّر	
+bright-field	المجال الساطع	
+your site's (model, copy)	مؤسستك	Not «موقعك» (reads as website).
+Gamepad	لوحة الألعاب	game controller: وحدة تحكم ألعاب; controller: وحدة التحكم
+stick, trigger, D-pad, shoulder button	العصا، الزناد، لوحة الاتجاهات، زر الكتف	Face buttons by position: الزر السفلي، الأيمن، العلوي، الأيسر
+dead zone, response curve	المنطقة الميتة، منحنى الاستجابة	
+mapping (gamepad)	تعيين (ج. تعيينات)	
+profile (gamepad)	ملف تعريف (ج. ملفات تعريف)	
+marker (placed point, example plugin)	علامة (ج. علامات)	A placed point, not a protein marker (واسم).
+menu path arrow →	←	→ does not mirror in RTL: البيانات ← القارئ الثاني ← نسخة معمّاة. › does mirror; keep it.
+worker thread	مؤشر ترابط عامل	Could not start a worker thread: تعذّر بدء مؤشر ترابط عامل
+file type name (file managers)	صورة شريحة كاملة بتنسيق …	Aperio whole-slide image: صورة شريحة كاملة بتنسيق Aperio; BigTIFF image: صورة BigTIFF
+flagged by tissue QC	علّم ضبط جودة النسيج	pen marks, possible folds or blur: علامات القلم أو الطيّات المحتملة أو التشوّش المحتمل (flags for review, not certainties)
+fallback stain vectors	متجهات صبغة احتياطية	Generic H&E vectors used when the slide's own stains could not be fitted.
+host (eov, as seen by a plugin)	المضيف	the host returned …: أعاد المضيف …
+version change ({from} -> {to})	(من {from} إلى {to})	Words instead of an arrow, so the order survives right-to-left display.
+in (inch unit symbol)	بوصة	As in «{} بوصة»; the option Inches (in): البوصة

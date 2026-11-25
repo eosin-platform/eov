@@ -14,8 +14,9 @@ use serde::Serializer;
 pub(crate) const FINE_STEP_DEGREES: f64 = 5.0;
 
 /// An angle typed into the HUD's angle field: degrees clockwise, with an
-/// optional `°` or `deg`, a decimal point or comma. `None` for anything
-/// else (and for angles that are not finite).
+/// optional `°` or `deg`, a decimal point or comma (or the decimal
+/// separator of the interface's language). `None` for anything else (and
+/// for angles that are not finite).
 pub(crate) fn parse_degrees(text: &str) -> Option<f64> {
     let text = text.trim();
     let text = text
@@ -23,22 +24,19 @@ pub(crate) fn parse_degrees(text: &str) -> Option<f64> {
         .or_else(|| text.strip_suffix("deg"))
         .unwrap_or(text)
         .trim();
-    let text = text.replace(',', ".").replace('−', "-");
-    text.parse::<f64>()
-        .ok()
-        .filter(|degrees| degrees.is_finite())
+    eov_plugin_api::i18n::parse_decimal(&text.replace('−', "-"))
 }
 
 /// An angle in `0..360` as the HUD shows it: at most two decimals, no
-/// trailing zeros ("90", "37.5", "12.35").
+/// trailing zeros ("90", "37.5", "12.35"), in the interface's language.
 pub(crate) fn degrees_label(degrees: f64) -> String {
-    trim_decimals(format!("{:.2}", round_to(degrees, 100.0)))
+    crate::ui_update::localized_number(&trim_decimals(format!("{:.2}", round_to(degrees, 100.0))))
 }
 
 /// An angle with every decimal it has (a millionth of a degree at most),
-/// for editing.
+/// for editing (in the interface's language).
 pub(crate) fn degrees_text(degrees: f64) -> String {
-    trim_decimals(format!("{:.6}", round_to(degrees, 1e6)))
+    crate::ui_update::localized_number(&trim_decimals(format!("{:.6}", round_to(degrees, 1e6))))
 }
 
 /// `degrees` rounded to `1 / per_degree`, with a full turn as 0.

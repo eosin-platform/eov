@@ -4,6 +4,7 @@
 use super::UiHost;
 use crate::shortcuts::{self, ACTIONS, Action, Chord};
 use crate::{ShortcutLabels, ShortcutRow};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::NotifyLevel;
 use slint::{ModelRc, VecModel};
 use std::collections::BTreeMap;
@@ -52,16 +53,17 @@ impl UiHost {
         for info in ACTIONS {
             if group != Some(info.group) {
                 group = Some(info.group);
-                rows.push(heading(info.group.label()));
+                rows.push(heading(&info.group.label()));
             }
-            rows.push(row(info.label, info.id, table.labels(info.action)));
+            rows.push(row(&info.label(), info.id, table.labels(info.action)));
         }
         let bindings = self.shared.contributions.lock().key_bindings();
         let mut by_plugin: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
         for (plugin_id, label, hotkey) in bindings {
             let mut keys = Chord::from_hotkey(&hotkey).label();
             if hotkey.momentary {
-                keys.push_str(" (hold)");
+                // Translators: a key a plugin uses while it is held down.
+                keys = tr!("{} (hold)", keys);
             }
             by_plugin
                 .entry(self.plugin_name(&plugin_id))
@@ -69,7 +71,9 @@ impl UiHost {
                 .push((label, keys));
         }
         for (plugin, keys) in by_plugin {
-            rows.push(heading(&format!("{plugin} (plugin)")));
+            // Translators: a heading of the Keyboard Shortcuts panel: the
+            // keys of the plugin named {}.
+            rows.push(heading(&tr!("{} (plugin)", plugin)));
             for (label, keys) in keys {
                 rows.push(row(&label, "", keys));
             }
@@ -78,11 +82,15 @@ impl UiHost {
             .map(|path| path.display().to_string())
             .unwrap_or_else(|_| "config.toml".into());
         ui.set_shortcuts_hint(
-            format!(
-                "To change keys, add a [shortcuts] table to {path} with the grey names: \
+            // Translators: [shortcuts], the grey names, the keys and the
+            // examples are what users write in config.toml: keep them as
+            // they are.
+            tr!(
+                "To change keys, add a [shortcuts] table to {} with the grey names: \
                  bookmark-add = \"Ctrl+D\", zoom-in = [\"+\", \"=\"], or [] for no key. \
                  \"Ctrl\" means ⌘ on macOS. Changes apply when eov starts; plugins cannot \
-                 take eov's keys."
+                 take eov's keys.",
+                isolate(&path)
             )
             .into(),
         );
@@ -97,7 +105,7 @@ impl UiHost {
         let text = path.display().to_string();
         crate::clipboard::copy_text(text.clone());
         if let Some(ui) = self.ui() {
-            super::notices::show_toast(&ui, &format!("Copied {text}"), NotifyLevel::Info);
+            super::notices::show_toast(&ui, &tr!("Copied {}", isolate(&text)), NotifyLevel::Info);
         }
     }
 
@@ -109,7 +117,7 @@ impl UiHost {
         }
         self.notify(
             NotifyLevel::Warning,
-            "Some keyboard shortcuts in config.toml were not used",
+            &tr!("Some keyboard shortcuts in config.toml were not used"),
             Some(&problems.join("\n")),
             None,
         );

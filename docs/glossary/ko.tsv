@@ -1,0 +1,275 @@
+term	translation	note
+(register)	합니다체 / ~하세요	문장은 합니다체(…습니다), 지시는 '~하세요', 확인 질문은 '~하시겠습니까?'. 버튼·메뉴·도구 설명은 명사형(예: 파일 열기, 라벨 숨기기). 상태 라벨은 짧게 '~됨/~함' 허용.
+(placeholder + particle)	을(를), 이(가), 은(는), (으)로, 와(과)	{}·{name} 뒤의 조사는 받침을 알 수 없으므로 병기형을 쓰거나 명사를 덧붙여(예: '{} 파일을') 문장을 바꿈. 이름 없는 {}가 둘 이상이면 순서를 바꿀 수 없음.
+(count)	{n}개	수량은 숫자 뒤에 단위 명사를 붙여 씀: 슬라이드 {n}개, 타일 {n}개, {n}분, {n}바이트. 한국어 복수형은 한 가지이며 반드시 {n}을 포함.
+(units)	12 MB, 0.25 µm/px, 12.5%, 90°, 20×	숫자와 단위 사이는 띄우되 %, °, ×는 붙여 씀. 단위 기호(µm, mm, px, in, MB, GiB)는 그대로.
+(ellipsis)	…	대화 상자를 여는 메뉴 항목의 말줄임표는 원문 그대로 유지.
+(quotes)	“ ” / ' '	원문의 따옴표 종류를 그대로 사용.
+For research and education. Not a medical device; not for primary diagnosis.	연구 및 교육용입니다. 의료기기가 아니며 1차 진단에 사용할 수 없습니다.	안전 문구: 생략·완화·축약 금지.
+research use only (RUO)	연구용으로만 사용(RUO)	결과를 임상 결정에 사용해서는 안 됨. 체외진단 시약의 RUO 표기 관행을 따름.
+medical device	의료기기	「의료기기법」의 용어. '의료 기기'로 띄우지 않음.
+primary diagnosis	1차 진단	규제 용어(최초이자 최종 진단).
+synthetic, predicted, generated, computed (image, channel, stain)	합성, 예측, 생성된, 계산된	스캐너가 촬영하지 않고 알고리즘(정규화, 디컨볼루션, 신경망)이 계산한 픽셀. '가짜', '인공', '시뮬레이션'으로 번역하지 않음. 예: 합성 이미지, 예측 채널.
+slide	슬라이드	유리 현미경 슬라이드 표본과 그 스캔. 발표용 슬라이드가 아님. 세는 단위는 '개'.
+whole-slide image (WSI)	전체 슬라이드 이미지(WSI)	약어 WSI는 그대로.
+slide viewer, viewer	슬라이드 뷰어, 뷰어	
+tab	탭	창에 열린 슬라이드 하나.
+pane	창	나란히 놓인 보기 영역(Windows의 '탐색 창'과 같은 용법). 예: 창 연결, 오른쪽으로 분할.
+window	창	애플리케이션 창. 예: 창 닫기, 창 최대화.
+view	보기	창이 보여 주는 위치·배율·회전. 예: 이전 보기, 보기를 북마크에 추가. 표시된 이미지 자체를 복사·내보낼 때는 '화면'.
+viewport	뷰포트	슬라이드가 그려지는 창의 영역.
+minimap	미니맵	
+scale bar	스케일 바	
+HUD	HUD	슬라이드 위에 떠 있는 작은 패널. 약어 그대로.
+toolbar	도구 모음	
+sidebar	사이드바	
+status bar	상태 표시줄	
+panel	패널	예: 플러그인 패널, 측정 패널.
+series bar	시리즈 표시줄	폴더의 슬라이드 목록 띠.
+dialog	대화 상자	
+zoom	확대/축소	화면 배율. Zoom in = 확대, Zoom out = 축소, digital zoom = 디지털 확대/축소.
+magnification (20×)	배율(20×)	대물렌즈 환산 광학 배율(optical-equivalent zoom = 광학 환산 배율). 20×는 그대로.
+objective	대물렌즈	objective power = 대물렌즈 배율.
+pixel size	픽셀 크기	
+MPP (µm per pixel)	MPP(픽셀당 µm)	MPP와 µm/px는 그대로.
+calibration	보정	
+level, pyramid level, pyramid	레벨, 피라미드 레벨, 피라미드	level 0 = 레벨 0(최대 해상도), L0 그대로. Pyramidal TIFF = 피라미드 TIFF.
+tile	타일	한 번에 읽는 정사각형 이미지 조각.
+patch	패치	데이터셋용 작은 이미지.
+cache	캐시	
+region of interest (ROI)	관심 영역(ROI)	약어 ROI는 그대로.
+measurement	측정	측정한 항목 하나. 측정한 값은 '측정값'.
+measure (tool)	측정 (도구)	
+distance / path length / area / angle	거리 / 경로 길이 / 면적 / 각도	측정 모드. Polygon area = 다각형 면적, Rectangle area = 사각형 면적, Ellipse area = 타원 면적.
+annotation	주석	의미가 있는 표시(점·영역·선·텍스트). 자유 텍스트 메모가 아님.
+class (annotation class)	클래스	예: 종양, 기질.
+cell count, counting	세포 계수, 계수	
+high-power field (HPF)	고배율 시야(HPF)	약어 HPF는 그대로.
+H&E	H&E	헤마톡실린-에오신 염색.
+hematoxylin	헤마톡실린	한 글자 약어 H는 그대로.
+eosin	에오신	한 글자 약어 E는 그대로.
+IHC	면역조직화학(IHC)	약어 IHC는 그대로.
+DAB	DAB	
+stain	염색	염색법과 염료(dye) 모두 '염색'. 예: 염색 {n}개.
+stain normalization	염색 정규화	Macenko, Vahadane는 방법 이름이므로 번역하지 않음.
+colour normalization	색 정규화	
+stain target	염색 목표	염색 정규화가 맞추려는 목표 외관.
+reference (stain vectors, H&E)	참조	예: 참조 염색 벡터, 참조 H&E.
+stain vector	염색 벡터	
+stain model	염색 모델	H-DAB 등 프리셋은 '염색 프리셋'.
+stain fit, fitted	염색 추정, 추정된	fit rejected = 추정 거부, did not converge = 수렴하지 않음.
+color deconvolution	색 디컨볼루션	Ruifrok–Johnston 방법.
+isolated stain / isolated channel	분리된 염색 / 분리 채널	해당 성분만 회색조로 표시.
+intensity	강도	예: 헤마톡실린 강도.
+optical density	광학 밀도	
+concentration	농도	
+quantify	정량화	
+H-score	H-score	0–300, 그대로 둠.
+weak (1+), moderate (2+), strong (3+)	약함(1+), 중등도(2+), 강함(3+)	H-score의 염색 강도 등급.
+positive (DAB-positive)	양성 (DAB 양성)	
+channel	채널	형광 또는 계산된 이미지 채널.
+multiplex immunofluorescence (mIF)	다중 면역형광(mIF)	
+marker	마커	CD3, Ki-67, PanCK 등 마커 이름은 번역하지 않음.
+focal plane (Z), Z-stack	초점면(Z), Z-스택	
+time point (T), time series	시점(T), 시계열	
+heat map	히트맵	
+colour map, colour scale	컬러맵, 색 척도	히트맵의 색 표현. 회색조 컬러맵 = 회색조.
+overlay	오버레이	
+layer	레이어	
+opacity	불투명도	0–100%.
+tissue QC	조직 QC	조직 품질 검사(Check Tissue Quality = 조직 품질 검사).
+pen marks	펜 자국	
+folds	접힘	조직 접힘.
+blur, out of focus	흐림, 초점이 맞지 않음	
+tissue detection, tissue mask	조직 검출, 조직 마스크	
+dataset	데이터셋	
+patch extraction	패치 추출	
+stride	스트라이드	패치 사이의 간격.
+threshold	임계값	최솟값, 최댓값은 이 표기.
+export	내보내기	Export Image = 이미지 내보내기.
+save a copy	사본 저장	
+convert	변환	
+de-identify, de-identified	비식별화, 비식별화됨	개인정보 보호 용어.
+label image	라벨 이미지	슬라이드 종이 라벨 사진. 환자 식별 가능.
+macro image	매크로 이미지	유리 슬라이드 전체 사진.
+thumbnail	썸네일	
+overview image, associated image	개요 이미지, 연관 이미지	연관 이미지 카드 제목은 '개요'.
+bookmark	북마크	슬라이드의 저장된 보기.
+session	세션	다음 시작 때 복원되는 열린 슬라이드와 보기.
+plugin	플러그인	
+package (.eop)	패키지(.eop)	
+model	모델	머신러닝 모델 파일.
+model store	모델 저장소	
+inference	추론	
+render, rendering	렌더링	
+renderer	렌더러	CPU 렌더러, GPU 렌더러. CPU, GPU는 그대로.
+backend	백엔드	
+filtering	필터링	Filtering mode = 필터링 모드.
+bilinear	쌍선형	
+trilinear	삼선형	
+Lanczos	Lanczos	이름이므로 그대로.
+sharpness, sharpened	선명도, 선명하게 처리됨	
+gamma	감마	기호 γ는 그대로.
+brightness	밝기	
+contrast	대비	Auto contrast = 자동 대비.
+theme	테마	
+Dark / Light / High Contrast (theme)	어둡게 / 밝게 / 고대비	Windows의 앱 모드 표기.
+colour, color	색	Colour palette = 색 팔레트.
+colour profile (ICC)	색 프로필(ICC)	
+colour management, colour-managed	색 관리, 색 관리됨	
+colours as scanned	스캔된 색 그대로	
+colour-blind safe	색각 이상 친화	
+Home screen / Home (tab)	홈 화면 / 홈	
+Check for Updates…	업데이트 확인…	온라인 접속 전에 묻는 항목. 자동 백그라운드 업데이트를 암시하지 않음.
+update, updated	업데이트, 업데이트됨	
+update helper	업데이트 도우미	
+release, release notes, release manifest	릴리스, 릴리스 정보, 릴리스 매니페스트	artifact = 아티팩트, repository = 저장소.
+staged (update)	설치 대기 중	eov 종료 후 업데이트 도우미가 설치.
+administrator policy	관리자 정책	
+signature, signed, verified	서명, 서명됨, 검증됨	
+official / local / unmanaged / system (plugin origin)	공식 / 로컬 / 수동 설치 / 시스템	eov 공식 플러그인(어순 주의).
+landmark	랜드마크	슬라이드 정렬용 기준점.
+alignment, align	정렬, 정렬하기	
+link / unlink (panes)	연결 / 연결 해제	
+focused (pane)	포커스된	예: 포커스된 창.
+rotation, rotate	회전	Rotate Left 90° = 왼쪽으로 90° 회전.
+flip horizontally / unflip	좌우 반전 / 좌우 반전 해제	
+property, properties	속성	
+metadata: vendor, dimensions, scan date	메타데이터: 제조사, 크기, 스캔 날짜	
+case (accession)	증례	
+keyboard shortcuts	키보드 단축키	Ctrl, Shift, Alt, Esc, Enter 등 키 이름은 그대로.
+log folder	로그 폴더	
+messages	메시지	
+safe mode	안전 모드	
+right-click	마우스 오른쪽 클릭	도구 설명에서는 짧게 '마우스 오른쪽 클릭: …'.
+drag and drop	끌어서 놓기	
+load (plugin, file)	불러오기	예: 플러그인을 불러올 수 없습니다. 로드라고 쓰지 않음.
+table (TOML)	테이블	config.toml의 [shortcuts] 테이블.
+stroke: solid / dashed / dotted; caps	선: 실선 / 파선 / 점선; 끝 모양	끝 모양: 둥근형 / 사각형 / 평면형.
+sort order: A–Z / newest / stain / case	이름순 / 최신순 / 염색별 / 증례별	시리즈 표시줄의 정렬.
+Open, Open in New Tab	열기, 새 탭에서 열기	
+Close	닫기	
+Cancel	취소	
+OK / Confirm	확인	
+Save	저장	Save… = 저장…
+Import	가져오기	
+Delete	삭제	
+Remove	제거	
+Clear	지우기	Clear Landmarks = 랜드마크 지우기.
+Settings	설정	
+Apply, applied	적용, 적용됨	
+Reset	초기화	Reset to Defaults = 기본값으로 초기화.
+Show	표시	
+Hide, hidden	숨기기, 숨김	
+Toggle	표시/숨기기	켜고 끄는 버튼.
+Copy	복사	
+Paste	붙여넣기	
+Undo / Redo	실행 취소 / 다시 실행	
+Zoom in / Zoom out	확대 / 축소	
+Fit	맞춤	Fit the slide to the pane = 슬라이드를 창에 맞춤.
+Add	추가	
+Edit	편집	
+Enable / Disable	활성화 / 비활성화	
+Active / Disabled (status)	활성 / 비활성화됨	
+Install	설치	
+Download	다운로드	
+Restart	다시 시작	
+Quit	종료	
+Done	완료	
+Go, Back / Forward / Up	이동, 뒤로 / 앞으로 / 위로	
+Navigate (tool)	탐색	
+Filter	필터	
+Folder, file, path	폴더, 파일, 경로	
+Open Containing Folder	포함 폴더 열기	
+Error / Warning / Information	오류 / 경고 / 정보	
+Loading…	불러오는 중…	진행 중 표시는 '~ 중…'.
+Could not …, Cannot …	…할 수 없습니다	
+… failed	…에 실패했습니다 / … 실패	
+None	없음	
+Unknown	알 수 없음	
+N/A	해당 없음	
+Ready (status)	준비	
+Preview	미리 보기	
+Format, compression, lossless	형식, 압축, 무손실	
+Quality	품질	
+Resolution	해상도	
+Language	언어	Automatic (System Default) = 자동(시스템 기본값).
+Full screen	전체 화면	
+Recently opened, recent files	최근에 연 항목, 최근 파일	
+Split Right	오른쪽으로 분할	
+region (annotation)	영역	주석 도형으로서의 영역. Add region = 영역 추가, Cut from region = 영역에서 잘라 내기.
+outline, self-intersecting	윤곽선, 자기 교차	Repair outline = 윤곽선 복구.
+vertex, corner (shape)	꼭짓점	
+hole (of a region)	구멍	
+shape, geometry	도형	GeoJSON geometry도 '도형'. GeoJSON feature = 피처.
+freehand	자유형	Freehand outline = 자유형 윤곽선.
+brush / eraser / stroke	브러시 / 지우개 / 획	
+arrow, arrowhead	화살표, 화살촉	
+text label	텍스트 라벨	
+hotkey	단축키	Set class hotkey = 클래스 단축키 설정.
+comment (on an annotation)	댓글	작성자·시간이 붙는 의견. 'Comment' 버튼 = 댓글 달기. '주석'(annotation)과 혼동하지 않도록 함.
+notes (of a layer)	메모	Import dialog NOTES = 참고 사항.
+description	설명	
+review status: Draft / Verified / Rejected	검토 상태: 초안 / 검증됨 / 거부됨	Mark verified = 검증됨으로 표시.
+unclassified	미분류	
+active class	활성 클래스	
+count point	계수 점	Count tool = 계수 도구, Clear counts = 계수 지우기.
+HPF field	HPF 시야	고배율 시야 1개. HIGH-POWER FIELDS 제목 = 고배율 시야.
+field number (FN)	시야수	접안렌즈 시야수(mm).
+reader, second reader, second read	판독자, 제2 판독자, 제2 판독	독립 판독(annotations 플러그인).
+blinded copy	맹검 사본	작성자·댓글·상태 등을 뺀 사본.
+attach (annotations of another slide)	연결	다른 슬라이드 레코드의 레이어를 열린 슬라이드로 옮김.
+merge (database)	병합	Merge… = 병합…
+back up, backup	백업	
+database	데이터베이스	
+even-odd rule	짝수-홀수 규칙	자기 교차 다각형의 채우기/면적 규칙.
+F1 score, Dice coefficient	F1, Dice	이름이므로 그대로.
+combined positive score (CPS)	복합 양성 점수(CPS)	PD-L1.
+tumour cell / immune cell	종양 세포 / 면역 세포	
+index (e.g. Ki-67 index)	지수	
+density (cells/mm²)	밀도	
+confidence interval	신뢰 구간	짧은 표기 (95% {low}–{high})는 원문대로 둠.
+DICOM bulk annotations	DICOM 벌크 주석	Microscopy Bulk Simple Annotations, VL Whole Slide Microscopy 등 IOD 이름은 그대로.
+private attributes (DICOM, eov's)	전용 속성	예: eov 전용 속성.
+study / series (DICOM)	스터디 / 시리즈	
+level-0 pixels	레벨 0 픽셀	
+predicted marker, prediction	예측 마커, 예측값	Cellaris. 측정값이 아님.
+PREDICTED — research use only, not for diagnosis	예측값 — 연구용으로만 사용, 진단에 사용할 수 없음	안전 문구: 생략·완화·축약 금지.
+Research use only; not for diagnosis.	연구용으로만 사용하며, 진단에 사용할 수 없습니다.	안전 문구: 생략·완화·축약 금지.
+readout, region readout (Cellaris)	분석 결과, 영역 분석	'판독'은 진단 판독으로 읽히므로 쓰지 않음. Measure = 측정.
+cell (Cellaris grid square)	셀	한 번에 예측하는 슬라이드의 작은 정사각형. 생물학적 세포(세포)와 구별.
+window (model input square)	윈도우	모델이 예측하는 정사각형 입력 이미지.
+display window (marker)	표시 범위	마커 색을 그리는 값 범위. Black / White 끝 = 검은색 / 흰색.
+tissue block (5 µm square)	조직 블록	
+mean / spread / density r² (readout columns)	평균 / 산포 / 밀도 r²	
+bright-field	명시야	
+immunofluorescence (IF)	면역형광(IF)	
+model card	모델 카드	
+runtime	런타임	제품명 ONNX Runtime은 그대로.
+reference model	참조 모델	
+your site's model / copy	기관 모델 / 소속 기관의 사본	site = 사용자의 기관.
+reconstruction, reconstruction error	재구성, 재구성 오차	VAE. Original = 원본, Difference = 차이.
+error map	오차 맵	
+anomaly (detection)	이상 (탐지)	
+result cache	결과 캐시	
+preprocessing	전처리	
+batch, dynamic batch	배치, 동적 배치	batch runs(일괄 실행)는 '일괄 실행'.
+device (inference)	장치	
+embedding	임베딩	
+sidecar file	사이드카 파일	
+shape (tensor)	형상	
+upsample, resample	업샘플링, 리샘플링	
+gamepad, game controller	게임패드, 게임 컨트롤러	
+stick / trigger / shoulder button / D-pad	스틱 / 트리거 / 숄더 버튼 / 방향 패드	Left Stick Click = 왼쪽 스틱 누르기.
+face buttons South / East / North / West	아래쪽 / 오른쪽 / 위쪽 / 왼쪽 페이스 버튼	
+dead zone	데드존	
+response curve	응답 곡선	
+mapping	매핑	
+profile (gamepad)	프로필	Save As = 이름으로 저장(버튼 폭이 좁음).
+system pointer, Move Pointer	시스템 포인터, 포인터 이동	
+pan (move the view)	이동	Pan Horizontally = 좌우로 이동. eov의 Pan left = 왼쪽으로 이동과 같은 용법.
+On / Off (switch)	켬 / 끔	상태 문장에서는 켜짐 / 꺼짐.
+Accessibility, Privacy & Security (macOS)	손쉬운 사용, 개인정보 보호 및 보안	System Settings = 시스템 설정.
+worker thread	작업 스레드	백그라운드에서 일하는 스레드(eov, annotations, cellaris, eovae 공통). 예: 작업 스레드를 시작할 수 없습니다.
+host (eov, in plugin messages)	호스트	플러그인 메시지에서 eov를 가리킴. 예: 호스트가 {tile}×{tile} 영역에 대해 {n}바이트를 반환했습니다.
+Low / High (display window ends)	하한 / 상한	마커 표시 범위의 양 끝(Cellaris). eov의 Lower end / Upper end of {} = {} 하한 / {} 상한과 같음.

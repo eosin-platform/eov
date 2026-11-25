@@ -1,0 +1,124 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Danish\n"
+"Language: da\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"Demonstrerer knapper på værktøjslinjen, et sidepanel, overlejringslag, et "
+"punktværktøj med fortryd, et filter og baggrundsjob."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "Eksempelplugin"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "Eksempelpræparater med skakbrætmønster"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "Eksempelsidepanel"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "Placér markør"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "Invertér farver"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "Invertér"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "Vævsandel og gennemsnitlig vævsfarve for hvert præparat"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "Læs det fineste niveau med højst så mange pixels"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "Markører"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "Markør {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "tilføjelse af markør"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "Tæller til ti"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} af {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "Tilføj markør her"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "{n} markør på de åbne præparater"
+msgstr[1] "{n} markører på de åbne præparater"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "Eksempelplugin"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "Intet præparat"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} markør"
+msgstr[1] "{n} markører"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "Ryd markører"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "Invertér farver"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "Kør baggrundsjob"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "Beskriv"

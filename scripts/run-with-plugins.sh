@@ -64,6 +64,14 @@ package_plugin() {
         cp -r "$plugin_src/ui" "$staging_dir/"
     fi
 
+    # Translations ([i18n] in plugin.toml): the catalogs, not the template.
+    if [ -d "$plugin_src/translations" ]; then
+        while IFS= read -r -d '' catalog; do
+            mkdir -p "$staging_dir/$(dirname "$catalog")"
+            cp "$plugin_src/$catalog" "$staging_dir/$catalog"
+        done < <(cd "$plugin_src" && find translations -path '*/LC_MESSAGES/*.po' -print0)
+    fi
+
     crate_name="$(grep '^name\s*=' "$plugin_src/Cargo.toml" | head -1 | sed 's/^name\s*=\s*"\(.*\)"/\1/')"
     lib_name="$(library_name "${crate_name//-/_}")"
     lib_dir="$(plugin_target_dir "$plugin_src/Cargo.toml")/debug"

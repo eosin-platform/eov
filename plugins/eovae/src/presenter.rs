@@ -206,8 +206,19 @@ pub fn run<B: Backend>(core: Arc<Core<B>>) {
             flags.status |= more.status;
             flags.all_overlays |= more.all_overlays;
             flags.overlays.extend(more.overlays);
+            flags.language |= more.language;
         }
         last = Some(Instant::now());
+        if flags.language {
+            // eov keeps what it was given in the old language: every
+            // pane's overlay menu, the status text and the layers' names
+            // are handed over again. The panes' colour badges (which the
+            // sidebar's note names) are read again now.
+            memo.hud.clear();
+            memo.status = None;
+            memo.displays_checked = None;
+            rename_layers(&core, &memo);
+        }
 
         let save = {
             let mut state = lock(&core.state);
@@ -365,12 +376,15 @@ fn refresh_status<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) {
     let text = {
         let state = lock(&core.state);
         match (&state.job, &state.engine.building) {
-            (Some(job), _) if job.progress.total > 0 => Some(format!(
-                "VAE {} / {} tiles",
-                job.progress.done, job.progress.total
+            // Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
+            (Some(job), _) if job.progress.total > 0 => Some(tr!(
+                "VAE {done} / {n} tile" | "VAE {done} / {n} tiles" % job.progress.total,
+                done = job.progress.done
             )),
-            (Some(job), _) => Some(format!("VAE: {}", job.phase)),
-            (None, Some(building)) => Some(format!("VAE: {building}")),
+            // Translators: the status bar: what the analysis is doing
+            (Some(job), _) => Some(tr!("VAE: {}", job.phase)),
+            // Translators: the status bar: how the inference engine is being prepared
+            (None, Some(building)) => Some(tr!("VAE: {}", building)),
             _ => None,
         }
     };
@@ -511,10 +525,10 @@ fn refresh_file<B: Backend>(
     let overlay = memo.files.entry(file_id).or_default();
     if !overlay.layers {
         let heat = LayerSpec::new(heat_layer(file_id), file_id)
-            .named("VAE error map")
+            .named(heat_layer_name())
             .at_z(-90);
         let marks = LayerSpec::new(mark_layer(file_id), file_id)
-            .named("VAE highlight")
+            .named(mark_layer_name())
             .at_z(-55)
             .with_style(Style {
                 stroke: Rgba(0xFF, 0xC1, 0x07, 0xFF),
@@ -621,7 +635,7 @@ fn refresh_file<B: Backend>(
                 overlay.mosaics.entry(target.pane)
             {
                 let spec = LayerSpec::new(id.clone(), file_id)
-                    .named("VAE overlay")
+                    .named(mosaic_layer_name())
                     .at_z(-90);
                 if host.create_layer(spec).is_err() {
                     continue;
@@ -761,11 +775,53 @@ fn refresh_file<B: Backend>(
     }
 }
 
+// The names of eovae's layers, in the language of the interface.
+
+fn heat_layer_name() -> String {
+    tr!("VAE error map")
+}
+
+fn mark_layer_name() -> String {
+    // Translators: the outline of the region under the pointer
+    tr!("VAE highlight")
+}
+
+fn mosaic_layer_name() -> String {
+    tr!("VAE overlay")
+}
+
+fn grid_layer_name() -> String {
+    tr!("VAE tile grid")
+}
+
+/// Hands eov the names of every layer eovae made again (the language
+/// changed).
+fn rename_layers<B: Backend>(core: &Core<B>, memo: &Memo) {
+    let rename = |layer_id: String, name: String| {
+        let _ = core.host.layer(layer_id).update(LayerUpdate {
+            name: Some(name),
+            ..Default::default()
+        });
+    };
+    for (&file_id, overlay) in &memo.files {
+        if overlay.layers {
+            rename(heat_layer(file_id), heat_layer_name());
+            rename(mark_layer(file_id), mark_layer_name());
+        }
+        for &pane in overlay.mosaics.keys() {
+            rename(mosaic_layer(file_id, pane), mosaic_layer_name());
+        }
+        if overlay.grid_layer {
+            rename(grid_layer(file_id), grid_layer_name());
+        }
+    }
+}
+
 fn grid_spec(file_id: FileId, min_zoom: Option<f64>) -> LayerSpec {
     LayerSpec {
         min_zoom,
         ..LayerSpec::new(grid_layer(file_id), file_id)
-            .named("VAE tile grid")
+            .named(grid_layer_name())
             .at_z(-85)
             .with_style(Style {
                 stroke: Rgba(0xFF, 0xFF, 0xFF, 0x70),

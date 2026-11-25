@@ -1,0 +1,306 @@
+term	translation	note
+(buttons, menu items)	שם פעולה: שמירה, פתיחה, סגירה	Action nouns, never gendered imperatives (not שמור/פתח). Gender-neutral, as in current Hebrew desktop and web software.
+(instructions, hints)	יש ל… / ניתן ל… / אפשר ל…	Impersonal or infinitive constructions; never masculine/feminine imperative, present or future 2nd person. Possessives (שלך) and 2nd-person past (בחרת) are neutral in unpointed writing and may be used.
+(questions)	לשמור את השינויים?	Yes/no questions as infinitive questions.
+(progress)	בטעינה… / מתבצעת שמירה…	Not the masculine participle (טוען…). Use the Hebrew ellipsis character … as in English.
+(quotation marks)	"…"	Straight double quotes around inserted names; no gershayim abbreviations (write words in full).
+(right-to-left order)	התוסף {name} מבקש…	Start every text with a Hebrew word where natural: Slint takes a paragraph's direction from its first strong letter, so a text that starts with eov, a Latin term or a non-isolated placeholder is laid out left to right.
+(LRM before neutral-led Latin)	סיומת ‎.eop, עם ‎--language	Put U+200E (LEFT-TO-RIGHT MARK) before a Latin token that begins with punctuation (.eop, --option, ~/.cargo), or it is drawn as eop. or language--.
+(numbers and units)	40×, 0.25 µm, 512 px, 50%	Units, ×, keys and Latin-script names as written; eov isolates inserted values in right-to-left text. Percent sign directly after the number (50%), as in Hebrew typesetting; a space before it would put it on the wrong side.
+For research and education. Not a medical device; not for primary diagnosis.	למחקר ולהוראה. אינו מכשיר רפואי; אין להשתמש בו לאבחון ראשוני.	Legal/clinical text: translate completely; never shorten or soften.
+research use only (RUO)	לשימוש מחקרי בלבד (RUO)	The phrase printed on RUO reagents in Israel; keep RUO.
+not a medical device	אינו מכשיר רפואי	
+primary diagnosis	אבחון ראשוני	Regulatory term: the first, final diagnosis of a case.
+diagnosis, diagnostic	אבחון, אבחוני	
+clinical decisions	החלטות קליניות	
+synthetic	סינתטי	Computed by an algorithm. Never מלאכותי, מזויף or מדומה.
+predicted	חזוי	e.g. ערוץ חזוי (predicted channel).
+generated (image, channel, stain)	מחושב / שנוצר באופן חישובי	Never מלאכותי or מדומה.
+slide	שקופית	Glass microscope slide and its scan (pl. שקופיות, feminine). Never a presentation slide.
+whole-slide image (WSI)	תמונת שקופית שלמה (WSI)	Keep WSI.
+slide viewer, viewer	מציג שקופיות, מציג	
+scanner	סורק	Slide scanner: סורק שקופיות.
+vendor	יצרן	The scanner's manufacturer.
+case	מקרה	The patient case (accession number) the slides belong to.
+specimen	דגימה	
+tissue	רקמה	
+tab	כרטיסייה	One open slide in a pane (pl. כרטיסיות).
+pane	חלונית	Side-by-side viewing area (pl. חלוניות). Not used for panels.
+panel	לוח	Channels panel = לוח הערוצים; Plugins panel = לוח התוספים.
+view	תצוגה	Position, magnification, rotation of a pane.
+viewport	אזור התצוגה	
+minimap	מפת סקירה	Overview of the whole slide with the visible area marked.
+scale bar	סרגל קנה מידה	
+HUD	לוח צף	Panels that float over the slide (pl. לוחות צפים).
+toolbar	סרגל כלים	
+sidebar	סרגל צד	
+status bar	שורת המצב	
+series bar	סרגל הסדרה	The strip of thumbnails of the slides beside the open one.
+Home screen	מסך הבית	
+window	חלון	
+dialog	תיבת דו-שיח	
+tooltip	תיאור כלי	
+link (panes), linked	קישור, מקושרות	Panes that follow each other: החלוניות מקושרות.
+focus, focused pane	מיקוד, החלונית שבמיקוד	
+align, alignment	יישור	
+zoom	זום	Screen scale. Zoom in = התקרבות, zoom out = התרחקות.
+magnification (20×)	הגדלה (20×)	Objective-equivalent optical magnification; 20× stays.
+objective	עדשה אובייקטיבית	Microscope objective (40×). In a narrow label column (the metadata HUD) the short אובייקטיב.
+pixel size	גודל פיקסל	
+MPP (µm per pixel)	MPP (מיקרומטר לפיקסל)	Keep MPP.
+calibration, calibrate	כיול, כיול	
+level, pyramid level	רמה, רמת פירמידה	pl. רמות; L0 stays.
+tile	אריח	Square piece of the image (pl. אריחים); in the dataset dialog the patch is טלאי.
+cache	מטמון	
+resolution	רזולוציה	
+rotation, rotate	סיבוב	clockwise = בכיוון השעון; counterclockwise = נגד כיוון השעון.
+flip (mirror)	היפוך	Flip horizontally = היפוך אופקי.
+region of interest (ROI)	אזור עניין (ROI)	Keep ROI as the abbreviation.
+region	אזור	
+measurement	מדידה	pl. מדידות.
+measure (tool)	כלי מדידה	
+distance, length, area, angle, perimeter	מרחק, אורך, שטח, זווית, היקף	
+polygon, rectangle, ellipse, polyline	מצולע, מלבן, אליפסה, קו שבור	
+annotation	סימון	A drawn mark with a meaning (pl. סימונים); never הערה (comment).
+class (annotation class)	קטגוריה	Category such as Tumour/Stroma (pl. קטגוריות); not מחלקה (also a hospital department).
+cell count, counting	ספירת תאים, ספירה	
+high-power field (HPF)	שדה בהגדלה גבוהה (HPF)	Keep HPF as the abbreviation.
+stain (noun)	צביעה	pl. צביעות; the stain of a slide (H&E, Ki-67).
+dye, chromogen	צבען, כרומוגן	
+H&E	H&E	
+hematoxylin	המטוקסילין	One-letter abbreviation H stays.
+eosin	אאוזין	One-letter abbreviation E stays.
+IHC (immunohistochemistry)	IHC (אימונוהיסטוכימיה)	
+DAB	DAB	
+stain normalization	נרמול צביעה	Macenko and Vahadane are not translated.
+colour normalization	נרמול צבע	
+color deconvolution	דקונבולוציית צבע	Ruifrok–Johnston; separates the dyes into channels.
+optical density	צפיפות אופטית	
+stain vector	וקטור צביעה	
+channel	ערוץ	pl. ערוצים.
+multiplex immunofluorescence (mIF)	אימונופלואורסצנציה מרובבת (mIF)	
+fluorescence	פלואורסצנציה	
+marker	סמן	Never translate the marker names (CD3, Ki-67, PanCK).
+focal plane (Z)	מישור מוקד (Z)	
+time point (T)	נקודת זמן (T)	
+heat map	מפת חום	
+colour map, LUT	מפת צבעים, LUT	
+overlay	שכבת-על	
+layer	שכבה	
+opacity	אטימות	0–100 %.
+threshold	סף	
+colour profile (ICC)	פרופיל צבע (ICC)	
+colour management, colour-managed	ניהול צבע, בניהול צבע	
+as scanned	כפי שנסרקו	
+tissue QC	בקרת איכות רקמה	QC = בקרת איכות.
+pen marks	סימוני טוש	
+folds	קפלים	Tissue folds: קפלי רקמה.
+blur, blurred	טשטוש, מטושטש	
+tissue detection	זיהוי רקמה	
+tissue mask	מסכת רקמה	
+artefact	ארטיפקט	pl. ארטיפקטים.
+dataset	מערך נתונים	
+patch	טלאי	Dataset image (pl. טלאים).
+patch extraction	חילוץ טלאים	
+stride	צעד	Step between patches.
+thread (processor)	תהליכון	
+export	ייצוא	
+import	ייבוא	
+save a copy	שמירת עותק	
+convert, conversion	המרה	
+de-identify, de-identification	התממה	The term of Israeli data-protection practice.
+label image	תמונת תווית	
+macro image	תמונת מאקרו	
+thumbnail	תמונה ממוזערת	
+associated image	תמונה נלווית	
+metadata	מטא-נתונים	
+file, folder, path	קובץ, תיקייה, נתיב	
+file manager	מנהל הקבצים	
+clipboard	לוח הגזירים	
+format (file format)	פורמט	
+bookmark	סימנייה	pl. סימניות.
+session	הפעלה	The run of eov whose slides are restored at the next start.
+plugin	תוסף	pl. תוספים.
+package (.eop)	חבילה	
+model	מודל	
+model store	מאגר המודלים	
+inference	הסקה	Running a model on images.
+render, renderer	רינדור, מנוע רינדור	
+backend (CPU, GPU)	מנגנון (CPU, GPU)	CPU and GPU stay.
+graphics adapter	מתאם גרפי	
+filtering (bilinear, trilinear, Lanczos)	סינון (בי-ליניארי, טרי-ליניארי, Lanczos)	
+sharpness, gamma, brightness, contrast	חדות, גמא, בהירות, ניגודיות	
+saturation	רוויה	
+theme (dark, light, high contrast)	ערכת נושא (כהה, בהירה, ניגודיות גבוהה)	
+notification	התראה	
+keyboard shortcut	קיצור מקלדת	
+Check for Updates…	בדיקת עדכונים…	Asks before going online; never imply automatic updates.
+update (noun)	עדכון	
+safe mode	מצב בטוח	
+log	יומן	
+landmark (alignment)	נקודת ציון	pl. נקודות ציון.
+stain target	יעד צביעה	The appearance stain normalization maps slides onto.
+stain model	מודל צביעה	
+reference (stain vectors, H&E)	ייחוס	וקטורי ייחוס, H&E הייחוס.
+stain fit, fit	התאמה	התאמת Macenko; the fit did not converge = ההתאמה לא התכנסה.
+quantify, quantification	כימות	
+H-score	ציון H	
+weak / moderate / strong (1+ / 2+ / 3+)	חלשה / בינונית / חזקה	Feminine: they qualify צביעה.
+intensity	עוצמה	עוצמת המטוקסילין.
+Z-stack	ערימת Z	
+time series	סדרת זמן	
+series (of slides)	סדרה	
+downsample (factor)	יחס הקטנה	
+preset	הגדרה קבועה מראש	
+compression, lossless	דחיסה, ללא אובדן	
+Pyramidal TIFF	קובץ TIFF פירמידלי	Starts with a Hebrew word for right-to-left order.
+composite (colour)	תמונה צבעונית משולבת	
+display window (channel range)	חלון תצוגה	Lower/upper end = הקצה התחתון/העליון.
+palette	פלטת צבעים	Not לוח (panel).
+outline	קו מתאר	
+solo (channel)	סולו	Show {} alone = הצגת {} בלבד.
+release (software)	מהדורה	version = גרסה; release notes = הערות גרסה.
+update helper	מסייע העדכון	
+repository	מאגר	
+artifact (release)	תוצר	
+manifest	מניפסט	
+administrator policy	מדיניות מנהל המערכת	administrator = מנהל המערכת.
+signature, signed, verified	חתימה, חתום, מאומת	
+SHA-256 digest	תקציר SHA-256	
+sandbox	ארגז החול	
+Messages (notification list)	הודעות	Open Log Folder = פתיחת תיקיית היומנים.
+click, right-click, drag and drop	לחיצה, לחיצה ימנית, גרירה ושחרור	Click to … = לחיצה תציג/תמיר …
+Ready (status)	מוכן	
+Maximize / Minimize window	הגדלת החלון / מזעור החלון	
+bit, byte	סיבית, בית	pl. סיביות, בתים; units such as MB and GiB stay.
+A–Z (sort order)	א–ת	
+hold (a key)	החזקת {}	
+inch, mil	אינץ', מיל	{} in = {} אינץ'; in² = אינץ' רבוע.
+Open	פתיחה	Open… = פתיחה…
+Close	סגירה	
+Cancel	ביטול	
+OK	אישור	
+Save	שמירה	
+Save As…	שמירה בשם…	
+Delete	מחיקה	
+Remove	הסרה	
+Add	הוספה	
+Edit	עריכה	
+Rename	שינוי שם	
+Settings	הגדרות	
+Apply	החלה	
+Reset	איפוס	
+Show / Hide	הצגה / הסתרה	
+Toggle …	הצגה/הסתרה של … / הפעלה/כיבוי של …	By what is toggled: visibility or a mode.
+Enable / Disable	הפעלה / השבתה	Enabled = מופעל, disabled = מושבת.
+On / Off	פועל / כבוי	
+Copy	העתקה	
+Paste	הדבקה	
+Undo / Redo	ביטול פעולה / ביצוע חוזר	
+Zoom in / Zoom out	התקרבות / התרחקות	
+Fit	התאמה	Fit to window = התאמה לחלון.
+Rotate	סיבוב	
+Browse…	עיון…	
+Choose, Select	בחירה	Select all = בחירת הכול.
+Clear	ניקוי	
+Search	חיפוש	
+Filter	סינון	
+Sort	מיון	
+Reload, Refresh	טעינה מחדש, רענון	
+Retry	ניסיון חוזר	
+Continue	המשך	
+Back	חזרה	
+Next / Previous	הבא / הקודם	Feminine הבאה / הקודמת when the noun is feminine (שקופית, כרטיסייה).
+Done	סיום	
+Install / Uninstall	התקנה / הסרת התקנה	
+Update	עדכון	
+Download	הורדה	
+Run	הרצה	
+Stop / Pause / Resume	עצירה / השהיה / המשך	
+Duplicate	שכפול	
+Lock / Unlock	נעילה / ביטול נעילה	
+Full screen	מסך מלא	
+Split	פיצול	
+Details	פרטים	
+Properties	מאפיינים	
+Information	מידע	
+Warning / Error	אזהרה / שגיאה	
+Default	ברירת מחדל	
+Auto, automatic	אוטומטי	
+None	ללא	
+All	הכול	
+Name	שם	
+Size	גודל	
+Width / Height	רוחב / גובה	
+Color	צבע	
+Quality	איכות	
+Preview	תצוגה מקדימה	
+Loading…	בטעינה…	
+Unknown	לא ידוע	
+N/A	לא זמין	
+Help	עזרה	
+About	אודות	
+Language	שפה	
+Could not …	לא ניתן היה ל…	Error texts: impersonal.
+(plugins) menu paths	נתונים ← קורא שני ← עותק סמוי	Write menu and settings paths with ← (U+2190) in right-to-left text; → and › would point backwards.
+(plugins) bracket keys [ and ]	המקשים ‎]‎ ו-‎[‎	Key glyphs [ ] get mirrored in right-to-left text: surround each with U+200E and name ] first, so the two never form a bracket pair.
+(plugins) durations	3:05 דקות, 1:02 שעות, כ-{n} שניות	No geresh abbreviations (דק', שנ'); m/s pairs become m:ss דקות.
+Shift+click, Alt+click, Ctrl+click	לחיצה עם Shift, לחיצה עם Alt, לחיצה עם Ctrl	Also as short labels, so they start with a Hebrew word.
+hotkey	מקש קיצור	Of a class or tool.
+comment (on an annotation)	הערה	pl. הערות; an annotation itself is סימון. Layer notes are also הערות.
+locked	נעול / נעולה	Annotation (masc.), layer (fem.).
+annotation database	מסד נתוני הסימונים	database = מסד נתונים.
+undo label (New layer, Add point…)	יצירת שכבה, הוספת נקודה	Action nouns: the host shows ביטול {} / ביצוע חוזר של {}.
+count point	נקודת ספירה	pl. נקודות ספירה.
+HPF field	שדה HPF	pl. שדות HPF; section heading HIGH-POWER FIELDS = שדות בהגדלה גבוהה.
+field number (FN)	מספר שדה (FN)	Eyepiece field number; the narrow label keeps FN (mm).
+brush, eraser, stroke	מברשת, מחק, משיכה	Brush stroke = משיכת מברשת.
+second reader, blinded copy	קורא שני, עותק סמוי	Blinded as in blinded studies (סמוי).
+review status: draft / verified / rejected	סטטוס סקירה: טיוטה / מאומת / נדחה	Mark verified = הגדרה כמאומת (never סימון כ…, which would read as an annotation).
+merge, back up, attach	מיזוג, גיבוי, צירוף	Attach annotations of another slide = צירוף סימונים של שקופית אחרת.
+property (of an annotation)	מאפיין	pl. מאפיינים.
+author	מחבר	
+DICOM bulk annotations	סימוני DICOM מסוג Bulk	Microscopy Bulk Simple Annotations and other IOD names stay in English.
+study (DICOM), modality	בדיקה, מודליות	As in Israeli PACS; not מחקר.
+combined positive score (CPS)	ציון החיוביות המשולב (CPS)	In formulas: ציון CPS {score}.
+index (Ki-67+ index)	מדד	מדד {class}.
+95% confidence interval	רווח סמך 95%	
+tumour cells, immune cells	תאי גידול, תאי מערכת החיסון	PD-L1-positive = חיוביים ל-PD-L1.
+even-odd rule	כלל זוגי-אי-זוגי	
+predict, prediction	לחזות, חיזוי	pl. חיזויים; PREDICTED banner = חזוי — לשימוש מחקרי בלבד, אין להשתמש לאבחון.
+region readout (Cellaris)	ערכי אזור	The tool Cellaris region readout = ערכי אזור של Cellaris; measure/measuring stays מדידה.
+window (square image a model predicts from)	חלון	pl. חלונות; a display window is חלון תצוגה.
+cell (Cellaris: square of the slide predicted at once)	משבצת	pl. משבצות; never תא, which reads as a biological cell.
+tissue block (Cellaris: 5 µm square of tissue)	ריבוע רקמה	pl. ריבועי רקמה; not a paraffin block.
+reconstruction, reconstruction error	שחזור, שגיאת שחזור	Overlays Original / Reconstruction / Error map / Difference = מקור / שחזור / מפת שגיאות / הפרש.
+training data	נתוני האימון	trained at (pixel size) = רזולוציית אימון.
+bright-field	שדה בהיר	
+runtime (ONNX Runtime)	סביבת ריצה	ONNX Runtime itself stays; at a sentence start סביבת ONNX Runtime.
+model card	כרטיס מודל	
+batch (inference)	אצווה	pl. אצוות; batch runs = הרצות אצווה.
+session (ONNX Runtime)	סשן	Not הפעלה, which is eov's session.
+sidecar file	קובץ נלווה	
+preprocessing	עיבוד מקדים	
+result cache	מטמון התוצאות	
+embeddings	וקטורי הטמעה	
+legend	מקרא	
+anomaly, hot regions	חריגה, אזורים חמים	
+MAE (mean absolute error)	שגיאת MAE	Keep MAE, p05, p95.
+reference model, your site's model	מודל הייחוס, המודל של המוסד שלך	site = the user's institution (מוסד).
+device (inference: CPU, CUDA)	התקן	
+this eov (build)	בנייה זו של eov	
+ignored (a setting or value)	לא הוחל / לא הוחלה	e.g. ההגדרה {key} = {value} לא הוחלה; a profile that is skipped לא נטען.
+gamepad, game controller	בקר משחק	pl. בקרי משחק; plugin name Gamepad = בקר משחק.
+stick, trigger, D-pad	מוט, הדק, צלב הכיוונים	Left Stick X = מוט שמאלי X.
+shoulder button, face buttons (South/East/North/West)	לחצן כתף; לחצן תחתון / ימני / עליון / שמאלי	Face buttons by position.
+dead zone, response curve	אזור מת, עקומת תגובה	
+mapping, profile	מיפוי, פרופיל	pl. מיפויים, פרופילים.
+pointer (mouse), system pointer	מצביע, מצביע המערכת	Not סמן (marker).
+Remote Desktop (permission), Accessibility (macOS)	שולחן עבודה מרוחק, נגישות	System Settings › Privacy & Security › Accessibility = הגדרות המערכת ← פרטיות ואבטחה ← נגישות.
+hex digits	ספרות הקסדצימליות	SHA-256 (64 hex digits) = תקציר SHA-256 (64 ספרות הקסדצימליות).
+worker thread	תהליכון עבודה	A background thread of eov or a plugin: לא ניתן היה להפעיל תהליכון עבודה.
+host (the application that runs a plugin)	תוכנת eov	In plugin error texts the host is eov: תוכנת eov החזירה {n} בתים…
+flagged (by tissue QC)	סומן על ידי בקרת איכות הרקמה	Flags for review, not certainties: possible folds = חשד לקפלים; blur = טשטוש.
+compute, computing (predictions, a readout)	חישוב, מתבצע חישוב	Compute a readout = חישוב ערכי אזור; never מדידה.
+{maker} whole-slide image (file type)	תמונת שקופית שלמה של Aperio / בפורמט Hamamatsu NDPI	File-type names in file managers: של + scanner maker alone; בפורמט + maker and format.
+versions ({from} -> {to})	מגרסה {from} לגרסה {to}	Words, not an arrow, in right-to-left text.

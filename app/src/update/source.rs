@@ -14,6 +14,7 @@ use super::network::{MAX_METADATA_BYTES, NetworkPermission, ReleaseClient};
 use super::plugins::{self, Catalog, PackageFetch, ResolvedPackage};
 use super::signature::{SIGNATURE_SUFFIX, SignatureStatus, Verifier};
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::Version;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,9 +60,12 @@ impl ReleaseSource {
         matches!(self, Self::Offline { .. })
     }
 
+    /// Where the release comes from, for the plan (offline bundles are
+    /// only used from the command line).
     pub fn describe(&self, version: &Version) -> String {
         match self {
-            Self::Network { .. } => format!("GitHub release {}", release_tag(version)),
+            // Translators: where an eov release comes from; {} is its tag, such as v1.2.0.
+            Self::Network { .. } => tr!("GitHub release {}", isolate(release_tag(version))),
             Self::Offline { dir, .. } => format!("offline bundle {}", dir.display()),
         }
     }
@@ -114,7 +118,7 @@ impl ReleaseSource {
         directory: &Path,
     ) -> Result<tempfile::TempPath> {
         fs::create_dir_all(directory)
-            .with_context(|| format!("could not create {}", directory.display()))?;
+            .with_context(|| tr!("could not create {}", isolate(directory.display())))?;
         match self {
             Self::Network { permission } => Ok(client
                 .download_verified(permission, &artifact.url, &artifact.sha256, directory)?

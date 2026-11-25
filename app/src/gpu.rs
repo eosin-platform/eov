@@ -1,5 +1,4 @@
 use crate::AppWindow;
-use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
 use eov_common::color_management::{DisplayTransform, LUT_SIZE};
 use eov_common::processing::{GpuColorUniform, wgsl};
@@ -877,9 +876,56 @@ fn poll_now<F: std::future::Future>(future: F) -> Option<F::Output> {
 // CPU renderer instead of panicking (RND-7).
 // ---------------------------------------------------------------------------
 
-static GPU_FAILURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// Why the GPU renderer cannot draw slides. `Display` says it in English,
+/// for the log; [`GpuFailure::localized`] in the interface's language, for
+/// the window. What wgpu and Slint say stays as they word it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum GpuFailure {
+    /// wgpu reported an error.
+    Error(String),
+    /// wgpu lost the device (its message).
+    DeviceLost(String),
+    /// The window is not drawn with wgpu.
+    NotWgpu,
+    /// No GPU memory for a pane, even after the tile pages were freed.
+    OutOfMemory(String),
+    /// The window does not let the renderer draw into it (Slint's words).
+    Unsupported(String),
+}
 
-pub(crate) fn record_failure(reason: String) {
+impl std::fmt::Display for GpuFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GpuFailure::Error(error) => write!(f, "GPU error: {error}"),
+            GpuFailure::DeviceLost(message) => write!(f, "the GPU device was lost ({message})"),
+            GpuFailure::NotWgpu => f.write_str("the window does not render with wgpu"),
+            GpuFailure::OutOfMemory(error) => write!(f, "out of GPU memory ({error})"),
+            GpuFailure::Unsupported(error) => {
+                write!(f, "the window does not support GPU rendering ({error})")
+            }
+        }
+    }
+}
+
+impl GpuFailure {
+    /// The reason in the interface's language.
+    pub(crate) fn localized(&self) -> String {
+        use eov_plugin_api::i18n::tr;
+        match self {
+            GpuFailure::Error(error) => tr!("GPU error: {}", error),
+            GpuFailure::DeviceLost(message) => tr!("the GPU device was lost ({})", message),
+            GpuFailure::NotWgpu => tr!("the window does not render with wgpu"),
+            GpuFailure::OutOfMemory(error) => tr!("out of GPU memory ({})", error),
+            GpuFailure::Unsupported(error) => {
+                tr!("the window does not support GPU rendering ({})", error)
+            }
+        }
+    }
+}
+
+static GPU_FAILURE: std::sync::Mutex<Option<GpuFailure>> = std::sync::Mutex::new(None);
+
+pub(crate) fn record_failure(reason: GpuFailure) {
     if let Ok(mut failure) = GPU_FAILURE.lock()
         && failure.is_none()
     {
@@ -889,7 +935,7 @@ pub(crate) fn record_failure(reason: String) {
 
 /// Why the GPU renderer failed, once: wgpu reported an error or lost the
 /// device.
-pub(crate) fn take_failure() -> Option<String> {
+pub(crate) fn take_failure() -> Option<GpuFailure> {
     GPU_FAILURE.lock().ok()?.take()
 }
 
@@ -898,12 +944,12 @@ pub(crate) fn take_failure() -> Option<String> {
 fn install_error_handlers(device: &wgpu::Device) {
     device.on_uncaptured_error(Arc::new(|error: wgpu::Error| {
         tracing::error!("GPU error: {error}");
-        record_failure(format!("GPU error: {error}"));
+        record_failure(GpuFailure::Error(error.to_string()));
     }));
     device.set_device_lost_callback(|reason, message| {
         if reason != wgpu::DeviceLostReason::Destroyed {
             tracing::error!("The GPU device was lost: {message}");
-            record_failure(format!("the GPU device was lost ({message})"));
+            record_failure(GpuFailure::DeviceLost(message));
         }
     });
 }
@@ -1400,7 +1446,8 @@ impl GpuRenderer {
         }
     }
 
-    pub fn install(ui: &AppWindow, renderer: Rc<RefCell<Self>>) -> Result<()> {
+    /// Draws slides into the window from now on, or says why it cannot.
+    pub fn install(ui: &AppWindow, renderer: Rc<RefCell<Self>>) -> Result<(), GpuFailure> {
         ui.window()
             .set_rendering_notifier(move |state, graphics_api| {
                 let mut renderer = renderer.borrow_mut();
@@ -1411,8 +1458,8 @@ impl GpuRenderer {
                     RenderingState::AfterRendering => {}
                     _ => {}
                 }
-            })?;
-        Ok(())
+            })
+            .map_err(|error| GpuFailure::Unsupported(error.to_string()))
     }
 
     pub fn queue_frame(&mut self, slot: SurfaceSlot, frame: QueuedFrame) -> Option<Image> {
@@ -1459,7 +1506,7 @@ impl GpuRenderer {
         }
 
         let GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api else {
-            record_failure("the window does not render with wgpu".to_string());
+            record_failure(GpuFailure::NotWgpu);
             return;
         };
 
@@ -1556,7 +1603,7 @@ impl GpuRenderer {
                 match create(&runtime.device) {
                     Ok(texture) => texture,
                     Err(error) => {
-                        record_failure(format!("out of GPU memory ({error})"));
+                        record_failure(GpuFailure::OutOfMemory(error.to_string()));
                         return None;
                     }
                 }
@@ -3022,5 +3069,63 @@ mod tests {
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].tag.generation, 2);
         assert_eq!(frames[0].pixels, surface);
+    }
+
+    /// The log says why the GPU renderer failed in English, as eov wrote it
+    /// before it was translated, whatever the interface's language; the
+    /// window says it in that language.
+    #[test]
+    fn the_log_gets_gpu_failures_in_english() {
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 2] = [
+            (
+                None,
+                "out of GPU memory ({})",
+                &["kein GPU-Speicher mehr ({})"],
+            ),
+            (
+                None,
+                "the window does not render with wgpu",
+                &["das Fenster wird nicht mit wgpu gezeichnet"],
+            ),
+        ];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let failures = [
+            GpuFailure::Error("Validation Error".into()),
+            GpuFailure::DeviceLost("Device lost".into()),
+            GpuFailure::NotWgpu,
+            GpuFailure::OutOfMemory("Out of Memory".into()),
+            GpuFailure::Unsupported("rendering notifier".into()),
+        ];
+        let english: Vec<String> = failures.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            english,
+            [
+                "GPU error: Validation Error",
+                "the GPU device was lost (Device lost)",
+                "the window does not render with wgpu",
+                "out of GPU memory (Out of Memory)",
+                "the window does not support GPU rendering (rendering notifier)",
+            ]
+        );
+        assert_eq!(
+            failures[3].localized(),
+            "kein GPU-Speicher mehr (Out of Memory)"
+        );
+        assert_eq!(
+            failures[2].localized(),
+            "das Fenster wird nicht mit wgpu gezeichnet"
+        );
     }
 }

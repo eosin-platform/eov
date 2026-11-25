@@ -1,3 +1,5 @@
+import { Locale } from "locale.slint";
+
 // The on-screen scale bar. The length and label are computed in Rust
 // (`eov_common::overlay::scale_bar_for_view`): the nicest 1-2-5 length in
 // the shown unit, measured with the horizontal pixel size, labelled with
@@ -169,7 +171,7 @@ export component ScaleBar inherits Rectangle {
         width: 100%;
         text: root.label-text;
         color: white;
-        accessible-label: @tr("Scale bar: {}", root.label-text);
+        accessible-label: @tr("Scale bar: {}", Locale.isolate(root.label-text));
         font-size: 10px;
         font-weight: 600;
         horizontal-alignment: center;

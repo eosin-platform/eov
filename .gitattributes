@@ -2,3 +2,8 @@
 # signatures. Never convert their line endings (Git checks text out with
 # CRLF on Windows by default), or every signature over them breaks.
 app/tests/data/signing/** -text
+
+# Translation catalogs are read byte for byte by Slint and eov's build
+# script; keep their line endings the same on every platform.
+*.po text eol=lf
+*.pot text eol=lf

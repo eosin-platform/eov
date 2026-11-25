@@ -124,6 +124,33 @@ jobs:
         working-directory: clients/python
         run: python3 -m unittest discover -p 'test_*.py' -v
 
+  translations:
+    name: Translation catalogs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1 (master)
+        with:
+          toolchain: stable
+      - name: Install gettext, polib and the extractors
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gettext python3-polib
+          # The extractors the templates are made with (docs/translating.md);
+          # slint-tr-extractor matches the Slint version eov is built with.
+          cargo install --locked slint-tr-extractor --version 1.19.0
+          cargo install --locked xtr --version 0.1.11
+      # Templates out of date with the sources, catalogs not merged with
+      # them, invalid catalogs and wrong headers. Completeness, placeholders
+      # and plural forms are checked by the eov tests (i18n::tests).
+      - name: Check the catalogs
+        run: python3 tools/i18n/i18n.py check --strict --complete
+
   check:
     name: Clippy and tests (Linux)
     runs-on: ubuntu-latest

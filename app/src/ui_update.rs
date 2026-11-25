@@ -18,9 +18,47 @@ use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, StainNormalization, format_decimal,
     format_file_size, format_u64,
 };
+use eov_plugin_api::i18n::tr;
 use slint::ComponentHandle;
 use slint::{Image, Model, SharedString, VecModel};
 use std::rc::Rc;
+
+/// A number written by `eov_common`'s formatters (`.` before the decimals,
+/// `,` between thousands) as the interface's language writes it: with its
+/// decimal separator and, where that is not `.`, a no-break space between
+/// thousands (a `,` would read as a decimal separator there). Numbers that
+/// go to files, the clipboard as data or scripts keep the formatters' form.
+pub(crate) fn localized_number(text: &str) -> String {
+    let separator = eov_plugin_api::i18n::current().decimal_separator;
+    if separator == '.' {
+        return text.to_string();
+    }
+    text.chars()
+        .map(|c| match c {
+            '.' => separator,
+            ',' => '\u{a0}',
+            c => c,
+        })
+        .collect()
+}
+
+/// [`format_decimal`] in the interface's language.
+fn decimal(value: f64) -> String {
+    localized_number(&format_decimal(value))
+}
+
+/// Writes again, in the language just chosen, the texts made here that the
+/// window keeps showing outside the tabs and panes ([`crate::update_tabs`]
+/// makes those): the series bar's entries and the open panels and dialogs.
+pub(crate) fn refresh_translated_texts(ui: &crate::AppWindow, host: &crate::host_ui::UiHost) {
+    host.state.write().retranslate_series();
+    crate::slide_info::refresh_texts(ui, &host.state);
+    crate::channels::refresh_texts(ui);
+    crate::quantify_panel::refresh_texts(ui, &host.state);
+    crate::export_dialog::refresh_texts(ui, &host.state, &host.tile_cache);
+    crate::save_copy::refresh_texts(ui);
+    crate::dataset_dialog::refresh_texts(ui);
+}
 
 fn ui_bottom_panel_kind(kind: crate::state::BottomPanelKind) -> SlintBottomPanelKind {
     match kind {
@@ -78,8 +116,14 @@ fn update_series_items_model(series: &crate::state::OpenedSeries) -> Rc<VecModel
         let (series_label, name) = if entry.is_directory {
             (SharedString::default(), entry.filename.clone())
         } else if series.sort == crate::state::SeriesSort::Case {
-            let case = crate::series_case::case_of(&entry.filename);
-            let name = crate::series_case::name_within(&entry.filename, &case);
+            // The case comes from the file name itself, not from the name
+            // shown (which may say, in any language, that it is a DICOM
+            // series).
+            let case = crate::series_case::case_of(&entry.file_name);
+            let name = crate::file_ops::series_name(
+                crate::series_case::name_within(&entry.file_name, &case),
+                entry.instances,
+            );
             (SharedString::from(case), name)
         } else {
             let label = series_index_label(file_index);
@@ -126,62 +170,69 @@ fn build_metadata_items(
     };
 
     let properties = file.wsi.properties();
-    let vendor = properties.vendor.as_deref().unwrap_or("Unknown");
+    // Translators: shown for a slide property the file does not record.
+    let unknown = || tr!("Unknown");
+    // Translators: "not available", for a slide property the file does not
+    // record.
+    let not_available = || tr!("N/A");
+    let vendor = properties.vendor.clone().unwrap_or_else(unknown);
     let objective = properties
         .objective_power
-        .map(|value| format!("{}x", format_decimal(value)))
-        .unwrap_or_else(|| "N/A".to_string());
+        .map(|value| format!("{}x", decimal(value)))
+        .unwrap_or_else(not_available);
     let mpp = properties
         .mpp_x
         .zip(properties.mpp_y)
-        .map(|(x, y)| format!("{} x {} µm/px", format_decimal(x), format_decimal(y)))
-        .unwrap_or_else(|| "N/A".to_string());
-    let scan_date = properties.scan_date.as_deref().unwrap_or("Unknown");
-    let levels = format!(
-        "{} levels | L{}",
-        properties.levels.len(),
-        viewport_info.level.max(0)
+        .map(|(x, y)| format!("{} x {} µm/px", decimal(x), decimal(y)))
+        .unwrap_or_else(not_available);
+    let scan_date = properties.scan_date.clone().unwrap_or_else(unknown);
+    let levels = tr!(
+        // Translators: the slide's pyramid: how many levels it has, and the
+        // level shown now ("L0" is full resolution).
+        "{n} level | L{level}" | "{n} levels | L{level}" % properties.levels.len(),
+        level = viewport_info.level.max(0)
     );
     let file_size = file
         .file_size
-        .map(format_file_size)
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map(|bytes| localized_number(&format_file_size(bytes)))
+        .unwrap_or_else(unknown);
 
     vec![
         MetadataItem {
-            label: SharedString::from("Slide"),
+            label: SharedString::from(tr!("Slide metadata" => "Slide")),
             value: SharedString::from(properties.filename.clone()),
         },
         MetadataItem {
-            label: SharedString::from("Dimensions"),
+            label: SharedString::from(tr!("Slide metadata" => "Dimensions")),
             value: SharedString::from(format!(
                 "{} x {} px",
-                format_u64(properties.width),
-                format_u64(properties.height)
+                localized_number(&format_u64(properties.width)),
+                localized_number(&format_u64(properties.height))
             )),
         },
         MetadataItem {
-            label: SharedString::from("Pyramid"),
+            label: SharedString::from(tr!("Slide metadata" => "Pyramid")),
             value: SharedString::from(levels),
         },
         MetadataItem {
-            label: SharedString::from("File Size"),
+            label: SharedString::from(tr!("Slide metadata" => "File Size")),
             value: SharedString::from(file_size),
         },
         MetadataItem {
-            label: SharedString::from("Vendor"),
+            label: SharedString::from(tr!("Slide metadata" => "Vendor")),
             value: SharedString::from(vendor),
         },
         MetadataItem {
-            label: SharedString::from("Objective"),
+            label: SharedString::from(tr!("Slide metadata" => "Objective")),
             value: SharedString::from(objective),
         },
         MetadataItem {
-            label: SharedString::from("MPP"),
+            // Translators: microns per pixel, the slide's pixel size.
+            label: SharedString::from(tr!("Slide metadata" => "MPP")),
             value: SharedString::from(mpp),
         },
         MetadataItem {
-            label: SharedString::from("Scan Date"),
+            label: SharedString::from(tr!("Slide metadata" => "Scan Date")),
             value: SharedString::from(scan_date),
         },
     ]
@@ -311,7 +362,9 @@ pub fn update_tabs(
                 if state.is_home_tab(tab_id) {
                     Some(TabData {
                         id: tab_id,
-                        title: SharedString::from("Home"),
+                        // Translators: the title of the Home tab (the start
+                        // screen with recent slides).
+                        title: SharedString::from(tr!("Tab" => "Home")),
                         path: SharedString::new(),
                         is_modified: false,
                         is_active: Some(tab_id) == state.active_tab_id_for_pane(pane),
@@ -429,14 +482,14 @@ pub fn update_tabs(
                         hud.time_points = file.wsi.time_points() as i32;
                         // Along the screen's x axis, whatever the turn.
                         if let Some((um_x, um_y, _)) = spacing
-                            && let Some((width, label)) = eov_common::overlay::scale_bar_for_view(
+                            && let Some(bar) = eov_common::overlay::view_scale_bar(
                                 ps.viewport.viewport.screen_x_um_per_px(um_x, um_y),
                                 SCALE_BAR_MAX_PX,
                                 ps.hud.measurement_unit,
                             )
                         {
-                            hud.scale_bar_width = width as f32;
-                            hud.scale_bar_label = SharedString::from(label);
+                            hud.scale_bar_width = bar.width_px as f32;
+                            hud.scale_bar_label = SharedString::from(scale_bar_label(&bar));
                         }
                         hud
                     })
@@ -569,10 +622,16 @@ pub fn update_tabs(
             series.current_path.display().to_string(),
         ));
         let shown = series.visible_entries().len();
-        ui.set_bottom_panel_status_right(SharedString::from(if shown == series.entries.len() {
-            format!("{shown} items")
+        let total = series.entries.len();
+        ui.set_bottom_panel_status_right(SharedString::from(if shown == total {
+            tr!("{n} item" | "{n} items" % shown)
         } else {
-            format!("{shown} of {} items", series.entries.len())
+            // Translators: entries of the series bar that match its filter,
+            // of all its entries.
+            tr!(
+                "{shown} of {n} item" | "{shown} of {n} items" % total,
+                shown = shown
+            )
         }));
         ui.set_series_sort_label(series.sort.label().into());
         // Cleared when another folder opens.
@@ -624,7 +683,7 @@ pub fn update_recent_files(ui: &crate::AppWindow, state: &AppState) {
 pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
     let mut items = vec![ContextMenuItem {
         id: SharedString::from("open-folder-dialog"),
-        label: SharedString::from("Open Folder..."),
+        label: SharedString::from(tr!("Open Folder…")),
         icon: SharedString::new(),
         shortcut: SharedString::new(),
         enabled: true,
@@ -634,7 +693,7 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
     if state.recent_files.is_empty() {
         items.push(ContextMenuItem {
             id: SharedString::from("recent-empty"),
-            label: SharedString::from("No recent files"),
+            label: SharedString::from(tr!("No recent files")),
             icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: false,
@@ -665,7 +724,7 @@ pub fn build_recent_menu_items(state: &AppState) -> Vec<ContextMenuItem> {
     }
     items.push(ContextMenuItem {
         id: SharedString::from("recent-clear"),
-        label: SharedString::from("Clear Recent Files"),
+        label: SharedString::from(tr!("Clear Recent Files")),
         icon: SharedString::new(),
         shortcut: SharedString::new(),
         enabled: true,
@@ -685,7 +744,7 @@ pub fn build_recent_folder_menu_items(state: &AppState) -> Vec<ContextMenuItem> 
 
     let mut items = vec![ContextMenuItem {
         id: SharedString::from("open-folder-dialog"),
-        label: SharedString::from("Open Folder..."),
+        label: SharedString::from(tr!("Open Folder…")),
         icon: SharedString::new(),
         shortcut: SharedString::new(),
         enabled: true,
@@ -695,7 +754,7 @@ pub fn build_recent_folder_menu_items(state: &AppState) -> Vec<ContextMenuItem> 
     if recent_folders.is_empty() {
         items.push(ContextMenuItem {
             id: SharedString::from("recent-empty"),
-            label: SharedString::from("No opened folders"),
+            label: SharedString::from(tr!("No opened folders")),
             icon: SharedString::new(),
             shortcut: SharedString::new(),
             enabled: false,
@@ -796,6 +855,18 @@ fn ui_hud_settings(
 /// Longest on-screen scale bar, in logical pixels.
 const SCALE_BAR_MAX_PX: f64 = 140.0;
 
+/// The on-screen scale bar's label as the interface writes lengths (as the
+/// measurements' labels do); the one burned into exports keeps `.` decimals.
+fn scale_bar_label(bar: &eov_common::overlay::ViewScaleBar) -> String {
+    let value = localized_number(&bar.value);
+    match bar.unit {
+        // Translators: a length in inches ("1.00 in").
+        MeasurementUnit::Inches => tr!("{} in", value),
+        MeasurementUnit::Um => format!("{value} µm"),
+        MeasurementUnit::Mm => format!("{value} mm"),
+    }
+}
+
 fn ui_isolated_channel(ic: crate::state::IsolatedChannel) -> SlintIsolatedChannel {
     match ic {
         crate::state::IsolatedChannel::None => SlintIsolatedChannel::None,
@@ -819,6 +890,8 @@ mod tests {
         let color = crate::color::HudColorInfo {
             modified: true,
             badge: "Colour-normalised (Macenko) · Sharpened".into(),
+            badge_english: "Colour-normalised (Macenko) · Sharpened".into(),
+            stain_colors: true,
             warnings: vec!["first".into(), "second".into()],
             color_management: crate::color::ColorManagementInfo::On("ScanScope v1".into()),
         };
@@ -837,6 +910,35 @@ mod tests {
             &crate::color::HudColorInfo::default(),
         );
         assert!(!plain.modified && plain.color_badge.is_empty() && plain.color_warning.is_empty());
+    }
+
+    /// The on-screen scale bar writes its number as the interface does.
+    #[test]
+    fn scale_bar_labels_follow_the_interface_s_language() {
+        use eov_common::MeasurementUnit;
+        use eov_common::overlay::view_scale_bar;
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let bar = view_scale_bar(0.25, 110.0, MeasurementUnit::Mm).unwrap();
+        assert_eq!(super::scale_bar_label(&bar), "0.02 mm");
+        let inches = view_scale_bar(200.0, 140.0, MeasurementUnit::Inches).unwrap();
+        assert_eq!(super::scale_bar_label(&inches), "1 in");
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(None, "{} in", &["{} Zoll"])];
+        i18n::set_catalog(
+            german,
+            Some(i18n::Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        assert_eq!(super::scale_bar_label(&bar), "0,02 mm");
+        assert_eq!(super::scale_bar_label(&inches), "1 Zoll");
+        // As data, the bar keeps `.` (the exported bar's label).
+        assert_eq!(bar.label(), "0.02 mm");
     }
 
     #[test]

@@ -1,0 +1,312 @@
+term	translation	note
+(register: you)	usted	Formal "usted" ("Abra una preparación…", "Vuelva a intentarlo"); prefer impersonal "se" constructions where natural. Neutral international Spanish (no regionalisms: archivo, not fichero; equipo, not ordenador/computadora).
+(buttons, menu items, tooltips)	infinitivo	Commands in the infinitive: "Abrir", "Guardar una copia…", "Cerrar ventana".
+(capitalisation)	mayúscula inicial	Sentence case only, never English Title Case: "Guardar referencia de tinción…", not "Guardar Referencia De Tinción…".
+(quotation marks)	“ ”	Typographic double quotes, as in the source; keep straight quotes inside code, commands and config examples.
+(ellipsis)	…	Keep the single character "…" on menu items that open a dialog.
+(percent)	{} %	Space before % (RAE): "12,5 %", "{percent} % de tejido". Degrees without space: "{angle}°".
+(questions, exclamations)	¿…? ¡…!	Always with the opening sign.
+slide	preparación	The specimen slide and its scan (preparación histológica); plural "preparaciones". "portaobjetos" only for the physical glass. Never "diapositiva".
+whole-slide image (WSI)	imagen de preparación completa (WSI)	Keep the abbreviation WSI ("archivos WSI").
+slide viewer	visor de preparaciones	
+viewer	visor	
+tab	pestaña	One open slide in a pane.
+pane	panel	A side-by-side viewing area of the window.
+focused pane	panel activo	
+panel	panel	Side or floating panel ("panel del mapa de calor").
+view	vista	What a pane shows: position, zoom, rotation.
+viewport	área de visualización	The area of a pane where the slide is drawn.
+minimap	minimapa	
+scale bar	barra de escala	
+HUD	panel superpuesto	The panels floating over the slide; HUD itself is not shown.
+toolbar	barra de herramientas	
+sidebar	barra lateral	
+status bar	barra de estado	
+series bar	barra de series	The bar listing the slides of a folder or case.
+menu	menú	
+context menu	menú contextual	
+dialog	cuadro de diálogo	
+window	ventana	Also the intensity window of a channel.
+zoom	zoom	Screen scale (el zoom).
+Zoom in / Zoom out	Acercar / Alejar	
+magnification	aumento	Optical (objective-equivalent) magnification; "20×" stays "20×".
+objective	objetivo	Microscope objective ("objetivo de 40×"). Never use "objetivo" for "target".
+objective power	aumento del objetivo	
+pixel	píxel	Plural "píxeles".
+pixel size	tamaño de píxel	
+MPP (µm per pixel)	MPP (µm por píxel)	Keep MPP.
+calibration	calibración	
+level, pyramid level	nivel, nivel de la pirámide	"level-0 pixels" → "píxeles del nivel 0".
+tile	tesela	Square image piece loaded at a time.
+patch	parche	Dataset patch for machine learning.
+patch extraction	extracción de parches	
+stride	paso	Step between patches.
+dataset	conjunto de datos	
+cache	caché	Feminine: "la caché".
+region of interest (ROI)	región de interés (ROI)	Keep ROI.
+measurement	medición	
+Measure (tool)	Medir	"herramienta Medir", "herramienta de medición".
+ruler	regla	
+distance	distancia	
+area	área	
+perimeter	perímetro	
+angle	ángulo	
+annotation	anotación	A drawn mark with a meaning; not "comentario".
+annotation class	clase	
+cell count	recuento celular	
+counting	recuento	
+high-power field (HPF)	campo de gran aumento (HPF)	Keep HPF.
+H&E	H&E	"tinción de H&E"; "la H&E de referencia".
+hematoxylin	hematoxilina	One letter: H.
+eosin	eosina	One letter: E.
+IHC	IHC	inmunohistoquímica (IHC); keep IHC.
+DAB	DAB	
+stain	tinción	The staining (H&E, IHC, Ki-67…); "colorante" only for a single dye.
+stain model	modelo de tinción	
+stain normalization	normalización de la tinción	Macenko and Vahadane untranslated.
+stain target	referencia de tinción	The appearance slides are normalised to. "the reference stain target" → "la referencia de tinción estándar".
+reference (vectors, H&E)	de referencia	"vectores de referencia", "H&E de referencia".
+stain vectors	vectores de tinción	
+fit (stains)	estimar / ajuste	"fit the region's stains" → "estimar las tinciones de la región"; noun "ajuste" ("ajuste de Macenko", "el ajuste no convergió").
+color deconvolution	deconvolución de color	
+colour	color	
+colour-managed	con gestión del color	
+colour profile (ICC)	perfil de color (ICC)	
+channel	canal	Fluorescence or computed channel.
+multiplex immunofluorescence (mIF)	inmunofluorescencia múltiplex (mIF)	
+marker	marcador	Protein marker in a channel, or a point marker; marker names (CD3, Ki-67…) untranslated. Never used for "bookmark".
+bookmark	vista guardada	A saved view of a slide. "Add Bookmark…" → "Guardar vista…"; "Bookmarks…" → "Vistas guardadas…". Not "marcador" (= marker).
+focal plane (Z)	plano focal (Z)	
+time point (T)	punto temporal (T)	
+heat map	mapa de calor	
+colour map	mapa de colores	
+overlay	superposición	
+layer	capa	
+opacity	opacidad	
+threshold	umbral	
+intensity	intensidad	
+weak / moderate / strong	débil / moderada / intensa	IHC staining intensity; feminine, agreeing with "tinción".
+tissue	tejido	
+tissue QC	control de calidad del tejido	
+pen marks	marcas de rotulador	
+folds	pliegues	
+blur, out of focus	desenfoque, desenfocado	
+tissue detection	detección de tejido	
+tissue mask	máscara de tejido	
+background	fondo	
+export	exportar	
+save a copy	guardar una copia	
+convert	convertir	
+de-identify	desidentificar	Remove what could identify the patient (label, macro, metadata): "copia desidentificada". Not "anonimizar", which overstates.
+label image	imagen de la etiqueta	
+macro image	imagen macro	
+thumbnail	miniatura	
+associated image	imagen asociada	
+metadata	metadatos	
+property	propiedad	
+case (accession)	caso	
+session	sesión	
+plugin	complemento	Plural "complementos".
+package (.eop)	paquete (.eop)	
+model	modelo	Machine-learning model.
+model store	almacén de modelos	
+inference	inferencia	
+synthetic / predicted / generated	sintético / predicho / generado	Computed pixels; never "artificial", "falso" or "simulado".
+research use only (RUO)	solo para uso en investigación (RUO)	Regulatory phrase of RUO reagents; never soften.
+not a medical device	no es un dispositivo médico	Internationally understood term (Spain's legal term is "producto sanitario").
+primary diagnosis	diagnóstico primario	"no debe utilizarse para el diagnóstico primario".
+render, rendering	renderizar, renderizado	
+renderer	renderizador	"renderizador por software", "renderizador por GPU".
+backend (CPU, GPU)	motor (CPU, GPU)	"motor de renderizado".
+graphics adapter	adaptador gráfico	
+filtering	filtrado	
+bilinear / trilinear / Lanczos	bilineal / trilineal / Lanczos	
+sharpness	nitidez	
+gamma	gamma	
+brightness	brillo	
+contrast	contraste	
+theme	tema	
+dark / light / high contrast	oscuro / claro / contraste alto	
+Home screen	pantalla de inicio	
+Check for Updates…	Buscar actualizaciones…	Asks before going online; never implies automatic updates.
+update	actualización / actualizar	
+release	versión	A published release; "publicación" only where it must be told apart from "version". "release notes" → "notas de la versión"; "release tag" → "etiqueta de versión"; "GitHub Releases" stays.
+prerelease	versión preliminar	
+version	versión	
+artifact	artefacto	A file of a release listed in release.toml.
+asset (GitHub release)	recurso	
+manifest	manifiesto	
+catalog	catálogo	
+repository	repositorio	
+tag (release)	etiqueta	
+update helper	programa auxiliar de actualización	
+staged (update)	preparado	Downloaded and waiting to be installed when eov exits ("paquete de complemento preparado"); as a status label: "pendiente de instalación".
+app bundle (macOS)	paquete de aplicación	
+Flatpak bundle	paquete Flatpak	
+cask, tap (Homebrew)	cask, tap	Homebrew terms, untranslated.
+policy (administrator)	directiva	"la directiva del administrador".
+administrator	administrador	
+signature, signed	firma, firmado	
+verify	verificar	
+checksum	suma de comprobación	
+download	descargar	
+install / uninstall	instalar / desinstalar	
+installation	instalación	
+proxy	proxy	
+network	red	
+offline	sin conexión	
+file	archivo	
+folder	carpeta	
+directory	directorio	
+path	ruta	
+file name	nombre de archivo	
+URL	URL	Feminine: "la URL".
+keyboard shortcut	atajo de teclado	
+key	tecla	
+Open	Abrir	
+Open Recent	Abrir reciente	
+Close	Cerrar	
+Cancel	Cancelar	
+OK	Aceptar	
+Save	Guardar	
+Save As…	Guardar como…	
+Export	Exportar	
+Import	Importar	
+Delete	Eliminar	Removes for good (files, bookmarks).
+Remove	Quitar	Takes out of a list or view.
+Clear	Borrar	
+Settings	Configuración	
+Preferences	Preferencias	
+Apply	Aplicar	
+Reset	Restablecer	
+Restore	Restaurar	
+Show / Hide	Mostrar / Ocultar	
+Copy	Copiar	
+Paste	Pegar	
+Undo / Redo	Deshacer / Rehacer	
+Fit	Ajustar	"Ajustar la preparación al panel".
+Rotate	Girar	"Girar a la izquierda / derecha".
+Flip	Voltear	
+Add	Agregar	
+Edit	Editar	
+Rename	Cambiar nombre	
+Browse…	Examinar…	
+Choose…	Elegir…	
+Select	Seleccionar	
+Enable / Disable	Activar / Desactivar	
+Enabled / Disabled	Activado / Desactivado	
+Default	predeterminado	"Restablecer valores predeterminados".
+Automatic	automático	
+None	ninguno / ninguna	Agrees with the noun.
+Name	Nombre	
+Size	Tamaño	
+Width / Height	Ancho / Alto	
+Format	Formato	
+Quality	Calidad	
+Compression	Compresión	
+lossless	sin pérdida	
+Help	Ayuda	
+About	Acerca de	
+Quit	Salir	
+Retry	Reintentar	
+Dismiss	Descartar	
+Details	Detalles	
+Notifications	Notificaciones	
+Language	Idioma	
+Link / Unlink (panes)	Vincular / Desvincular	
+align, alignment	alinear, alineación	
+landmark	punto de referencia	
+Quantify	Cuantificar	
+Split	Dividir	
+Maximize / Minimize	Maximizar / Minimizar	
+scan, scanner	escaneado, escáner	"región escaneada".
+invalid	no válido	
+unsupported	no compatible	
+Cannot … / Could not …	No se puede… / No se pudo…	
+undo label	Deshacer: {}	Undo labels are infinitive phrases with an initial capital ("Agregar medición", "Eliminar anotación"); the toolbar shows "Deshacer: {}" / "Rehacer: {}".
+Done (button)	Listo	
+self-update	autoactualización	eov replacing itself; not "actualización automática", which would imply background updates.
+sandbox (Flatpak)	entorno aislado	
+host (outside the Flatpak sandbox)	sistema anfitrión	
+crash, crashed	dejar de funcionar	"El complemento {} dejó de funcionar y se detuvo"; crash report: "informe del fallo".
+hotkey	atajo de teclado	A plugin's key.
+log folder	carpeta de registros	"Abrir carpeta de registros".
+Messages (status bar popup)	Mensajes	
+Keyboard Shortcuts (panel)	Atajos de teclado	
+Slide Information (panel)	Información de la preparación	
+language names	Inglés, Alemán, Español…	Capitalised as list items; the name of Spanish is "Español", identical to its native name.
+DPI	ppp	"{} ppp", "Resolución (ppp)".
+tile size (dataset)	tamaño de tesela	
+file manager	administrador de archivos	
+parent folder	carpeta superior	
+archive (zip, tar)	archivo comprimido	
+managed (by policy, Homebrew, eov update)	administrado	"no administrado" for a plugin copied by hand.
+Shift, Ctrl, Alt, Esc	Shift, Ctrl, Alt, Esc	Key names stay as written ("con Shift: más lejos").
+toggle (show/hide)	Mostrar u ocultar…	"Toggle minimap" → "Mostrar u ocultar el minimapa".
+colour-blind safe	apta para daltónicos	Palette option.
+Navigate (tool)	Navegar	Tool names: "Navegar", "Medir".
+viewport lock	bloqueo de vistas	
+level abbreviation (L0)	N0	"N{level}" for "L{level}" (nivel).
+H-score	H-score	Kept as in Spanish pathology reports.
+Lock / Unlock (layer, annotation)	Bloquear / Desbloquear	State label: "bloqueada" (capa, anotación are feminine).
+outline (region)	contorno	"The outline crossed itself" → "El contorno se cruzaba consigo mismo".
+shape (annotation geometry)	forma	
+hole (polygon)	agujero	
+brush / eraser / brush stroke	pincel / borrador / trazo de pincel	Annotation brush tool.
+HPF field	campo HPF	Tool "Campo HPF (H)"; heading "CAMPOS DE GRAN AUMENTO".
+Count (tab) / Count tool	Recuento / herramienta Contar	Tab "Recuento"; tool named "Contar" like eov's "Medir"; "count point" → "punto de recuento".
+click / Shift+click / Alt+click	clic / Shift+clic / Alt+clic	
+comment (annotation)	comentario	
+review status: Draft / Verified / Rejected	Borrador / Verificada / Rechazada	Feminine, agreeing with anotación; "Mark verified" → "Marcar como verificada".
+second reader	segundo lector	
+blinded copy	copia ciega	Export without authors, comments, statuses… for an independent second read.
+attach (annotations to a slide)	asociar	"Attach annotations" → "Asociar anotaciones".
+merge (database)	combinar	"Merge…" → "Combinar…".
+back up, backup	hacer una copia de seguridad, copia de seguridad	Button "Back up…" → "Copia de seguridad…".
+database	base de datos	
+read-only	de solo lectura	State label: "Solo lectura".
+unreadable	ilegible	Data that cannot be read ("geometría ilegible").
+DICOM bulk annotations	anotaciones masivas DICOM	IOD name "Microscopy Bulk Simple Annotations" stays in English.
+feature (GeoJSON)	entidad (feature)	
+combined positive score (CPS)	puntuación positiva combinada (CPS)	Keep CPS.
+95% confidence interval	IC 95 %	"(95% {low}–{high})" → "(IC 95 % {low}–{high})".
+readout (Cellaris)	lectura	"region readout" → "lectura de región"; tool "Lectura de región de Cellaris".
+cell (Cellaris grid cell)	celda	A square of the slide predicted at once; never "célula" in Cellaris.
+tissue block (Cellaris)	cuadrado de tejido	A 5 µm square of tissue; not "bloque" (would read as a paraffin block). "{n} block" → "{n} cuadrado".
+window (model input)	ventana	Square image a model predicts from; "display window" (marker intensity range) → "ventana de visualización".
+mean / spread / density r²	media / dispersión / r² de densidad	Cellaris readout columns.
+model card	ficha del modelo	"built-in model card" → "ficha del modelo integrada".
+runtime (ONNX Runtime library)	entorno de ejecución	ONNX Runtime itself is not translated; "Choose runtime…" → "Elegir entorno de ejecución…".
+thread	hilo	"CPU · {n} threads" → "CPU · {n} hilos".
+batch (inference)	lote	"dynamic batch" → "lote dinámico".
+sidecar file	archivo auxiliar	The model's <model>.eovae.json file.
+reconstruction, reconstruction error	reconstrucción, error de reconstrucción	VAE terms; VAE itself untranslated.
+error map	mapa de error	
+result cache	caché de resultados	
+Viewport (eovae analysis scope)	Área visible	Compact button label for analysing the visible part; elsewhere viewport stays "área de visualización".
+Whole slide	Preparación completa	
+your site's model / copy	modelo / copia de su centro	
+bright-field	campo claro	
+upsampled / resampled	sobremuestreado / remuestreado	
+setting (single value)	opción	"ignored the setting {key}" → "se ignoró la opción {key}".
+Enter … (prompt)	Escriba …	As in eov: "Escriba el tamaño de píxel…, por ejemplo {}".
+about {n} min / {} left	unos {n} min / Tiempo restante: {}	Durations; "about {} h" → "alrededor de {} h".
+gamepad, game controller	mando de juego, mando	Plugin name "Mando de juego"; "controller" → "mando".
+stick (left/right)	joystick (izquierdo/derecho)	"Left Stick X" → "Joystick izquierdo X"; stick click → "Pulsación del joystick izquierdo".
+trigger / shoulder button	gatillo / botón superior	
+D-pad	cruceta	"D-Pad Left" → "Cruceta: izquierda".
+South / East / North / West button	Botón sur / este / norte / oeste	Face buttons named by position.
+dead zone / response curve	zona muerta / curva de respuesta	
+mapping (gamepad)	asignación	"Map a stick to Move Pointer" → "Asigne un joystick a Mover el puntero".
+profile (gamepad)	perfil	
+pan (the view)	desplazar (la vista)	As eov: "Desplazar a la izquierda"; "Pan Horizontally" → "Desplazar en horizontal".
+system pointer	puntero del sistema	
+On / Off (small switch)	Sí / No	Very short switch states.
+Backspace	Backspace	Key names stay as written.
+Example Plugin	Complemento de ejemplo	
+New layer / New class (undo labels)	Crear capa / Crear clase	Buttons stay "Nueva capa" / "Nueva clase".
+worker thread	hilo de trabajo	A background thread of a plugin: "No se pudo iniciar un hilo de trabajo".
+host (eov, as seen by a plugin)	eov	In plugin errors "the host returned …" means eov: "eov devolvió {n} bytes para una región de …". "sistema anfitrión" stays for Flatpak.
+flag (tissue QC)	marcar	QC flags are for review, not certainties: "el control de calidad del tejido marcó {n} de ellos".
+Low / High (display window ends)	Mínimo / Máximo	Ends of a marker's display window, as eov's Channels panel calls them ("en el mínimo, un canal es negro").
+file type names	Imagen de preparación completa NDPI de Hamamatsu	Format after the noun, maker with "de" (as shared-mime-info: "imagen CRW de Canon"); "Imagen BigTIFF".

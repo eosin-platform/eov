@@ -1,0 +1,275 @@
+term	translation	note
+you (addressing the user)	Ön (magázás)	Polite register: formal 3rd-person verb forms ("Nyisson meg", "Válassza ki"); avoid the pronoun "Ön" where the verb form suffices.
+Title Case menu items and buttons	csak az első szó nagy kezdőbetűs	Sentence case: only the first word (and proper names) capitalised: "Kép exportálása…", not "Kép Exportálása…".
+buttons and menu commands	főnévi (-ás/-és) alak	Commands use the deverbal noun: Megnyitás, Mentés, Bezárás; "Export Image…" → "Kép exportálása…".
+“…” (quotation marks)	„…”	Hungarian quotes: „ (U+201E) opens, ” (U+201D) closes; nested: »…«.
+placeholder + suffix	(no suffix on a placeholder)	Never attach a case suffix to {}: rephrase with a colon ("Megnyitva: {}"), a following noun ("a(z) {} mappában") or put the placeholder first. Use "a(z)" only when unavoidable.
+% (percent)	25%	Percent sign without a space in Hungarian ("{}%"); other units keep the space ("12 µm", "3 mm²"); degrees attached ("90°").
+eov	eov	Product name, lowercase; article "az eov"; compounds with a hyphen ("eov-bővítmény", "eov-frissítés"); avoid case suffixes on it (rephrase: "az eov modelltára").
+slide	metszet	The scanned histological slide (digital slide); plural "metszetek". Never "dia"/"diakép".
+glass slide (physical)	tárgylemez	Only where the physical glass is meant (macro image = photo of the whole glass slide).
+whole-slide image (WSI)	teljes metszetkép (WSI)	Keep the abbreviation WSI: "WSI-fájlok", "WSI-eszközök".
+slide viewer, viewer	metszetnézegető	"Whole-slide image viewer" → "Teljes metszetképek nézegetője".
+tab	lap	As in browsers: "Új lap", "Lap bezárása".
+pane	ablaktábla	One side-by-side viewing area; "Split Right" → "Felosztás jobbra".
+view	nézet	Position, magnification, rotation of a pane.
+viewport	képterület	The area of a pane where the slide is drawn.
+minimap	minitérkép	
+scale bar	mérce	As in figure captions ("mérce: 100 µm").
+HUD	lebegő panel	Panels floating over the slide; "metadata HUD" → "metaadat-panel".
+Toggle X (toolbar tooltip)	X be/ki	
+toolbar	eszköztár	
+sidebar	oldalsáv	
+status bar	állapotsor	
+series bar	sorozatsáv	The strip of slides of the current folder.
+series (slides of a folder or case)	sorozat	
+split (pane)	felosztás	"Split Right" → "Felosztás jobbra".
+panel	panel	
+zoom (screen scale)	nagyítás	"Zoom in" → "Nagyítás", "Zoom out" → "Kicsinyítés"; zoom slider/field label → "Nagyítási szint"; "digital zoom" → "digitális nagyítás".
+magnification	nagyítás	Optical (objective-equivalent) magnification; "optikai nagyítás" where it must be told apart from zoom. "20×" stays.
+objective	objektív	"objective power" → "objektívnagyítás".
+pixel size	pixelméret	
+MPP (µm per pixel)	MPP (µm/pixel)	MPP kept.
+calibration	kalibráció	
+level, pyramid level	szint, piramisszint	"level-0 pixels" → "0. szintű pixelek"; "L0" kept.
+tile	csempe	Square piece of the image pyramid.
+patch (dataset)	képrészlet	Dataset images cut from a slide; in the dataset dialog "Tile size" is the patch size ("Képrészletméret").
+patch extraction	képrészletek kinyerése	
+stride	lépésköz	
+dataset	adatkészlet	
+cache	gyorsítótár	
+region of interest (ROI)	vizsgált terület (ROI)	ROI kept as the abbreviation; "ROI tool" → "ROI-eszköz".
+region	terület	
+measurement	mérés	
+measure (tool)	mérés, mérőeszköz	Tool name: "Mérés".
+count (tool), counted	számlálás, megszámolt	
+point, line, arrow, text (annotation shapes)	pont, vonal, nyíl, szöveg	
+brush, eraser	ecset, radír	
+outline	körvonal	
+distance	távolság	
+path length (polyline)	vonallánc hossza	
+area	terület	
+angle	szög	
+polygon	sokszög	
+rectangle	téglalap	
+ellipse	ellipszis	
+annotation	annotáció	Drawn mark with a meaning; not "megjegyzés" (comment).
+annotate	annotálás	
+class (annotation class)	osztály	"annotációs osztály".
+comment	megjegyzés	
+cell count, counting	sejtszámlálás, számlálás	
+high-power field (HPF)	nagy nagyítású látótér (HPF)	HPF kept as the abbreviation; "HPF field" → "HPF-látótér"; "/10 HPF" kept.
+H&E	H&E	Kept as written.
+hematoxylin	hematoxilin	
+eosin	eozin	
+IHC	immunhisztokémia (IHC)	IHC kept.
+DAB	DAB	
+chromogen	kromogén	
+stain (dye; deconvolution, quantification)	festék	"stain vectors" → "festékvektorok"; "stain model" → "festékmodell".
+stain (staining method of a slide: H&E, Ki-67, Giemsa)	festés	"Stain: {}" in slide metadata → "Festés: {}".
+staining (intensity: weak, moderate, strong)	festődés	"gyenge (1+), közepes (2+), erős (3+) festődés".
+stain normalization	festésnormalizálás	Macenko and Vahadane are method names: kept.
+stain target	festési célminta	The appearance (slide, region or file) normalisation maps to; "reference stain target" → "referencia festési célminta".
+stain model	festékmodell	
+stain vectors	festékvektorok	
+color deconvolution	színdekonvolúció	Ruifrok–Johnston method.
+isolated stain / channel	izolált festék / csatorna	Only that stain shown, in grey.
+quantify (stain)	kvantifikálás	"Quantify Stain" → "Festődés kvantifikálása".
+H-score	H-score	Kept.
+threshold	küszöbérték	
+optical density	optikai denzitás	
+concentration	koncentráció	
+channel	csatorna	
+multiplex immunofluorescence (mIF)	multiplex immunfluoreszcencia (mIF)	
+marker	marker	Marker names (CD3, Ki-67, PanCK…) never translated.
+focal plane (Z)	fókuszsík (Z)	
+Z-stack	Z-sorozat	
+time point (T)	időpont (T)	
+time series	idősor	
+heat map	hőtérkép	
+overlay	fedőréteg	
+layer	réteg	
+opacity	átlátszatlanság	0–100%.
+tissue	szövet	
+tissue QC	szöveti minőségellenőrzés (QC)	Short form: "szöveti QC".
+pen marks	tolljelölések	Marker-pen marks on the glass.
+folds	gyűrődések	Tissue folds.
+blur, out of focus	elmosódás, életlen	
+tissue detection	szövetfelismerés	
+tissue mask	szövetmaszk	
+background	háttér	
+export	exportálás	
+save a copy	másolat mentése	
+convert	konvertálás	
+de-identify	anonimizálás	Removing data that could identify the patient (label, macro, metadata); "de-identified" → "anonimizált".
+label image	címkekép	Photo of the slide's paper label.
+macro image	makrókép	Photo of the whole glass slide.
+thumbnail	miniatűr	
+overview (associated image)	áttekintő kép	
+associated image	kapcsolódó kép	
+bookmark	könyvjelző	
+session	munkamenet	
+case (accession)	eset	
+metadata	metaadatok	
+property (slide property)	tulajdonság	
+vendor	gyártó	
+scanner, scan	szkenner, szkennelés	"as scanned" → "szkennelt" ("Szkennelt színek").
+colour profile, ICC profile	színprofil, ICC-profil	
+colour management, colour-managed	színkezelés, színkezelt	
+colour normalisation (as the source words it)	színnormalizálás	Same operation as stain normalisation; follow the English wording.
+landmark (alignment)	illesztőpont	"Landmark 1" → "1. illesztőpont".
+align, alignment	igazítás	
+link / unlink panes	összekapcsolás / szétkapcsolás	
+rotate, rotation	forgatás, elforgatás	"Rotate Right 90°" → "Forgatás jobbra 90°-kal".
+flip horizontally	vízszintes tükrözés	
+plugin	bővítmény	"official plugin" → "hivatalos bővítmény".
+package (.eop)	csomag (.eop)	"plugin package" → "bővítménycsomag".
+plugin API	bővítmény-API	
+model	modell	Machine-learning model.
+model store	modelltár	
+inference	inferencia	Running a model on images.
+predicted (image, channel, marker, value)	becsült (modell által becsült)	Computed by a model, not measured; never "mért" and never "mesterséges" or "szimulált".
+prediction	becslés	
+synthetic, generated, computed	szintetikus, generált, számított	
+reconstruction (error)	rekonstrukció(s hiba)	
+research use only (RUO)	kizárólag kutatási célra (RUO)	Never shorten or soften.
+For research and education. Not a medical device; not for primary diagnosis.	Kutatási és oktatási célra. Nem orvostechnikai eszköz; elsődleges diagnózisra nem használható.	Safety text: translate completely.
+medical device	orvostechnikai eszköz	Regulatory term (EU MDR).
+primary diagnosis	elsődleges diagnózis	
+diagnosis, not for diagnosis	diagnózis, diagnózisra nem használható	
+render, renderer	renderelés, renderelő	"GPU renderer" → "GPU-renderelő", "CPU renderer" → "CPU-renderelő".
+backend	háttérrendszer	CPU and GPU kept.
+graphics adapter	grafikus adapter	
+filtering	szűrés	"Filtering mode" → "Szűrési mód".
+bilinear, trilinear, Lanczos	bilineáris, trilineáris, Lanczos	Lanczos is a name.
+sharpness	élesség	
+gamma	gamma	
+brightness	fényerő	
+contrast	kontraszt	
+theme	téma	
+dark, light, high contrast	sötét, világos, nagy kontrasztú	
+Home screen	kezdőképernyő	The Home tab: "Kezdőlap".
+Check for Updates…	Frissítések keresése…	Asks before going online; never imply automatic updates.
+update	frissítés	"update helper" → "frissítési segédprogram".
+release	kiadás	"release notes" → "kiadási megjegyzések".
+release manifest	kiadási jegyzékfájl	
+artifact (release file)	kiadási fájl	
+signature, signed, verified	aláírás, aláírt, ellenőrzött	
+administrator policy	rendszergazdai házirend	
+administrator	rendszergazda	
+safe mode	csökkentett mód	
+keyboard shortcut	billentyűparancs	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) kept.
+hotkey	gyorsbillentyű	
+key (keyboard)	billentyű	
+modifier key	módosítóbillentyű	
+tooltip	elemleírás	
+clipboard	vágólap	
+folder	mappa	
+file manager	fájlkezelő	
+path	elérési út	
+log folder	naplómappa	
+messages	üzenetek	
+dialog	párbeszédablak	
+toast	értesítés	
+Open	Megnyitás	
+Open Folder…	Mappa megnyitása…	
+Close	Bezárás	
+Cancel	Mégse	
+OK	OK	
+Save / Save…	Mentés / Mentés…	
+Export	Exportálás	
+Import	Importálás	
+Delete	Törlés	
+Remove	Eltávolítás	
+Clear	Törlés	"Clear X" → "X törlése".
+Settings	Beállítások	
+Apply	Alkalmaz	
+Reset	Visszaállítás	
+Reset to Defaults	Alapértékek visszaállítása	
+Show / Hide	Megjelenítés / Elrejtés	"Show X" → "X megjelenítése"; "Toggle X" → "X megjelenítése/elrejtése" or "X be/ki".
+Copy	Másolás	
+Undo / Redo	Visszavonás / Mégis	
+Fit (to pane)	Igazítás (az ablaktáblához)	
+Enable / Disable	Engedélyezés / Letiltás	Status: "Letiltva".
+Add	Hozzáadás	
+Edit	Szerkesztés	
+Download	Letöltés	
+Install	Telepítés	
+Restart	Újraindítás	
+Done	Kész	
+Ready (status)	Kész	
+Confirm	Megerősítés	
+Change	Módosítás	
+Filter	Szűrés	Search field placeholder: "Szűrő (…)".
+Go (to an item)	Ugrás	
+Back / Forward / Up	Vissza / Előre / Fel	
+Error / Warning / Information	Hiba / Figyelmeztetés / Információ	
+Loading…	Betöltés…	
+Language	Nyelv	
+Full screen	Teljes képernyő	
+pan (move the view)	mozgatás	"Pan left" → "Mozgatás balra".
+fit (stain fit, model fit)	illesztés	"Macenko fit" → "Macenko-illesztés".
+density (cells per area)	sűrűség	"sejtsűrűség"; optical density → "optikai denzitás".
+tumour	tumor	"tumour cells" → "tumorsejtek".
+second reader, blinded copy	második értékelő, vakosított másolat	Independent second read of annotations.
+readout (region readout)	kiértékelés	"region readout" → "területi kiértékelés".
+merge	egyesítés	
+database	adatbázis	
+coordinates	koordináták	
+batch (inference)	köteg	
+runtime	futtatókörnyezet	"ONNX Runtime" kept.
+repository	tároló	GitHub repository → "GitHub-tároló".
+plugin registry	bővítmény-nyilvántartás	
+lock file	zárolási fájl	
+gamepad, controller	játékvezérlő (gamepad), kontroller	Plugin name "Gamepad" → "Játékvezérlő".
+stick (gamepad)	kar	"left stick" → "bal kar".
+pointer	mutató	Mouse pointer → "egérmutató".
+minimize / maximize window	ablak minimalizálása / maximalizálása	
+N/A (not recorded)	nincs adat	
+Solo (show one channel alone)	Szóló	
+lock, locked, unlock (annotation, layer)	zárolás, zárolva, zárolás feloldása	"Lock layer" → "Réteg zárolása"; "Unlock layer" → "Réteg zárolásának feloldása".
+Unclassified (annotation class)	Osztály nélkül	"they will show as unclassified" → "osztály nélkül jelennek meg".
+count point	számlálási pont	Points placed by the Count tool; the tab "Count" → "Számlálás"; "Count tool" → "Számlálás eszköz".
+review status: draft, verified, rejected	vázlat, ellenőrizve, elutasítva	"Mark verified" → "Megjelölés ellenőrzöttként".
+field number (FN, eyepiece)	látómezőszám (FN)	FN kept as the abbreviation.
+combined positive score (CPS)	kombinált pozitív pontszám (CPS)	PD-L1 CPS; CPS kept.
+even-odd rule	páros-páratlan szabály	Fill rule for self-intersecting outlines.
+self-intersecting outline	önmagát metsző körvonal	"The outline crossed itself" → "A körvonal metszette önmagát".
+brush stroke	ecsetvonás	
+DICOM bulk annotations	DICOM tömeges annotációk	The IOD name "Microscopy Bulk Simple Annotations" stays in English.
+study (DICOM)	vizsgálat	
+structured report (SR, DICOM)	strukturált lelet (SR)	
+feature (GeoJSON)	elem (feature)	"FeatureCollection" kept.
+Retry	Újrapróbálkozás	
+Cancel (stops a running job)	Megszakítás	Dialog buttons stay "Mégse".
+model card	modellkártya	
+sidecar file (model)	kísérőfájl	
+reference model	referenciamodell	
+site's copy (of a model)	intézményi másolat	"Your site's model" → "Intézményi modell".
+preprocessing	előfeldolgozás	
+embeddings	beágyazások	
+thread (CPU)	szál	"{n} threads" → "{n} szál".
+result cache	eredmény-gyorsítótár	
+error map	hibatérkép	
+cell (Cellaris: small grid square predicted at once)	cella	Not a biological cell ("sejt").
+tissue block (Cellaris: 5 µm square of tissue)	szövetnégyzet	Not "szövetblokk" (that reads as a paraffin block); "{n} blocks" → "{n} négyzet".
+window (square image a model predicts from)	képablak	Kept apart from UI windows.
+display window (value range of a marker's colour)	megjelenítési ablak	
+spread (standard deviation of a readout)	szórás	
+density r²	denzitás-r²	
+bright-field	világos látóterű	"not bright-field H&E" → "nem világos látóterű H&E".
+immunofluorescence (IF)	immunfluoreszcencia (IF)	"measured IF" → "mért IF".
+legend (of colours)	jelmagyarázat	
+predicted (Cellaris safety banner)	modell által becsült	"PREDICTED — research use only, not for diagnosis" → "MODELL ÁLTAL BECSÜLT — kizárólag kutatási célra, diagnózisra nem használható".
+trigger (gamepad)	ravasz	"Left Trigger" → "Bal ravasz".
+D-pad	iránykereszt	"D-Pad Left" → "Iránykereszt: bal".
+shoulder button	vállgomb	
+dead zone	holtzóna	
+response curve	válaszgörbe	
+mapping (gamepad)	hozzárendelés	
+profile (gamepad)	profil	
+system pointer	egérmutató (a rendszer egérmutatója)	"System pointer control" → "Egérmutató vezérlése".
+marker (example plugin: a placed point)	jelölő	Not a protein marker.
+worker thread	munkaszál	"Could not start a worker thread" → "Nem sikerült munkaszálat indítani"; "eovae worker thread" → "eovae-munkaszál".
+file type name (X whole-slide image)	X teljes metszetkép	Names of file types in file managers: "Aperio whole-slide image" → "Aperio teljes metszetkép"; "BigTIFF image" → "BigTIFF-kép".
+the host (eov, in plugin messages)	az eov	"the host returned {n} bytes …" → "az eov {n} bájtot adott vissza …".

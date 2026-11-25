@@ -58,8 +58,9 @@ mod slide;
 pub mod transform;
 
 pub use basis::{
-    Stain, StainBasis, StainBasisError, StainLabelKind, StainPreset, classify_stain_label,
-    stain_model_warning, suggested_preset,
+    Stain, StainBasis, StainBasisError, StainLabelKind, StainModelMismatch, StainPreset,
+    classify_stain_label, special_stain_names, stain_model_mismatch, stain_model_warning,
+    suggested_preset,
 };
 pub use estimate::{
     EstimateSource, FitChecks, FitFallback, PixelFilter, STAIN_ESTIMATE_FORMAT_VERSION,

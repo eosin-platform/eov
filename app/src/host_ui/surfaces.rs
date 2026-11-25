@@ -13,6 +13,7 @@
 use super::UiHost;
 use crate::plugin_runtime::EventTarget;
 use crate::plugin_runtime::shared::SurfaceCommand;
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{ConfirmArgs, HostEvent, NotifyLevel, SurfaceKind, SurfaceSpec};
 use i_slint_compiler::langtype::Type;
 use serde_json::{Map, Value as Json};
@@ -29,6 +30,12 @@ use std::time::SystemTime;
 pub(crate) const SLINT_VERSION: &str = "1.19.0";
 
 const DEFAULT_SIDEBAR_WIDTH: f32 = 300.0;
+
+/// The property through which a surface learns the language of the
+/// interface, if it declares it (see `SurfaceData::apply_language`).
+pub(crate) const LANGUAGE_PROPERTY: &str = "eov-language";
+/// Whether the interface is written from right to left.
+pub(crate) const RTL_PROPERTY: &str = "eov-rtl";
 
 /// What a surface's factory and callbacks share with the manager.
 struct SurfaceData {
@@ -133,6 +140,25 @@ impl SurfaceData {
         Ok(())
     }
 
+    /// The language of the interface, for surfaces that declare
+    /// `in property <string> eov-language` (a tag such as `pt-BR`) or
+    /// `in property <bool> eov-rtl` (written from right to left).
+    fn apply_language(&self, instance: &ComponentInstance) {
+        let language = eov_plugin_api::i18n::current();
+        let values = [
+            (LANGUAGE_PROPERTY, Value::String(language.tag.into())),
+            (RTL_PROPERTY, Value::Bool(language.is_rtl())),
+        ];
+        for (name, value) in values {
+            if self.types.contains_key(name)
+                && instance.get_property(name).ok().as_ref() != Some(&value)
+                && let Err(error) = instance.set_property(name, value)
+            {
+                tracing::debug!("Cannot set {name} of a plugin surface: {error}");
+            }
+        }
+    }
+
     /// Applies `properties` to the live instance; returns the problems.
     fn apply(&mut self, properties: &Map<String, Json>) -> Vec<String> {
         let Some(instance) = self.live_instance() else {
@@ -160,6 +186,7 @@ impl SurfaceData {
             for problem in problems {
                 tracing::warn!("Plugin '{}' surface {}: {problem}", d.plugin, d.surface_id);
             }
+            d.apply_language(instance);
         }
         for name in definition.callbacks() {
             let data = Rc::clone(data);
@@ -268,8 +295,26 @@ fn compile(
     let mut compiler = surface_compiler();
     if let Some(root) = plugin_root {
         compiler.set_include_paths(vec![root.to_path_buf()]);
+        // The plugin's catalogs, in eov's languages (see plugin_i18n).
+        if let Some((bundle, domain)) = super::plugin_i18n::surface_bundle(root) {
+            compiler.set_translation_domain(domain);
+            compiler.set_bundled_translations_path(bundle);
+        }
     }
-    let result = spin_on(compiler.build_from_path(path));
+    // Slint's compiler reads the plugin's files and catalogs; a panic on
+    // one it cannot handle fails this surface, not eov. The error is the
+    // detail of a message ("Cannot show …"), in the interface's language
+    // (Slint's own words, in English, as they come).
+    let result = crate::logging::catching_panics(|| spin_on(compiler.build_from_path(path)))
+        .map_err(|panic| {
+            // Translators: Slint is the name of a toolkit; {file} is a file of
+            // a plugin; {error} is what Slint said (in English).
+            tr!(
+                "the Slint compiler failed on {file}: {error}",
+                file = isolate(path.display()),
+                error = isolate(&panic)
+            )
+        })?;
     let errors: Vec<String> = result
         .diagnostics()
         .filter(|d| d.level() == slint_interpreter::DiagnosticLevel::Error)
@@ -279,9 +324,12 @@ fn compile(
         return Err(errors.join("\n"));
     }
     result.component(component).ok_or_else(|| {
-        format!(
-            "component '{component}' is not exported by {}",
-            path.display()
+        // Translators: {component} is the name of a part of a plugin's
+        // window, {file} the plugin's file that should offer it.
+        tr!(
+            "component '{component}' is not exported by {file}",
+            component = isolate(component),
+            file = isolate(path.display())
         )
     })
 }
@@ -328,6 +376,17 @@ impl Surfaces {
         let definition = compile(path, component, root)?;
         self.compiled.insert(key, (mtime, definition.clone()));
         Ok(definition)
+    }
+
+    /// Tells the open surfaces the new language of the interface (their
+    /// `@tr` texts follow by themselves).
+    pub(super) fn language_changed(&self) {
+        for surface in self.open.values() {
+            let data = surface.data.borrow();
+            if let Some(instance) = data.live_instance() {
+                data.apply_language(&instance);
+            }
+        }
     }
 
     pub(super) fn sidebar_owner(&self) -> Option<String> {
@@ -394,14 +453,13 @@ impl Surfaces {
             Ok(definition) => definition,
             Err(error) => {
                 host.shared.unregister_surface(&surface_id);
+                let file = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 host.notify(
                     NotifyLevel::Error,
-                    &format!(
-                        "Cannot show {}",
-                        path.file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_default()
-                    ),
+                    &tr!("Cannot show {}", isolate(&file)),
                     Some(&error),
                     Some(&host.plugin_name(plugin)),
                 );
@@ -458,7 +516,7 @@ impl Surfaces {
                         host.shared.unregister_surface(&surface_id);
                         host.notify(
                             NotifyLevel::Error,
-                            "Cannot open a plugin window",
+                            &tr!("Cannot open a plugin window"),
                             Some(&error.to_string()),
                             Some(&host.plugin_name(plugin)),
                         );
@@ -652,8 +710,8 @@ impl Surfaces {
         if let Some(ui) = host.ui() {
             ui.set_plugin_confirm_title(next.args.title.clone().into());
             ui.set_plugin_confirm_message(next.args.message.clone().into());
-            ui.set_plugin_confirm_confirm_label(next.args.confirm_label.clone().into());
-            ui.set_plugin_confirm_cancel_label(next.args.cancel_label.clone().into());
+            ui.set_plugin_confirm_confirm_label(button_label(&next.args.confirm_label).into());
+            ui.set_plugin_confirm_cancel_label(button_label(&next.args.cancel_label).into());
             ui.set_plugin_confirm_destructive(next.args.destructive);
             ui.set_plugin_confirm_visible(true);
         }
@@ -682,6 +740,17 @@ impl Surfaces {
         }
         self.show_next_confirm(host);
         host_answer
+    }
+}
+
+/// A button of the confirmation dialog: the protocol's default labels
+/// (`OK`, `Cancel`, which plugins get when they give none) in the
+/// language of the interface, other labels as given.
+fn button_label(label: &str) -> String {
+    match label {
+        "OK" => tr!("Button" => "OK"),
+        "Cancel" => tr!("Button" => "Cancel"),
+        other => other.to_string(),
     }
 }
 
@@ -728,7 +797,7 @@ impl UiHost {
             title: title.to_string(),
             message: message.to_string(),
             confirm_label: confirm_label.to_string(),
-            cancel_label: "Cancel".to_string(),
+            cancel_label: tr!("Button" => "Cancel"),
             destructive,
         };
         self.surfaces
@@ -784,6 +853,43 @@ mod tests {
             }
         }
         assert!(compiled > 0, "the example plugin's sidebar at least");
+    }
+
+    /// Why a surface cannot be shown (the detail of "Cannot show …") is in
+    /// the interface's language where eov words it; Slint's own words come
+    /// as they are.
+    #[test]
+    fn why_a_surface_cannot_be_shown_is_in_the_interface_s_language() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("panel.slint");
+        std::fs::write(&path, "export component Panel inherits Rectangle {}\n").unwrap();
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "component '{component}' is not exported by {file}",
+            &["{file} bietet die Komponente „{component}“ nicht an"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(i18n::Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let error = compile(&path, "Sidebar", None).err();
+        assert_eq!(
+            error,
+            Some(format!(
+                "{} bietet die Komponente „Sidebar“ nicht an",
+                path.display()
+            ))
+        );
+        assert!(compile(&path, "Panel", None).is_ok());
     }
 
     /// A plugin can reset a field the user edited (the edited value is not

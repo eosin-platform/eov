@@ -16,6 +16,7 @@
 
 use super::transaction::Transaction;
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -37,8 +38,11 @@ pub struct PreparedHelper {
 pub fn prepare(helper: &Path) -> Result<PreparedHelper> {
     if !helper.is_file() {
         bail!(
-            "this installation has no update helper ({} is missing); reinstall eov from its release archive",
-            helper.display()
+            "{}",
+            tr!(
+                "this installation has no update helper ({} is missing); reinstall eov from its release archive",
+                isolate(helper.display())
+            )
         );
     }
     let mut builder = tempfile::Builder::new();
@@ -50,16 +54,16 @@ pub fn prepare(helper: &Path) -> Result<PreparedHelper> {
     }
     let dir = builder
         .tempdir()
-        .context("could not create a temporary directory for the update helper")?;
+        .with_context(|| tr!("could not create a temporary directory for the update helper"))?;
     let executable = dir.path().join(
         helper
             .file_name()
-            .context("the update helper path has no file name")?,
+            .with_context(|| tr!("the update helper path has no file name"))?,
     );
     fs::copy(helper, &executable).with_context(|| {
-        format!(
+        tr!(
             "could not copy the update helper out of the installation ({})",
-            helper.display()
+            isolate(helper.display())
         )
     })?;
     #[cfg(unix)]
@@ -73,16 +77,27 @@ pub fn prepare(helper: &Path) -> Result<PreparedHelper> {
         .current_dir(dir.path())
         .stdin(Stdio::null());
     hide_console(&mut command);
-    let output = run_retrying_busy(&mut command)
-        .with_context(|| format!("the update helper cannot run from {}", dir.path().display()))?;
+    let output = run_retrying_busy(&mut command).with_context(|| {
+        tr!(
+            "the update helper cannot run from {}",
+            isolate(dir.path().display())
+        )
+    })?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     if !output.status.success() || !stdout.starts_with("eov-update-helper") {
         bail!(
-            "the update helper does not run from {} ({}): {}{}",
-            dir.path().display(),
-            output.status,
-            stdout.trim(),
-            String::from_utf8_lossy(&output.stderr).trim()
+            "{}",
+            // Translators: {folder} is a temporary folder, {status} how the helper ended ("exit status: 1"), {output} what it wrote.
+            tr!(
+                "the update helper does not run from {folder} ({status}): {output}",
+                folder = isolate(dir.path().display()),
+                status = output.status,
+                output = format!(
+                    "{}{}",
+                    stdout.trim(),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )
+            )
         );
     }
     Ok(PreparedHelper {
@@ -115,7 +130,7 @@ pub fn launch(helper: &PreparedHelper, transaction: &Transaction) -> Result<()> 
         .write(true)
         .create_new(true)
         .open(&transaction_path)
-        .with_context(|| format!("could not write {}", transaction_path.display()))?;
+        .with_context(|| tr!("could not write {}", isolate(transaction_path.display())))?;
     std::io::Write::write_all(&mut file, toml::to_string_pretty(transaction)?.as_bytes())?;
     file.sync_all()?;
     drop(file);
@@ -130,7 +145,7 @@ pub fn launch(helper: &PreparedHelper, transaction: &Transaction) -> Result<()> 
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     hide_console(&mut command);
-    spawn_waiting_for_exit(command).context("could not start the eov update helper")
+    spawn_waiting_for_exit(command).with_context(|| tr!("could not start the eov update helper"))
 }
 
 #[cfg(windows)]
@@ -161,7 +176,8 @@ fn spawn_waiting_for_exit(mut command: Command) -> Result<()> {
     // SAFETY: creating a pipe into a local array.
     let created = unsafe { libc::pipe(fds.as_mut_ptr()) } == 0;
     if !created {
-        return Err(std::io::Error::last_os_error()).context("could not create a pipe");
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| tr!("could not create a pipe"));
     }
     let [read, write] = fds;
     #[cfg(not(target_os = "linux"))]
@@ -219,7 +235,7 @@ fn spawn_waiting_for_exit(mut command: Command) -> Result<()> {
     };
     if ok == 0 {
         return Err(std::io::Error::last_os_error())
-            .context("could not create a process handle for the update helper");
+            .with_context(|| tr!("could not create a process handle for the update helper"));
     }
     command
         .arg("--wait-handle")

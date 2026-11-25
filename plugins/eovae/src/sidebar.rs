@@ -7,13 +7,14 @@
 //! UI should show.
 
 use crate::config::max_threads;
-use crate::contract::{Scaling, ValueRange};
+use crate::contract::{ContractSource, Scaling, ValueRange};
 use crate::engine::{Backend, DevicePreference};
 use crate::plugin::{Core, JobKind, JobRequest, ModelState, lock, run_context};
 use crate::presenter::{Memo, PULSE};
 use crate::render::Mode;
 use crate::stats::{decimals_for, format_error};
 use crate::tiling::{Resolution, TileCoord, choose_level};
+use eov_plugin_api::i18n;
 use eov_plugin_api::prelude::*;
 use std::sync::Arc;
 use std::time::Instant;
@@ -29,25 +30,33 @@ pub fn adjustment_note(
 ) -> (String, bool) {
     match mode {
         Mode::Reconstruction if unsupported => (
-            "This eov does not report its display adjustments: reconstructions are shown without them, so reset gamma, contrast and stain normalisation before comparing Original and Reconstruction.".to_string(),
+            // Translators: Original and Reconstruction are overlays (the Overlay menu)
+            tr!(
+                "This eov does not report its display adjustments: reconstructions are shown without them, so reset gamma, contrast and stain normalisation before comparing Original and Reconstruction."
+            ),
             true,
         ),
         Mode::Reconstruction => match display.filter(|d| d.modified) {
             Some(display) if stain_processing(display) => (
-                format!(
+                // Translators: Original and Reconstruction are overlays (the Overlay menu); {} names the stain processing
+                tr!(
                     "Reconstructions get this pane's gamma, brightness, contrast and sharpening, but not its stain processing ({}): turn that off before comparing Original and Reconstruction.",
                     stain_label(display)
                 ),
                 true,
             ),
             Some(_) => (
-                "Reconstructions are shown with this pane's display adjustments, like the slide.".to_string(),
+                tr!(
+                    "Reconstructions are shown with this pane's display adjustments, like the slide."
+                ),
                 false,
             ),
             None => (String::new(), false),
         },
         Mode::ErrorMap | Mode::Difference if display.is_some_and(|d| d.modified) => (
-            "Errors are measured on the slide's own pixels; display adjustments do not change them.".to_string(),
+            tr!(
+                "Errors are measured on the slide's own pixels; display adjustments do not change them."
+            ),
             false,
         ),
         _ => (String::new(), false),
@@ -55,10 +64,15 @@ pub fn adjustment_note(
 }
 
 /// Whether the pane alters stain colours (normalisation, deconvolution
-/// adjustments, an isolated stain), which eovae cannot reproduce.
+/// adjustments, an isolated stain), which eovae cannot reproduce. eov says
+/// so in `stain_colors` since plugin API 1.1; older eovs only in their
+/// badge, which is English.
 fn stain_processing(display: &DisplayAdjustments) -> bool {
     if display.stain_normalization.is_some() {
         return true;
+    }
+    if let Some(stain_colors) = display.stain_colors {
+        return stain_colors;
     }
     let badge = display.badge.to_lowercase();
     badge.contains("stain") || badge.contains("colour") || badge.contains("color")
@@ -72,13 +86,29 @@ fn stain_label(display: &DisplayAdjustments) -> String {
                 .next()
                 .map(|c| c.to_uppercase().chain(chars).collect::<String>())
                 .unwrap_or_default();
-            format!("{method} normalisation")
+            // Translators: {} is the method's name: Macenko or Vahadane
+            tr!("{} normalisation", method)
         }
-        None => display.badge.clone(),
+        // The badge as eov shows it, in the language of the interface
+        // (plugin API 1.1); `badge` is English, and all older eovs send.
+        None => display
+            .shown_badge
+            .clone()
+            .filter(|badge| !badge.trim().is_empty())
+            .unwrap_or_else(|| display.badge.clone()),
     }
 }
 
-const SCALING_OPTIONS: [&str; 4] = ["[-1, 1]", "[0, 1]", "[0, 255]", "ImageNet mean/std"];
+/// The preprocessing ranges, in the order of [`scaling_index`].
+fn scaling_options() -> [String; 4] {
+    [
+        "[-1, 1]".to_string(),
+        "[0, 1]".to_string(),
+        "[0, 255]".to_string(),
+        // Translators: ImageNet's mean and standard deviation (std) per channel
+        tr!("Preprocessing" => "ImageNet mean/std"),
+    ]
+}
 
 fn scaling_index(scaling: &Scaling) -> i32 {
     match scaling {
@@ -130,55 +160,112 @@ fn download_text(state: &crate::plugin::State) -> (String, String, bool) {
     let site = args.sha256 != reference.main().sha256;
     let stored = state.download_stored.is_some();
     let label = match (site, stored) {
-        (false, false) => "Download the reference model",
-        (false, true) => "Use the reference model",
-        (true, false) => "Download your site's model",
-        (true, true) => "Use your site's model",
+        (false, false) => tr!("Download the reference model"),
+        (false, true) => tr!("Use the reference model"),
+        (true, false) => tr!("Download your site's model"),
+        (true, true) => tr!("Use your site's model"),
     };
     let what = if site {
-        format!("Your site's model (SHA-256 {}…)", &args.sha256[..12])
+        // Translators: {} is the start of the model's SHA-256 checksum
+        tr!(
+            "Your site's model (SHA-256 {}…)",
+            i18n::isolate(&args.sha256[..12])
+        )
     } else {
-        format!("{} ({})", reference.name, mib(reference.bytes()))
+        i18n::isolate(format!("{} ({})", reference.name, mib(reference.bytes())))
     };
     let (note, error) = match (&state.model_fetch, &state.download_note) {
         (Some(_), _) => (
-            "eov is asking you, or downloading it (see the status bar)…".to_string(),
+            // Translators: eov first asks the user whether to download the model
+            // (nothing is downloaded without that answer), then downloads it.
+            tr!(
+                "eov is asking you whether to download the model, or downloading it (see the status bar)…"
+            ),
             false,
         ),
         (None, Some(note)) => (note.clone(), true),
-        (None, None) if stored => (format!("{what} is in eov's model store."), false),
+        // Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
+        (None, None) if stored => (tr!("{} is in eov's model store.", what), false),
         (None, None) => match &args.url {
-            Some(url) => (format!("{what}, from {}.", host_of(url)), false),
+            Some(url) => (
+                // Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
+                tr!(
+                    "{what}, from {server}.",
+                    what,
+                    server = i18n::isolate(host_of(url))
+                ),
+                false,
+            ),
             None => (
-                format!(
-                    "{what}: from your site's copy. Set its address (Address…), unless your administrator has given it to eov."
+                // Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
+                tr!(
+                    "{}: from your site's copy. Set its address (Address…), unless your administrator has given it to eov.",
+                    what
                 ),
                 false,
             ),
         },
     };
-    (label.to_string(), note, error)
+    (label, note, error)
 }
 
+/// A size in MB or GB, for people: isolated, to go into texts.
 fn mib(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
-    if mb >= 1024.0 {
-        format!("{:.1} GB", mb / 1024.0)
+    i18n::isolate(if mb >= 1024.0 {
+        format!("{} GB", i18n::format_decimal(mb / 1024.0, 1))
     } else {
-        format!("{mb:.0} MB")
-    }
+        format!("{} MB", i18n::format_decimal(mb, 0))
+    })
 }
 
-pub(crate) fn thousands(value: f64) -> String {
+/// A resolution in µm per pixel, for people: isolated, to go into texts.
+fn mpp_text(mpp: f64, decimals: usize) -> String {
+    i18n::isolate(format!("{} µm/px", i18n::format_decimal(mpp, decimals)))
+}
+
+fn group_digits(value: f64, separator: char) -> String {
     let digits = format!("{:.0}", value.max(0.0));
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push(',');
+            out.push(separator);
         }
         out.push(c);
     }
     out
+}
+
+/// A whole number with its thousands grouped by commas, in English (batch
+/// output is not translated).
+pub(crate) fn thousands(value: f64) -> String {
+    group_digits(value, ',')
+}
+
+/// [`thousands`] for the sidebar: languages that write decimals with a
+/// comma group thousands with a narrow space, so that `12,288` is never
+/// read as twelve and a fraction.
+fn grouped(value: f64) -> String {
+    if i18n::current().decimal_separator == '.' {
+        group_digits(value, ',')
+    } else {
+        group_digits(value, '\u{202F}')
+    }
+}
+
+/// Where the model's preprocessing comes from.
+fn contract_source_text(source: &ContractSource, overridden: bool) -> String {
+    if overridden {
+        // Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
+        return tr!("Changed by you (model declares: {})", source.text());
+    }
+    match source {
+        ContractSource::Default => tr!("From HistoVAE defaults"),
+        ContractSource::BuiltIn => tr!("From built-in model card"),
+        ContractSource::Metadata => tr!("From model metadata"),
+        // Translators: the sidecar is the model's <model>.eovae.json file
+        ContractSource::Sidecar => tr!("From sidecar file"),
+    }
 }
 
 /// Every sidebar property.
@@ -199,13 +286,13 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     // Model.
     let model = state.model_info().cloned();
     let (model_state, model_name, model_message) = match &state.model {
-        ModelState::None => (0, String::new(), "No model loaded.".to_string()),
+        ModelState::None => (0, String::new(), tr!("No model loaded.")),
         ModelState::Loading { path } => (
             1,
             path.file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            "Reading and hashing the model…".to_string(),
+            tr!("Reading and hashing the model…"),
         ),
         ModelState::Ready { info } => (2, info.file_name.clone(), String::new()),
         ModelState::Failed { path, error } => (
@@ -213,7 +300,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             path.file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            error.clone(),
+            error.shown.clone(),
         ),
     };
     set("model-state", json!(model_state));
@@ -233,7 +320,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             .error
             .as_ref()
             .filter(|(sig, _)| *sig == request.signature())
-            .map(|(_, e)| e.clone())
+            .map(|(_, e)| e.shown.clone())
     });
     let message = match (&state.engine.building, &engine_error) {
         (Some(building), _) if model_state == 2 => building.clone(),
@@ -250,20 +337,15 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     );
     set(
         "engine-label",
-        json!(
-            engine_info
-                .as_ref()
-                .map(|i| i.label.clone())
-                .unwrap_or_default()
-        ),
+        json!(engine_info.as_ref().map(|i| i.text()).unwrap_or_default()),
     );
     set(
         "engine-note",
         json!(
             engine_info
                 .as_ref()
-                .and_then(|i| i.fallback.clone())
-                .map(|f| format!("CUDA unavailable: {f}"))
+                .and_then(|i| i.fallback.as_ref())
+                .map(|f| tr!("CUDA unavailable: {}", crate::engine::reason_text(f)))
                 .unwrap_or_default()
         ),
     );
@@ -288,11 +370,13 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 info.layout.label().to_string(),
             ];
             detail.push(match info.fixed_batch {
-                Some(batch) => format!("batch {batch}"),
-                None => "dynamic batch".to_string(),
+                // Translators: the model's fixed batch size (tiles per inference run)
+                Some(batch) => tr!("batch {}", batch),
+                // Translators: the model takes any number of tiles per inference run
+                None => tr!("dynamic batch"),
             });
             if let Some(mpp) = info.contract.mpp {
-                detail.push(format!("{mpp:.3} µm/px"));
+                detail.push(mpp_text(mpp, 3));
             }
             detail.push(format!("{} MB", (info.bytes as f64 / 1e6).round()));
             set(
@@ -335,14 +419,19 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 json!(
                     info.latent
                         .as_ref()
-                        .map(|l| format!(
-                            "Embeddings from '{}' ({} values) are stored with results.",
-                            l.name, l.dim
+                        .map(|l| tr!(
+                            "Embeddings from '{name}' ({n} value) are stored with results."
+                                | "Embeddings from '{name}' ({n} values) are stored with results."
+                                    % l.dim,
+                            name = i18n::isolate(&l.name)
                         ))
                         .unwrap_or_default()
                 ),
             );
-            set("warnings", json!(info.warnings));
+            set(
+                "warnings",
+                json!(info.warnings.iter().map(|w| w.text()).collect::<Vec<_>>()),
+            );
             let contract = config.contract_for(info);
             let overridden = config
                 .overrides
@@ -350,14 +439,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 .is_some_and(|o| !o.is_empty());
             set(
                 "contract-source",
-                json!(if overridden {
-                    format!(
-                        "Changed by you (model declares: {})",
-                        info.contract_source.label()
-                    )
-                } else {
-                    format!("From {}", info.contract_source.label())
-                }),
+                json!(contract_source_text(&info.contract_source, overridden)),
             );
             set("input-scaling-index", json!(scaling_index(&contract.input)));
             set(
@@ -385,7 +467,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             set("contract-summary", json!(""));
         }
     }
-    set("scaling-options", json!(SCALING_OPTIONS));
+    set("scaling-options", json!(scaling_options()));
 
     // Analysis settings.
     set(
@@ -393,7 +475,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
         json!(
             DevicePreference::ALL
                 .iter()
-                .map(|d| d.label())
+                .map(|d| d.text())
                 .collect::<Vec<_>>()
         ),
     );
@@ -414,9 +496,11 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             config.threads.to_string()
         }),
     );
+    // The field takes "auto" (and shows it) in every language.
     set(
         "threads-hint",
-        json!(format!("1–{}, or auto", max_threads())),
+        // Translators: the Threads field's hint: keep "auto", the word typed there
+        json!(tr!("1–{}, or auto", max_threads())),
     );
     let fixed_batch = model.as_ref().and_then(|m| m.fixed_batch);
     set(
@@ -438,31 +522,36 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             let mut options = Vec::new();
             let auto_choice = choose_level(&file.geometry, Resolution::Auto, model_mpp);
             options.push(match (auto_choice, model_mpp) {
-                (Some(choice), Some(mpp)) if choice.resample.is_some() => format!(
-                    "Auto: the model's {mpp:.3} µm/px, resampled from level {}",
-                    choice.level.index
+                // Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+                (Some(choice), Some(mpp)) if choice.resample.is_some() => tr!(
+                    "Auto: the model's {mpp}, resampled from level {level}",
+                    mpp = mpp_text(mpp, 3),
+                    level = choice.level.index
                 ),
-                (Some(choice), Some(mpp)) => format!(
-                    "Auto: the model's {mpp:.3} µm/px = level {}",
-                    choice.level.index
+                // Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+                (Some(choice), Some(mpp)) => tr!(
+                    "Auto: the model's {mpp} = level {level}",
+                    mpp = mpp_text(mpp, 3),
+                    level = choice.level.index
                 ),
-                _ => "Auto (level 0)".to_string(),
+                // Translators: a resolution choice
+                _ => tr!("Auto (level 0)"),
             });
             for level in &file.geometry.levels {
-                let mpp = file
-                    .geometry
-                    .level_mpp(level)
-                    .map(|m| format!(" · {m:.2} µm/px"))
-                    .unwrap_or_default();
-                options.push(format!(
-                    "Level {} · {}×{mpp}",
-                    level.index,
-                    if (level.downsample - level.downsample.round()).abs() < 0.01 {
-                        format!("{:.0}", level.downsample)
-                    } else {
-                        format!("{:.3}", level.downsample)
-                    }
-                ));
+                let decimals = if (level.downsample - level.downsample.round()).abs() < 0.01 {
+                    0
+                } else {
+                    3
+                };
+                let mut parts = vec![
+                    // Translators: a level of the slide's pyramid, in the resolution choices
+                    tr!("Level {}", level.index),
+                    format!("{}×", i18n::format_decimal(level.downsample, decimals)),
+                ];
+                if let Some(mpp) = file.geometry.level_mpp(level) {
+                    parts.push(mpp_text(mpp, 2));
+                }
+                options.push(parts.join(" · "));
             }
             let choice = choose_level(&file.geometry, config.resolution, model_mpp);
             let index = match (config.resolution, choice) {
@@ -480,41 +569,50 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             let level_mpp = choice.and_then(|c| c.level_mpp(&file.geometry));
             let (note, warning) = match choice {
                 Some(choice) if choice.mismatched() && choice.resample.is_some() => (
-                    format!(
-                        "The slide's finest level is {:.3} µm/px, coarser than the model's {:.3} µm/px: tiles are interpolated and errors will be inflated.",
-                        level_mpp.unwrap_or_default(),
-                        model_mpp.unwrap_or_default()
+                    // Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+                    tr!(
+                        "The slide's finest level is {mpp}, coarser than the model's {model}: tiles are interpolated and errors will be inflated.",
+                        mpp = mpp_text(level_mpp.unwrap_or_default(), 3),
+                        model = mpp_text(model_mpp.unwrap_or_default(), 3)
                     ),
                     true,
                 ),
                 Some(choice) if choice.mismatched() => (
-                    format!(
-                        "Level {} is {:.2} µm/px but the model was trained at {:.2} µm/px; errors will be inflated.",
-                        choice.level.index,
-                        choice.mpp.unwrap_or_default(),
-                        model_mpp.unwrap_or_default()
+                    // Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+                    tr!(
+                        "Level {level} is {mpp} but the model was trained at {model}; errors will be inflated.",
+                        level = choice.level.index,
+                        mpp = mpp_text(choice.mpp.unwrap_or_default(), 2),
+                        model = mpp_text(model_mpp.unwrap_or_default(), 2)
                     ),
                     true,
                 ),
                 Some(choice) if choice.resample.is_some() => (
-                    format!(
-                        "Tiles are read from level {} ({:.3} µm/px) and resampled to the model's {:.3} µm/px.",
-                        choice.level.index,
-                        level_mpp.unwrap_or_default(),
-                        model_mpp.unwrap_or_default()
+                    // Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+                    tr!(
+                        "Tiles are read from level {level} ({mpp}) and resampled to the model's {model}.",
+                        level = choice.level.index,
+                        mpp = mpp_text(level_mpp.unwrap_or_default(), 3),
+                        model = mpp_text(model_mpp.unwrap_or_default(), 3)
                     ),
                     false,
                 ),
                 Some(choice) => (
                     match (choice.mpp, model_mpp) {
-                        (Some(level), Some(trained)) => format!(
-                            "Level {} at {level:.2} µm/px (model {trained:.2} µm/px).",
-                            choice.level.index
+                        // Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+                        (Some(level), Some(trained)) => tr!(
+                            "Level {level} at {mpp} (model {model}).",
+                            level = choice.level.index,
+                            mpp = mpp_text(level, 2),
+                            model = mpp_text(trained, 2)
                         ),
-                        (Some(level), None) => {
-                            format!("Level {} at {level:.2} µm/px.", choice.level.index)
-                        }
-                        _ => format!(
+                        // Translators: {mpp} is a resolution like "0.23 µm/px"
+                        (Some(level), None) => tr!(
+                            "Level {level} at {mpp}.",
+                            level = choice.level.index,
+                            mpp = mpp_text(level, 2)
+                        ),
+                        _ => tr!(
                             "Level {} (the slide is not calibrated).",
                             choice.level.index
                         ),
@@ -526,9 +624,9 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             (options, index, note, warning)
         }
         None => (
-            vec!["Auto".to_string()],
+            vec![tr!("Resolution" => "Auto")],
             0,
-            "Open a slide.".to_string(),
+            tr!("Open a slide."),
             false,
         ),
     };
@@ -544,25 +642,18 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     match &state.job {
         Some(job) => {
             set("job-running", json!(true));
-            set(
-                "job-title",
-                json!(match job.request.kind {
-                    JobKind::WholeSlide => "Whole slide",
-                    JobKind::Viewport => "Viewport",
-                    JobKind::Roi => "Region of interest",
-                    JobKind::Auto => "Visible tiles",
-                }),
-            );
+            set("job-title", json!(job.request.kind.title()));
             let progress = job.progress;
             set(
                 "job-status",
                 json!(if progress.total > 0 {
-                    format!(
-                        "{} of {} tiles · {} background · {} unreadable",
-                        progress.done,
-                        progress.total,
-                        progress.counts.background,
-                        progress.counts.failed
+                    tr!(
+                        "{done} of {n} tile · {background} background · {unreadable} unreadable"
+                            | "{done} of {n} tiles · {background} background · {unreadable} unreadable"
+                                % progress.total,
+                        done = progress.done,
+                        background = progress.counts.background,
+                        unreadable = progress.counts.failed
                     )
                 } else {
                     job.phase.clone()
@@ -590,17 +681,27 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             state
                 .last_job
                 .as_ref()
-                .map(|s| s.text.clone())
+                .map(|s| s.text())
                 .unwrap_or_default()
         ),
     );
     set(
         "last-result-error",
-        json!(state.last_job.as_ref().is_some_and(|s| s.error)),
+        json!(state.last_job.as_ref().is_some_and(|s| s.failed())),
     );
     set(
         "auto-hint",
-        json!(state.auto_hint.clone().unwrap_or_default()),
+        json!(
+            state
+                .auto_hint
+                // Translators: Viewport and Whole slide are the buttons of the same names
+                .map(|tiles| tr!(
+                    "Zoom in to analyse automatically ({n} tile visible), or run Viewport or Whole slide."
+                        | "Zoom in to analyse automatically ({n} tiles visible), or run Viewport or Whole slide."
+                        % tiles
+                ))
+                .unwrap_or_default()
+        ),
     );
 
     // Results of the active slide, as the focused pane shows it.
@@ -643,14 +744,16 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             let total = ctx.grid.tile_count().max(1);
             set(
                 "coverage-text",
-                json!(format!(
-                    "{} tissue tiles scored, {} background, {} unreadable — {:.1} % of the {} tiles at level {}.",
-                    stats.counts.analysed,
-                    stats.counts.background,
-                    stats.counts.failed,
-                    stats.counts.total() as f64 * 100.0 / total as f64,
+                json!(tr!(
+                    "{n} tissue tile scored, {background} background, {unreadable} unreadable — {percent} % of the {total} tiles at level {level}."
+                        | "{n} tissue tiles scored, {background} background, {unreadable} unreadable — {percent} % of the {total} tiles at level {level}."
+                            % stats.counts.analysed,
+                    background = stats.counts.background,
+                    unreadable = stats.counts.failed,
+                    percent =
+                        i18n::format_decimal(stats.counts.total() as f64 * 100.0 / total as f64, 1),
                     total,
-                    ctx.grid.level
+                    level = ctx.grid.level
                 )),
             );
             match &stats.summary {
@@ -660,12 +763,13 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                     let f = |v: f64| format_error(v, decimals);
                     set(
                         "stats-text",
-                        json!(format!(
-                            "Tile MAE: mean {} · median {} · p95 {} · max {}",
-                            f(summary.mean),
-                            f(summary.median),
-                            f(summary.p95),
-                            f(summary.max)
+                        // Translators: MAE is the mean absolute error; p95 the 95th percentile
+                        json!(tr!(
+                            "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}",
+                            mean = f(summary.mean),
+                            median = f(summary.median),
+                            p95 = f(summary.p95),
+                            max = f(summary.max)
                         )),
                     );
                     let peak = stats.bins.iter().map(|b| b.count).max().unwrap_or(0).max(1);
@@ -680,7 +784,8 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                             .bins
                             .iter()
                             .map(|b| json!({
-                                "label": format!("{}–{}: {}", format_error(b.lo, bin_decimals), format_error(b.hi, bin_decimals), b.count),
+                                // Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
+                                "label": tr!("{lo}–{hi}: {n} tile" | "{lo}–{hi}: {n} tiles" % b.count, lo = format_error(b.lo, bin_decimals), hi = format_error(b.hi, bin_decimals)),
                                 "count": b.count as i32,
                                 "normalized": b.count as f64 / peak as f64,
                             }))
@@ -724,18 +829,20 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                                     .unwrap_or_default();
                                 let (step_x, step_y) = (ctx.grid.step_x(), ctx.grid.step_y());
                                 let size = if (step_x - step_y).abs() < 0.5 {
-                                    format!("{} px", thousands(step_x))
+                                    format!("{} px", grouped(step_x))
                                 } else {
-                                    format!("{}×{} px", thousands(step_x), thousands(step_y))
+                                    format!("{}×{} px", grouped(step_x), grouped(step_y))
                                 };
                                 json!({
                                     "id": coord.id(),
+                                    // Level-0 coordinates and size: no words.
                                     "label": format!(
                                         "x {} · y {} · {size}",
-                                        thousands(rect.x),
-                                        thousands(rect.y),
+                                        grouped(rect.x),
+                                        grouped(rect.y),
                                     ),
-                                    "score": format!("MAE {} · max {}", format_error(f64::from(*mae), decimals.max(4)), format_error(f64::from(max), 3)),
+                                    // Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
+                                    "score": tr!("MAE {mae} · max {max}", mae = format_error(f64::from(*mae), decimals.max(4)), max = format_error(f64::from(max), 3)),
                                 })
                             })
                             .collect::<Vec<_>>()),
@@ -748,18 +855,19 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                                 .unwrap_or_else(|| stats.heat_range());
                             (
                                 true,
-                                "Tile MAE (p05–p95)",
+                                // Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
+                                tr!("Tile MAE (p05–p95)"),
                                 f(f64::from(lo)),
                                 f(f64::from(hi)),
                             )
                         }
                         Mode::Difference => (
                             true,
-                            "Pixel error",
+                            tr!("Pixel error"),
                             "0".to_string(),
                             format_error(f64::from(stats.pixel_range()), 3),
                         ),
-                        _ => (false, "", String::new(), String::new()),
+                        _ => (false, String::new(), String::new(), String::new()),
                     };
                     set("legend-visible", json!(legend_visible));
                     set("legend-title", json!(title));
@@ -774,9 +882,8 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             set(
                 "coverage-text",
                 json!(match &ctx {
-                    Some(_) =>
-                        "Nothing analysed on this slide with these settings yet.".to_string(),
-                    None if !has_active => "Open a slide.".to_string(),
+                    Some(_) => tr!("Nothing analysed on this slide with these settings yet."),
+                    None if !has_active => tr!("Open a slide."),
                     None => {
                         let state = lock(&core.state);
                         state
@@ -784,7 +891,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                             .map(|id| {
                                 run_context(&state, id)
                                     .err()
-                                    .map(|r| r.message())
+                                    .map(|r| r.text())
                                     .unwrap_or_default()
                             })
                             .unwrap_or_default()
@@ -801,24 +908,25 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     set(
         "cache-text",
         json!(if cache.enabled {
-            format!(
-                "{} of {} on disk · {} runs",
-                mib(cache.bytes),
-                mib(cache.budget),
-                cache.runs
+            // Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
+            tr!(
+                "{used} of {budget} on disk · {n} run"
+                    | "{used} of {budget} on disk · {n} runs" % cache.runs,
+                used = mib(cache.bytes),
+                budget = mib(cache.budget)
             )
         } else {
-            "Disk cache disabled".to_string()
+            tr!("Disk cache disabled")
         }),
     );
     set("cache-error", json!(cache.error.unwrap_or_default()));
     set("cache-enabled", json!(cache.enabled));
     set(
         "memory-text",
-        json!(format!(
-            "Tile pixels in memory: {} of {}",
-            mib(lock(&core.results).payload_bytes() as u64),
-            mib(memory_limit as u64)
+        json!(tr!(
+            "Tile pixels in memory: {used} of {limit}",
+            used = mib(lock(&core.results).payload_bytes() as u64),
+            limit = mib(memory_limit as u64)
         )),
     );
     set("keep-pixels", json!(keep_pixels));
@@ -884,9 +992,9 @@ pub fn callback<B: Backend>(
             let id = core
                 .host
                 .open_file_dialog(FileDialogArgs {
-                    title: Some("Open an ONNX model".into()),
+                    title: Some(tr!("Open an ONNX model")),
                     filters: vec![FileFilter {
-                        name: "ONNX models".into(),
+                        name: tr!("ONNX models"),
                         extensions: vec!["onnx".into()],
                     }],
                     ..Default::default()
@@ -913,7 +1021,7 @@ pub fn callback<B: Backend>(
             let id = core
                 .host
                 .open_file_dialog(FileDialogArgs {
-                    title: Some("Choose the ONNX Runtime library".into()),
+                    title: Some(tr!("Choose the ONNX Runtime library")),
                     filters,
                     ..Default::default()
                 })
@@ -1161,7 +1269,7 @@ pub fn callback<B: Backend>(
                 (state.active_file, pane, view)
             };
             let Some(file_id) = file_id else {
-                return Err("Open a slide first.".to_string());
+                return Err(tr!("Open a slide first."));
             };
             core.start_job(JobRequest {
                 kind: match name {
@@ -1255,7 +1363,7 @@ pub fn callback<B: Backend>(
                 let id = core
                     .host
                     .save_file_dialog(FileDialogArgs {
-                        title: Some("Export tile scores".into()),
+                        title: Some(tr!("Export tile scores")),
                         filters: vec![FileFilter {
                             name: "CSV".into(),
                             extensions: vec!["csv".into()],
@@ -1272,13 +1380,14 @@ pub fn callback<B: Backend>(
             let id = core
                 .host
                 .confirm(ConfirmArgs {
-                    title: "Clear the VAE result cache?".into(),
-                    message: format!(
+                    title: tr!("Clear the VAE result cache?"),
+                    // Translators: {} is a size, e.g. "120 MB"
+                    message: tr!(
                         "This deletes {} of stored results for every slide. Results are recomputed when needed.",
                         mib(status.bytes)
                     ),
-                    confirm_label: "Clear".into(),
-                    cancel_label: "Cancel".into(),
+                    confirm_label: tr!("Clear"),
+                    cancel_label: tr!("Cancel"),
                     destructive: true,
                 })
                 .map_err(String::from)?;
@@ -1356,7 +1465,8 @@ mod tests {
         };
         let (text, warning) = adjustment_note(Mode::Reconstruction, Some(&tone), false);
         assert!(text.contains("display adjustments") && !warning, "{text}");
-        // Deconvolution without normalisation shows only in the badge.
+        // Deconvolution without normalisation: eov before plugin API 1.1
+        // says so only in its (English) badge.
         let deconvolved = DisplayAdjustments {
             modified: true,
             badge: "Isolated stain: Hematoxylin · Display-adjusted".into(),
@@ -1364,6 +1474,38 @@ mod tests {
         };
         let (text, warning) = adjustment_note(Mode::Reconstruction, Some(&deconvolved), false);
         assert!(warning && text.contains("Isolated stain"), "{text}");
+        // Later eovs say so in a field, and send the badge as the pane
+        // shows it, in the language of the interface: the note names the
+        // processing in the same words.
+        let translated = DisplayAdjustments {
+            modified: true,
+            badge: "Isolated stain: Hematoxylin".into(),
+            shown_badge: Some("Isolierte Färbung: Hämatoxylin".into()),
+            stain_colors: Some(true),
+            ..Default::default()
+        };
+        let (text, warning) = adjustment_note(Mode::Reconstruction, Some(&translated), false);
+        assert!(warning, "{text}");
+        assert!(
+            text.contains("(Isolierte Färbung: Hämatoxylin)") && !text.contains("Isolated stain"),
+            "{text}"
+        );
+        let unnamed = DisplayAdjustments {
+            shown_badge: Some(String::new()),
+            ..translated
+        };
+        let (text, _) = adjustment_note(Mode::Reconstruction, Some(&unnamed), false);
+        assert!(text.contains("(Isolated stain: Hematoxylin)"), "{text}");
+        // What is applied is read from the field, not from the badge.
+        let display_only = DisplayAdjustments {
+            modified: true,
+            badge: "Display-adjusted".into(),
+            shown_badge: Some("Anzeige angepasst".into()),
+            stain_colors: Some(false),
+            ..Default::default()
+        };
+        let (_, warning) = adjustment_note(Mode::Reconstruction, Some(&display_only), false);
+        assert!(!warning, "display adjustments alone do not warn");
         let normalised = DisplayAdjustments {
             stain_normalization: Some("vahadane".into()),
             modified: true,

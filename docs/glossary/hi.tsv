@@ -1,0 +1,287 @@
+term	translation	note
+(register)	आप; विनम्र आज्ञार्थ (-एँ / -ें)	Polite आप form throughout. Buttons and menu items use the polite imperative as in Windows/Office Hindi: खोलें, सहेजें, बंद करें, हटाएँ. Labels and headings are nouns.
+(punctuation)	।	Sentences end with the purna viram । (not a period); ? ! : , … and “ ” as in English. Keep … on menu items that open a dialog. No Title Case. Use nukta (फ़ाइल, ज़ूम) and chandrabindu (हाँ, जाँच, हटाएँ).
+(numbers and units)	{n} µm, 40×, 50%	Units, ×, %, keys (Ctrl, Shift, Esc, F1) and abbreviations stay in Latin script as written. No space before % in Hindi.
+(plural forms)	0 और 1 → रूप 0; 2+ → रूप 1	Hindi has nplurals=2, plural=(n > 1): the first form also serves 0, so both forms must show {n}. Verbs and nouns agree: 1 स्लाइड खोली गई / 3 स्लाइडें खोली गईं.
+(placeholders)	{} (कुल {})	Bare {} placeholders cannot be reordered: write “X of Y” with two bare {} as “{} (कुल {})”, never “{} में से {}”. Named ones ({n}, {shown}) may move: {n} में से {shown}.
+(file names in sentences)	{} को खोला गया	When {} is a file or slide name, use को / का constructions (default masculine verb) so the sentence is grammatical whatever the name: {} को सहेजा गया, {} का निर्यात किया गया.
+(time abbreviations)	घं॰, मि॰, से॰	Hours, minutes, seconds in compact times: 1 घं॰ 02 मि॰, 4 मि॰ 05 से॰ (with the abbreviation sign ॰, so से॰ is not read as the postposition से).
+For research and education. Not a medical device; not for primary diagnosis.	अनुसंधान और शिक्षा के लिए। यह चिकित्सा उपकरण नहीं है; प्राथमिक निदान के लिए नहीं।	Safety text: translate completely, never soften or shorten.
+research use only (RUO)	केवल अनुसंधान उपयोग के लिए (RUO)	Keep RUO.
+not a medical device	चिकित्सा उपकरण नहीं	उपकरण is reserved for “device”; a software tool is टूल.
+primary diagnosis	प्राथमिक निदान	Regulatory term: the first, final diagnosis of a case.
+diagnosis	निदान	m.
+intended use	अभिप्रेत उपयोग	m.
+synthetic (image, channel, stain)	संश्लेषित	Computed by an algorithm. Never कृत्रिम or नकली (reads as fake).
+predicted, prediction	पूर्वानुमानित, पूर्वानुमान	e.g. पूर्वानुमानित चैनल, पूर्वानुमानित मार्कर.
+generated	उत्पन्न / निर्मित	उत्पन्न किया गया (computed); never नकली.
+slide	स्लाइड	f.; plural स्लाइडें, oblique स्लाइडों. The glass microscope slide and its scan, never a presentation slide.
+whole-slide image (WSI)	संपूर्ण-स्लाइड छवि (WSI)	f. Keep WSI. Whole-slide image viewer: संपूर्ण-स्लाइड छवि व्यूअर.
+image	छवि	f.; plural छवियाँ.
+slide viewer, viewer	स्लाइड व्यूअर, व्यूअर	m.
+tab	टैब	m.; plural टैब, oblique टैबों. One open slide in a pane. Close Others: अन्य टैब बंद करें.
+pane	फलक	m.; plural फलक, oblique फलकों (Windows term for pane).
+focused (pane, slide)	फ़ोकस वाला	फ़ोकस वाला फलक, फ़ोकस वाली स्लाइड.
+view	दृश्य	m. Position, magnification and rotation a pane shows.
+viewport	व्यूपोर्ट	m. The area of a pane where the slide is drawn.
+minimap	मिनीमैप	m.
+scale bar	स्केल बार	m.
+HUD	HUD (ओवरले पैनल)	m. The small panels floating over the slide; ओवरले पैनल where the abbreviation alone is unclear.
+toolbar	टूलबार	m.
+sidebar	साइडबार	m.
+status bar	स्थिति पट्टी	f.
+series bar	शृंखला पट्टी	f. The strip of the folder's slides.
+series (DICOM, time)	शृंखला	f. DICOM शृंखला, समय शृंखला.
+panel	पैनल	m.
+dialog	संवाद	m.
+window	विंडो	f.
+menu	मेनू	m.
+tool	टूल	m. Measure tool: माप टूल; region tool: क्षेत्र टूल. Never उपकरण (= device).
+Navigate (tool)	नेविगेट करें	
+Measure (tool)	मापें	The measurement tool's name and button.
+zoom	ज़ूम	m. Screen scale. Zoom in / out: ज़ूम इन करें / ज़ूम आउट करें.
+magnification (20×)	आवर्धन	m. Objective-equivalent optical magnification; 20× stays 20×.
+objective, objective power	अभिदृश्यक, अभिदृश्यक आवर्धन	m. The microscope objective (अभिदृश्यक लेंस), e.g. 40× अभिदृश्यक.
+pan	पैन करें	Pan left: बाएँ पैन करें.
+pixel	पिक्सेल	m.
+pixel size	पिक्सेल आकार	m.
+MPP (µm per pixel)	MPP (µm प्रति पिक्सेल)	Keep MPP.
+calibration	अंशांकन	m.; calibrate: अंशांकित करें.
+level, pyramid level	स्तर, पिरामिड स्तर	m. One resolution of the image pyramid; level 0: स्तर 0.
+resolution	रिज़ॉल्यूशन	m.
+tile	टाइल	f.; plural टाइलें, oblique टाइलों. A square piece of the image.
+patch (dataset)	पैच	m.; plural पैच, oblique पैचों.
+cache	कैश	m.
+region of interest (ROI)	रुचि क्षेत्र (ROI)	m. ROI alone in short labels.
+region	क्षेत्र	m.
+area (measured)	क्षेत्रफल	m. The measured size of a region; क्षेत्र is the region itself.
+measurement	माप	m.; plural माप, oblique मापों.
+distance, length, perimeter	दूरी, लंबाई, परिधि	f., f., f.
+angle	कोण	m.
+point, line, arrow, polygon, rectangle, ellipse	बिंदु, रेखा, तीर, बहुभुज, आयत, दीर्घवृत्त	Shapes of measurements and annotations.
+annotation	एनोटेशन	m.; plural एनोटेशन, oblique एनोटेशनों. A drawn mark with a meaning, not a free-text comment (टिप्पणी).
+comment, note	टिप्पणी, नोट	f., m. Free text attached to an annotation or layer.
+class (annotation class)	वर्ग	m. e.g. ट्यूमर, स्ट्रोमा.
+layer	परत	f.; plural परतें.
+cell	कोशिका	f. A grid cell (of a check or a table) is कक्ष.
+nucleus, nuclei	केंद्रक	m.
+tissue	ऊतक	m.
+cell count, counting	कोशिका गणना, गणना	f.
+count (verb)	गिनें	
+high-power field (HPF)	हाई-पावर फ़ील्ड (HPF)	m. HPF alone in short labels.
+H&E	H&E	Do not translate. The one-letter labels H and E stay.
+hematoxylin	हीमैटॉक्सिलिन	m.
+eosin	इओसिन	m.
+stain (of a slide), staining	अभिरंजन	m. Stain: H&E → अभिरंजन: H&E. Compounds: अभिरंजन मॉडल, अभिरंजन लक्ष्य, अभिरंजन सामान्यीकरण, अभिरंजन वेक्टर.
+stain (one dye of a stain model)	अभिरंजक	m. Isolated stain: पृथक अभिरंजक; the slide's stains (fitted dyes): स्लाइड के अभिरंजक.
+stain names	हीमैटॉक्सिलिन, गीम्सा, ग्राम, ज़ील–नील्सन, मैसन ट्राइक्रोम, कांगो रेड…	Histological stain names are transliterated into Devanagari; Macenko and Vahadane (methods) stay in Latin.
+IHC	IHC (इम्यूनोहिस्टोकेमिस्ट्री)	Keep IHC.
+DAB	DAB	Keep. Chromogen: क्रोमोजेन.
+stain normalization	अभिरंजन सामान्यीकरण	m. Macenko and Vahadane stay.
+colour normalization, colour-normalised	रंग सामान्यीकरण, रंग-सामान्यीकृत	m.
+stain target	अभिरंजन लक्ष्य	m. The reference a slide's colours are normalized to.
+stain fit	फ़िट	m. Macenko फ़िट; reference stain vectors: संदर्भ अभिरंजन वेक्टर.
+colour deconvolution	रंग डीकन्वोल्यूशन	m. Separating the dyes of a stain into channels (Ruifrok–Johnston).
+concentration, optical density	सांद्रता, प्रकाशीय घनत्व	f., m.
+weak (1+), moderate (2+), strong (3+)	कमज़ोर (1+), मध्यम (2+), तीव्र (3+)	Staining intensity classes of the H-score (H-स्कोर).
+quantify, quantification	परिमाणन करें, परिमाणन	m. Quantify Stain: अभिरंजन परिमाणन.
+isolated (stain, channel)	पृथक	Isolated channel: पृथक चैनल.
+channel	चैनल	m.; plural चैनल, oblique चैनलों.
+fluorescence	प्रतिदीप्ति	f.
+multiplex immunofluorescence (mIF)	मल्टीप्लेक्स इम्यूनोफ़्लोरेसेंस (mIF)	Keep mIF.
+marker	मार्कर	m. Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	फ़ोकल तल (Z)	m. Z-stack: Z-स्टैक.
+time point (T)	समय बिंदु (T)	m.
+intensity	तीव्रता	f.
+threshold	सीमा-मान	m. White threshold: सफ़ेद सीमा-मान.
+positive, negative	पॉज़िटिव, नेगेटिव	{}-positive: {}-पॉज़िटिव.
+heat map	हीट मैप	m.
+overlay	ओवरले	m.
+opacity	अपारदर्शिता	f.
+colour, color	रंग	m.
+colour profile (ICC)	रंग प्रोफ़ाइल	f. Keep ICC.
+colour management	रंग प्रबंधन	m.; colour-managed: रंग-प्रबंधित.
+as scanned	स्कैन किए गए रूप में	Colours as scanned: स्कैन किए गए रंग.
+smooth, smoothed	स्मूथ	स्मूथ करके दिखाया जाता है.
+tissue QC	ऊतक गुणवत्ता जाँच (QC)	f. ऊतक QC in short labels.
+pen marks	पेन के निशान	m. pl.
+folds	तहें	f. pl. (ऊतक की तहें).
+blur, blurred, out of focus	धुंधलापन, धुंधला, फ़ोकस से बाहर	
+tissue detection	ऊतक पहचान	f.
+tissue mask	ऊतक मास्क	m.
+dataset	डेटासेट	m.
+patch extraction	पैच निष्कर्षण	m.
+stride	स्ट्राइड	m. The step between patches.
+export	निर्यात करें / निर्यात	m.
+import	आयात करें / आयात	m.
+copy (noun), save a copy	प्रतिलिपि, प्रतिलिपि सहेजें	f. A copy of the slide; the verb (to the clipboard) is कॉपी करें.
+convert	रूपांतरित करें	
+de-identify, de-identified	पहचान-रहित करें, पहचान-रहित	Removing data that could identify a patient (रोगी).
+label image	लेबल छवि	f. Photo of the slide's paper label.
+macro image	मैक्रो छवि	f. Photo of the whole glass slide.
+thumbnail	थंबनेल	m.
+metadata, property	मेटाडेटा, गुण	m.; Slide Information: स्लाइड जानकारी.
+bookmark	बुकमार्क	m.
+session	सत्र	m.
+landmark	लैंडमार्क	m. Points used to align slides.
+alignment, align	संरेखण, संरेखित करें	m.
+link (panes)	लिंक करें	Panes linked: फलक लिंक किए गए; unlink: लिंक हटाएँ.
+plugin	प्लगइन	m.; plural प्लगइन, oblique प्लगइनों.
+package (.eop)	पैकेज	m.
+plugin origin: official, local, unmanaged, system	आधिकारिक, स्थानीय, अप्रबंधित, सिस्टम	
+plugin status: active, disabled	सक्रिय, अक्षम	
+safe mode	सुरक्षित मोड	m.
+model	मॉडल	m.
+model store	मॉडल स्टोर	m.
+inference	इन्फ़रेंस	m. Running a model on images.
+reconstruction	पुनर्निर्माण	m.
+batch	बैच	m.
+database	डेटाबेस	m.
+profile	प्रोफ़ाइल	f.
+render, renderer	रेंडर करें, रेंडरर	m.
+backend	बैकएंड	m.
+CPU, GPU	CPU, GPU	Do not translate.
+filtering	फ़िल्टरिंग	f. Bilinear: बाइलीनियर, trilinear: ट्राइलीनियर; Lanczos stays.
+filter	फ़िल्टर	m.
+sharpness	तीक्ष्णता	f.
+gamma	गामा	m.
+brightness	चमक	f.
+contrast	कंट्रास्ट	m.
+theme	थीम	f.
+dark, light, high contrast	गहरा, हल्का, उच्च कंट्रास्ट	Theme names.
+Home screen	होम स्क्रीन	f. The Home tab: होम.
+Check for Updates…	अपडेट की जाँच करें…	Asks before going online; never imply automatic updates.
+update (noun, verb)	अपडेट, अपडेट करें	m.
+update helper	अपडेट सहायक	m.
+release, release notes	रिलीज़, रिलीज़ नोट्स	f.
+artifact (of a release)	आर्टिफ़ैक्ट	m.
+repository	रिपॉज़िटरी	f.
+administrator policy	व्यवस्थापक नीति	f.
+download	डाउनलोड करें	
+install, uninstall	इंस्टॉल करें, अनइंस्टॉल करें	
+scan (noun, verb)	स्कैन, स्कैन करें	m.
+vendor (scanner)	निर्माता	m. Not विक्रेता (seller).
+case (accession)	केस	m.
+Open	खोलें	
+Close	बंद करें	
+Cancel	रद्द करें	
+OK	ठीक है	
+Save	सहेजें	
+Save as	इस रूप में सहेजें	
+Delete	हटाएँ	
+Remove	निकालें	Remove from a list or uninstall (not erase).
+Add	जोड़ें	
+Edit	संपादित करें	Editing: संपादन.
+Change	बदलें	
+Clear	साफ़ करें	Clear a list; clearing a region or landmarks: हटाएँ.
+Copy	कॉपी करें	Copied: कॉपी किया गया.
+Paste	चिपकाएँ	
+Undo, Redo	पूर्ववत करें, फिर से करें	Undo {}: पूर्ववत करें: {}, with the action as a verbal noun (माप जोड़ना).
+Apply	लागू करें	
+Reset	रीसेट करें	Reset to Defaults: डिफ़ॉल्ट पर रीसेट करें.
+Show	दिखाएँ	
+Hide	छिपाएँ	Hidden: छिपा हुआ / छिपी हुई.
+Toggle (show/hide)	दिखाएँ/छिपाएँ	Toggle minimap: मिनीमैप दिखाएँ/छिपाएँ.
+Enable, Disable	सक्षम करें, अक्षम करें	Enabled: सक्षम, disabled: अक्षम.
+Settings	सेटिंग्स	f. pl.
+Options	विकल्प	m.
+Preferences	प्राथमिकताएँ	f. pl.
+Fit	फ़िट करें	Fit the slide to the pane: स्लाइड को फलक में फ़िट करें.
+Rotate, rotation	घुमाएँ, घुमाव	m.
+Flip horizontally	क्षैतिज रूप से पलटें	Flip vertically: लंबवत रूप से पलटें.
+Full screen	पूर्ण स्क्रीन	f.
+Maximize, Minimize	अधिकतम करें, न्यूनतम करें	
+Quit	बाहर निकलें	Quit eov: eov से बाहर निकलें.
+Back, Forward, Up	पीछे, आगे, ऊपर	
+Done	हो गया	As a status: पूर्ण.
+Confirm	पुष्टि करें	
+Retry	पुनः प्रयास करें	In sentences: फिर से प्रयास करें.
+Browse	ब्राउज़ करें	
+Search, Find	खोजें, ढूँढें	
+Select, Choose	चुनें	
+Lock, Locked	लॉक करें, लॉक	
+Help	सहायता	f.
+Tools (group)	टूल	m. pl.
+Keyboard shortcuts	कीबोर्ड शॉर्टकट	m. pl.; key: कुंजी (f.).
+File	फ़ाइल	f.; plural फ़ाइलें, oblique फ़ाइलों.
+Folder	फ़ोल्डर	m. Open Containing Folder: युक्त फ़ोल्डर खोलें.
+Path	पथ	m.
+Clipboard	क्लिपबोर्ड	m.
+Preview	पूर्वावलोकन	m.
+Format	प्रारूप	m.
+Quality	गुणवत्ता	f.
+Compression, lossless	संपीड़न, हानिरहित	m.
+Dimensions	आयाम	m. pl.
+Units	इकाइयाँ	f. pl.
+Information	जानकारी	f.
+Language	भाषा	f. Hindi's own name: हिन्दी.
+Messages	संदेश	m. pl. Open Log Folder: लॉग फ़ोल्डर खोलें.
+Error	त्रुटि	f.
+Warning	चेतावनी	f.
+Loading…	लोड हो रहा है…	
+Ready	तैयार	
+Unknown	अज्ञात	
+N/A	अनुपलब्ध	Not available (the file does not record it).
+None	कोई नहीं	
+Standard	मानक	
+Custom	कस्टम	
+Default	डिफ़ॉल्ट	
+Label	लेबल	m.
+Thickness	मोटाई	f.
+Font size	फ़ॉन्ट आकार	m.
+Recently Opened	हाल ही में खोली गई फ़ाइलें	Recent files: हालिया फ़ाइलें.
+gamepad terms	गेमपैड, कंट्रोलर, स्टिक, ट्रिगर, बटन, डेड ज़ोन, पॉइंटर	m. Transliterated as on game controllers.
+plugin edit names (undo labels)	बिंदु जोड़ना, परत हटाना	Names of edits shown after “पूर्ववत करें:” and in “{} को सहेजा नहीं जा सका” are verbal nouns (-ना); buttons and menu items stay imperative (हटाएँ).
+count point	गणना बिंदु	m. A point placed with the Count tool; Count (tab, tool): गणना.
+HPF field	HPF फ़ील्ड	m.; plural फ़ील्ड. A high-power field placed on the slide; the heading HIGH-POWER FIELDS: हाई-पावर फ़ील्ड.
+field number (FN)	फ़ील्ड संख्या (FN)	f. The eyepiece's field number in mm.
+outline	रूपरेखा	f.; plural रूपरेखाएँ. Crosses itself: स्वयं को काटती है; even-odd rule: सम-विषम नियम; Repair: सुधारें.
+shape	आकृति	f.; plural आकृतियाँ. A drawn geometry; the shape of a tensor is आकार.
+vertex, hole	शीर्ष, छेद	m., m. Of a polygon or region.
+brush, eraser, brush stroke	ब्रश, इरेज़र, ब्रश स्ट्रोक	m. Erase: मिटाएँ.
+hotkey	हॉटकी	f. As in eov; a key is कुंजी (f.).
+character (length limits)	वर्ण	m. {n} वर्ण लंबा; a letter is अक्षर.
+Lock, Unlock (annotation, layer)	लॉक करें, अनलॉक करें	The state Locked: लॉक.
+Collapse, Expand	संक्षिप्त करें, विस्तृत करें	Tree items (layers).
+review status: Draft, Verified, Rejected	समीक्षा स्थिति: मसौदा, सत्यापित, अस्वीकृत	Mark verified: सत्यापित के रूप में चिह्नित करना. Not प्रारूप (= format).
+unclassified	अवर्गीकृत	Annotations without a class.
+property (of an annotation)	गुण	m. Property name / value: गुण का नाम / गुण का मान.
+author	लेखक	m. Your name or initials: आपका नाम या आद्याक्षर.
+read-only (database)	केवल पढ़ने के लिए	The database is read-only: डेटाबेस केवल पढ़ने के लिए है.
+reader, second reader	पाठक, दूसरा पाठक	m. A person who independently assesses the same slides; a second read: दूसरा पाठन.
+blinded copy	ब्लाइंडेड प्रतिलिपि	f. Export without authors, comments, statuses, descriptions or properties.
+Compare (with another reader)	तुलना करें	Compared with {}: {} से तुलना की गई; matched: मिलान; overlap: अतिव्यापन.
+merge (database)	मर्ज करें	Merging: मर्ज किया जा रहा है.
+back up, backup	बैकअप लें, बैकअप	m.
+attach (annotations to a slide)	संलग्न करें	Annotations of a re-saved or de-identified slide moved to the open slide.
+density (cells per area)	घनत्व	m. {density} /mm².
+combined positive score (CPS)	संयुक्त पॉज़िटिव स्कोर (CPS)	PD-L1 score; tumour cells: ट्यूमर कोशिकाएँ; immune cells: प्रतिरक्षा कोशिकाएँ.
+index (Ki-67 index)	सूचकांक	m. {class} सूचकांक.
+coordinates	निर्देशांक	m. pl. Level-0 pixels: स्तर-0 पिक्सेल.
+DICOM bulk annotations	DICOM बल्क एनोटेशन	m. pl. DICOM study: स्टडी; attribute: एट्रिब्यूट; modality: मोडैलिटी; structured report: संरचित रिपोर्ट.
+cell (Cellaris)	कक्ष	m.; plural कक्ष. The small square of the slide Cellaris predicts at once (41.6 µm); never कोशिका.
+window (Cellaris, model input)	विंडो	f. A square image the model predicts from.
+tissue block (Cellaris)	ऊतक ब्लॉक	m. Cellaris's 5 µm measuring square of tissue; near-black block: लगभग काला ब्लॉक.
+readout, region readout	सारांश, क्षेत्र सारांश	m. A summary of predicted values, not a measurement: never माप/मापन. Cellaris region readout (tool): Cellaris क्षेत्र सारांश; REGION READOUT: क्षेत्र सारांश; Use ROI: ROI का उपयोग करें.
+display window (marker)	प्रदर्शन विंडो	f. The value range a marker's colour is drawn over.
+mean, median, spread	माध्य, माध्यिका, फैलाव	m., f., m. Readout columns and error statistics.
+legend	लेजेंड	m. The list of markers and colours over the slide.
+reconstruction error	पुनर्निर्माण त्रुटि	f. VAE anomaly: VAE विसंगति; mean absolute error (MAE): माध्य निरपेक्ष त्रुटि.
+error map	त्रुटि मैप	m. Overlays: मूल, पुनर्निर्माण, त्रुटि मैप, अंतर.
+result cache	परिणाम कैश	m.
+preprocessing	पूर्व-प्रसंस्करण	m.
+sidecar file	साइडकार फ़ाइल	f.
+model card	मॉडल कार्ड	m. Built-in: अंतर्निहित.
+runtime (ONNX Runtime)	रनटाइम	m. The name ONNX Runtime stays; its library: लाइब्रेरी (f.).
+thread	थ्रेड	m.
+device (inference device, game controller)	डिवाइस	m. Never उपकरण (reserved for medical device).
+Auto (a choice)	स्वतः	Values typed into fields or batch parameters (auto, cpu, cuda, off) stay in Latin.
+bright-field	ब्राइट-फ़ील्ड	Not bright-field H&E: ब्राइट-फ़ील्ड H&E नहीं.
+upsample, resample	अपसैंपल करें, रीसैंपल करें	
+site's copy (of a model)	साइट की प्रति	f. As in eov: आपकी साइट की मॉडल प्रति.
+mapping (gamepad)	मैपिंग	f. Unassigned: असाइन नहीं; response curve: प्रतिक्रिया वक्र (m.).
+D-pad, shoulder button, face buttons	डी-पैड, शोल्डर बटन, दक्षिण/पूर्व/उत्तर/पश्चिम बटन	m.
+Pause (gamepad)	रोकें	Paused: रोका गया; resumed: फिर से शुरू हुआ.
+Move Pointer (gamepad mappings)	पॉइंटर ले जाएँ	Move Pointer Horizontally: पॉइंटर को क्षैतिज रूप से ले जाएँ.
+macOS permission path	सिस्टम सेटिंग्ज़ › गोपनीयता और सुरक्षा › ऐक्सेसिबिलिटी	The names macOS shows in Hindi.
+compute (predictions, a readout)	गणना करें	f. गणना (computation); Computing: गणना हो रही है; {} % computed: {}% गणना पूर्ण; could not be computed: की गणना नहीं की जा सकी. Never मापें/मापन.

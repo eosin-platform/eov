@@ -1,0 +1,120 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Chinese (Traditional)\n"
+"Language: zh-Hant\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr "示範工具列按鈕、側邊欄、疊加圖層、可復原的點工具、濾鏡與背景工作。"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "範例外掛程式"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "範例棋盤格玻片"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "範例側邊欄"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "放置標記點"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "反轉色彩"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "反轉"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "每張玻片的組織比例與平均組織色彩"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "讀取像素數不超過此值的最精細層級"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "標記點"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "標記點 {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "新增標記點"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "數到十"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step}/{total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "在此新增標記點"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "開啟的玻片上共有 {n} 個標記點"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "範例外掛程式"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "沒有玻片"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} 個標記點"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "清除標記點"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "反轉色彩"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "執行背景工作"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "描述"

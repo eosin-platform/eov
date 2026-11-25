@@ -590,7 +590,13 @@ impl UiHost {
                             eov_common::StainNormalization::Vahadane => Some("vahadane".into()),
                         },
                         modified: color.modified,
-                        badge: color.badge,
+                        // English, as plugin API 1.0 sent it (plugins built
+                        // against it read the text); the badge as the window
+                        // shows it, in the interface's language, goes in
+                        // `shown_badge`, and `stain_colors` says what it means.
+                        badge: color.badge_english,
+                        shown_badge: Some(color.badge),
+                        stain_colors: Some(color.stain_colors),
                         color_managed: matches!(
                             color.color_management,
                             crate::color::ColorManagementInfo::On(_)

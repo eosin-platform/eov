@@ -2,6 +2,9 @@
 
 import { Theme } from "theme.slint";
 export { Theme, ThemeKind } from "theme.slint";
+export { Locale } from "locale.slint";
+import { Locale } from "locale.slint";
+import { LanguageDialog } from "language-dialog.slint";
 import {
     BottomPanelKind,
     ChannelRow,
@@ -17,6 +20,7 @@ import {
     ExportSettings,
     FilteringMode,
     JobData,
+    LanguageEntry,
     MeasurementUnit,
     MetadataItem,
     MinimapRect,
@@ -161,6 +165,13 @@ export component AppWindow inherits Window {
     in-out property <component-factory> plugin-modal-factory;
     in-out property <bool> plugin-modal-captures-keyboard: true;
     in-out property <bool> bookmark-dialog-visible: false;
+    // The Language dialog (the toolbar's globe; app/src/i18n.rs).
+    in-out property <bool> language-dialog-visible: false;
+    in-out property <[LanguageEntry]> language-entries: [];
+    in-out property <string> language-override-note;
+    callback language-dialog-requested();
+    callback language-chosen(/* tag, empty: the system's */ string);
+    callback language-dialog-closed();
     in-out property <bool> shortcuts-panel-visible: false;
     in-out property <bool> measurements-panel-visible: false;
     in-out property <bool> quantify-visible: false;
@@ -505,7 +516,8 @@ export component AppWindow inherits Window {
         || root.slide-info-visible || root.save-copy-dialog-visible || root.plugin-confirm-visible
         || root.lanczos-confirm-visible || root.plugins-panel-visible || root.bookmark-dialog-visible
         || root.shortcuts-panel-visible || root.measurements-panel-visible || root.quantify-visible
-        || root.channels-panel-visible || root.show-plugin-modal || HeatMapPanel.visible;
+        || root.channels-panel-visible || root.show-plugin-modal || HeatMapPanel.visible
+        || root.language-dialog-visible;
     changed keyboard-surface-open => {
         if !self.keyboard-surface-open {
             global-keys.focus();
@@ -624,6 +636,10 @@ export component AppWindow inherits Window {
                     root.bookmark-dialog-cancelled();
                     return accept;
                 }
+                if root.language-dialog-visible {
+                    root.language-dialog-closed();
+                    return accept;
+                }
                 if root.notifications-visible {
                     root.notifications-visible = false;
                     return accept;
@@ -638,7 +654,7 @@ export component AppWindow inherits Window {
                 || root.save-copy-dialog-visible
                 || root.plugin-confirm-visible || root.show-plugin-modal || root.lanczos-confirm-visible || root.plugins-panel-visible
                 || root.bookmark-dialog-visible || root.shortcuts-panel-visible || root.measurements-panel-visible
-                || root.quantify-visible || root.channels-panel-visible {
+                || root.quantify-visible || root.channels-panel-visible || root.language-dialog-visible {
                 return reject;
             }
             if root.global-key(e.text, e.modifiers.shift, e.modifiers.control, e.modifiers.alt, e.modifiers.meta, true, e.repeat) {
@@ -731,6 +747,9 @@ export component AppWindow inherits Window {
             }
             theme-menu-requested(x, y) => {
                 root.theme-menu-requested(x, y);
+            }
+            language-requested => {
+                root.language-dialog-requested();
             }
             plugins-panel-requested => {
                 root.plugins-panel-requested();
@@ -1236,6 +1255,7 @@ export component AppWindow inherits Window {
             color: Theme.tooltip-text;
             font-size: 11px;
             wrap: word-wrap;
+            horizontal-alignment: Locale.start;
         }
     }
 
@@ -1413,6 +1433,7 @@ export component AppWindow inherits Window {
                         text: (root.filtering-mode == FilteringMode.bilinear ? "✓ " : "   ") + @tr("Bilinear (Low Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -1445,6 +1466,7 @@ export component AppWindow inherits Window {
                         text: (root.filtering-mode == FilteringMode.trilinear ? "✓ " : "   ") + @tr("Trilinear (Balanced)");
                         color: Theme.text-primary;
                         font-size: 11px;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -1477,6 +1499,7 @@ export component AppWindow inherits Window {
                         text: (root.filtering-mode == FilteringMode.lanczos3 ? "✓ " : "   ") + @tr("Lanczos-3 (High Quality)");
                         color: Theme.text-primary;
                         font-size: 11px;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -1516,6 +1539,7 @@ export component AppWindow inherits Window {
                         text: (root.pixel-view ? "✓ " : "   ") + @tr("Show Pixels Above 100%");
                         color: Theme.text-primary;
                         font-size: 11px;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -1536,6 +1560,21 @@ export component AppWindow inherits Window {
         }
         cancelled => {
             root.bookmark-dialog-cancelled();
+        }
+    }
+
+    if root.language-dialog-visible: LanguageDialog {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        entries: root.language-entries;
+        override-note: root.language-override-note;
+        chosen(tag) => {
+            root.language-chosen(tag);
+        }
+        closed => {
+            root.language-dialog-closed();
         }
     }
 
@@ -1912,7 +1951,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-primary;
                         font-size: 14px;
                         font-weight: 600;
-                        horizontal-alignment: left;
+                        horizontal-alignment: Locale.start;
                     }
 
                     Text {
@@ -1920,7 +1959,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-secondary;
                         font-size: 12px;
                         wrap: word-wrap;
-                        horizontal-alignment: left;
+                        horizontal-alignment: Locale.start;
                     }
 
                     Rectangle {
@@ -1932,7 +1971,8 @@ export component AppWindow inherits Window {
                         alignment: end;
 
                         Rectangle {
-                            width: 72px;
+                            // At least 72px; wider for a longer translation.
+                            width: max(72px, lanczos-cancel-text.preferred-width + 16px);
                             height: 28px;
                             border-radius: 4px;
                             background: cancel-touch.has-hover ? Theme.surface-hover : Theme.surface;
@@ -1954,7 +1994,7 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            Text {
+                            lanczos-cancel-text := Text {
                                 text: @tr("Cancel");
                                 color: Theme.text-primary;
                                 font-size: 12px;
@@ -1998,7 +2038,7 @@ export component AppWindow inherits Window {
                         }
 
                         Rectangle {
-                            width: 72px;
+                            width: max(72px, lanczos-confirm-text.preferred-width + 16px);
                             height: 28px;
                             border-radius: 4px;
                             background: confirm-touch.has-hover ? Theme.accent-hover : Theme.accent;
@@ -2018,7 +2058,7 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            Text {
+                            lanczos-confirm-text := Text {
                                 text: @tr("Confirm");
                                 color: Theme.text-on-accent;
                                 font-size: 12px;
@@ -2081,7 +2121,7 @@ export component AppWindow inherits Window {
                         color: Theme.text-primary;
                         font-size: 14px;
                         font-weight: 600;
-                        horizontal-alignment: left;
+                        horizontal-alignment: Locale.start;
                     }
 
                     Flickable {
@@ -2096,7 +2136,7 @@ export component AppWindow inherits Window {
                                 color: Theme.text-secondary;
                                 font-size: 12px;
                                 wrap: word-wrap;
-                                horizontal-alignment: left;
+                                horizontal-alignment: Locale.start;
                             }
                         }
                     }

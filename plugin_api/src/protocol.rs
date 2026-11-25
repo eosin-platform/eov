@@ -5,7 +5,15 @@
 //! shared by both sides. This keeps the ABI stable while the protocol grows:
 //!
 //! - new optional fields are added with `#[serde(default)]`, so older peers
-//!   ignore them and newer peers tolerate their absence;
+//!   ignore them and newer peers tolerate their absence. Rust code that
+//!   builds these structs itself (tests, mostly) should use
+//!   `..Default::default()`, `..OverlayObject::new(..)` or
+//!   `..testing::test_init(..)`, and match event variants with `..`: minor
+//!   releases add public fields (1.1 added `PluginInit::language`,
+//!   `DisplayAdjustments::shown_badge` and `stain_colors`,
+//!   `OverlayObject::export_label`, `HostEvent::RegistrationRefused`'s
+//!   `shown_reason`, and `PluginManifest::i18n`). Tests that build an event
+//!   variant name all its fields, so they need the new ones;
 //! - new event variants deserialize as [`HostEvent::Unknown`] in older plugins;
 //! - new host methods are answered with an `unknown method` error by older
 //!   hosts, so plugins can feature-detect them.
@@ -73,6 +81,14 @@ pub struct PluginInit {
     /// surfaces are accepted but not shown, so skip expensive UI set-up.
     #[serde(default)]
     pub headless: bool,
+    /// The language of eov's interface: a tag of
+    /// [`crate::i18n::LANGUAGES`] (`"de"`, `"pt-BR"`, `"zh-Hant"`). `None`
+    /// from hosts before plugin API 1.1, which are English only. The SDK loads the
+    /// plugin's catalog for it before `Plugin::create` (see
+    /// [`crate::i18n`]); later changes arrive as
+    /// [`HostEvent::LanguageChanged`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +512,15 @@ pub struct OverlayObject {
     /// Text drawn next to the object (constant screen size).
     #[serde(default)]
     pub label: Option<String>,
+    /// The label as it is burned into exported images and copied views:
+    /// English wording, Western digits and `.` decimals, Latin letters.
+    /// Give it when `label` is translated (see [`crate::i18n`]): an image
+    /// travels beyond the language it was made in, and eov draws its text
+    /// with a font that has basic Latin and Greek letters only, so other
+    /// letters would be left blank. When absent, `label` is used; without
+    /// `label` nothing is drawn. Hosts before plugin API 1.1 ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_label: Option<String>,
     /// Shown when the pointer rests on the object.
     #[serde(default)]
     pub tooltip: Option<String>,
@@ -511,6 +536,7 @@ impl OverlayObject {
             shape,
             style: None,
             label: None,
+            export_label: None,
             tooltip: None,
             editable: None,
         }
@@ -523,6 +549,29 @@ impl OverlayObject {
 
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// The label in English for exported images and copied views (see
+    /// [`OverlayObject::export_label`]): give it with a translated label.
+    ///
+    /// ```
+    /// use eov_plugin_api::i18n::{self, tr};
+    /// use eov_plugin_api::protocol::{OverlayObject, Shape};
+    ///
+    /// let area = 0.2376;
+    /// let object = OverlayObject::new("field", Shape::Point { x: 10.0, y: 20.0 })
+    ///     // On screen, in the language of the interface.
+    ///     .with_label(tr!("Field: {} mm²", i18n::format_decimal(area, 4)))
+    ///     // In images, in English.
+    ///     .with_export_label(format!(
+    ///         "Field: {} mm²",
+    ///         i18n::format_decimal_for(i18n::source(), area, 4)
+    ///     ));
+    /// assert_eq!(object.export_label.as_deref(), Some("Field: 0.2376 mm²"));
+    /// ```
+    pub fn with_export_label(mut self, label: impl Into<String>) -> Self {
+        self.export_label = Some(label.into());
         self
     }
 
@@ -1395,11 +1444,22 @@ pub enum HostEvent {
     },
     /// Part of a registration was refused, e.g. a hotkey that eov or
     /// another plugin already uses (`what`: `"hotkey"`; `id`: the button,
-    /// tool or hotkey id).
+    /// tool or hotkey id). eov has told the user and written it to its log.
+    ///
+    /// Show `shown_reason` when it is there, else `reason` (wrapped in
+    /// [`crate::i18n::isolate`] inside a translated text). After a change of
+    /// language, registering the contribution again brings the reason in
+    /// the new language (eov does not warn the user twice).
     RegistrationRefused {
         what: String,
         id: String,
+        /// Why, in English, as eov's log has it: for logs and for code.
         reason: String,
+        /// Why, in the interface's language when eov refused it, for
+        /// plugins to show; names in it are isolated for right-to-left
+        /// languages. `None` from hosts before plugin API 1.1.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shown_reason: Option<String>,
     },
     /// How a pane displays its slide changed (see
     /// [`methods::VIEW_DISPLAY`]).
@@ -1441,10 +1501,24 @@ pub enum HostEvent {
         path: Option<String>,
         #[serde(default)]
         model: Option<ModelRecord>,
+        /// Why not, as eov told the user: in the interface's language when
+        /// eov answered (English from hosts before plugin API 1.1), with
+        /// names isolated for right-to-left languages. For showing, not
+        /// for logs or code.
         #[serde(default)]
         error: Option<String>,
         #[serde(default)]
         cancelled: bool,
+    },
+    /// The user chose another language for the interface: a tag of
+    /// [`crate::i18n::LANGUAGES`]. The SDK has already switched
+    /// [`tr!`](crate::tr!) and the surfaces' `@tr` texts to it when the
+    /// plugin receives this; hand eov again the texts it shows for the
+    /// plugin (toolbar tooltips, tool names, status texts) and update the
+    /// texts surfaces got as properties. Not sent by hosts before plugin API
+    /// 1.1.
+    LanguageChanged {
+        language: String,
     },
     /// Sent by newer hosts for events this plugin version does not know.
     #[serde(other)]
@@ -1826,9 +1900,22 @@ pub struct DisplayAdjustments {
     pub stain_normalization: Option<String>,
     /// Whether any colour processing is applied.
     pub modified: bool,
-    /// What the viewer shows as its colour badge (empty when unmodified).
+    /// The viewer's colour badge in English (empty when unmodified), as
+    /// plugin API 1.0 sent it whatever the interface's language. Show
+    /// `shown_badge` to people; to know what is applied, read
+    /// `stain_normalization` and `stain_colors` rather than this text.
     #[serde(default)]
     pub badge: String,
+    /// The colour badge as the viewer shows it, in the language of the
+    /// interface. `None` from hosts before plugin API 1.1 (use `badge`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shown_badge: Option<String>,
+    /// Whether stain normalisation, colour-deconvolution adjustments or an
+    /// isolated stain change the slide's stain colours in this pane. `None`
+    /// from hosts before plugin API 1.1, which said so only in the (then
+    /// English) `badge`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stain_colors: Option<bool>,
     /// The pane converts the slide's colours from its ICC profile to sRGB
     /// (colour management), after every other adjustment and after plugin
     /// filters. Region reads and filter frames are never converted: to
@@ -1848,6 +1935,8 @@ impl Default for DisplayAdjustments {
             stain_normalization: None,
             modified: false,
             badge: String::new(),
+            shown_badge: None,
+            stain_colors: None,
             color_managed: false,
         }
     }
@@ -2639,6 +2728,86 @@ mod tests {
             "{text}"
         );
         assert_eq!(serde_json::from_str::<FileInfo>(&text).unwrap(), file);
+    }
+
+    /// A plugin before 1.1 sends no export label, and an object without
+    /// one is sent as before; a translated label's English form round-trips.
+    #[test]
+    fn export_labels_are_optional_both_ways() {
+        let old: OverlayObject = serde_json::from_str(
+            r#"{"object_id":"o","shape":{"kind":"point","x":1,"y":2},"label":"Tumour"}"#,
+        )
+        .unwrap();
+        assert_eq!(old.label.as_deref(), Some("Tumour"));
+        assert_eq!(old.export_label, None);
+        let plain = OverlayObject::new("o", Shape::Point { x: 1.0, y: 2.0 }).with_label("Tumour");
+        let text = serde_json::to_string(&plain).unwrap();
+        assert!(!text.contains("export_label"), "{text}");
+
+        let translated = plain
+            .with_label("Tumeur")
+            .with_export_label("Tumour \u{b7} 0.25 mm\u{b2}");
+        let text = serde_json::to_string(&translated).unwrap();
+        assert!(
+            text.contains(r#""export_label":"Tumour · 0.25 mm²""#),
+            "{text}"
+        );
+        assert_eq!(
+            serde_json::from_str::<OverlayObject>(&text).unwrap(),
+            translated
+        );
+    }
+
+    /// A host before 1.1 sends no shown reason, and an event without one is
+    /// sent as before; a plugin before 1.1 reads a newer host's event, with
+    /// its English reason.
+    #[test]
+    fn shown_refusal_reasons_are_optional_both_ways() {
+        let old = r#"{"type":"registration_refused","what":"hotkey","id":"t","reason":"Hotkey 'f' of p:t was ignored: it is a key eov already uses."}"#;
+        let event: HostEvent = serde_json::from_str(old).unwrap();
+        assert_eq!(
+            event,
+            HostEvent::RegistrationRefused {
+                what: "hotkey".into(),
+                id: "t".into(),
+                reason: "Hotkey 'f' of p:t was ignored: it is a key eov already uses.".into(),
+                shown_reason: None,
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::from_str::<Value>(old).unwrap()
+        );
+
+        let new = HostEvent::RegistrationRefused {
+            what: "hotkey".into(),
+            id: "t".into(),
+            reason: "Hotkey 'f' of p:t was ignored: it is a key eov already uses.".into(),
+            shown_reason: Some(
+                "Tastenkürzel „f“ von p:t wurde ignoriert: eov verwendet diese Taste bereits."
+                    .into(),
+            ),
+        };
+        let text = serde_json::to_string(&new).unwrap();
+        assert_eq!(serde_json::from_str::<HostEvent>(&text).unwrap(), new);
+        // The event as plugin API 1.0 declared it.
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        enum OldEvent {
+            RegistrationRefused {
+                what: String,
+                id: String,
+                reason: String,
+            },
+        }
+        assert_eq!(
+            serde_json::from_str::<OldEvent>(&text).unwrap(),
+            OldEvent::RegistrationRefused {
+                what: "hotkey".into(),
+                id: "t".into(),
+                reason: "Hotkey 'f' of p:t was ignored: it is a key eov already uses.".into(),
+            }
+        );
     }
 
     fn level(width: u64, height: u64, downsample: Option<f64>) -> SlideLevel {

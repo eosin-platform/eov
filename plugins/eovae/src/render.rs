@@ -16,6 +16,7 @@
 
 use crate::results::{TilePayload, TileState};
 use crate::tiling::{TileCoord, TileGrid};
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{DisplayAdjustments, Rect, ViewInfo};
 use eov_plugin_api::sdk::Image;
 use serde::{Deserialize, Serialize};
@@ -50,12 +51,18 @@ impl Mode {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    /// The name in the HUD menu and the sidebar, in the interface's
+    /// language.
+    pub fn label(self) -> String {
         match self {
-            Self::Original => "Original",
-            Self::Reconstruction => "Reconstruction",
-            Self::ErrorMap => "Error map",
-            Self::Difference => "Difference",
+            // Translators: the overlay that shows the slide as it is
+            Self::Original => tr!("Overlay" => "Original"),
+            // Translators: the overlay that shows the model's reconstruction
+            Self::Reconstruction => tr!("Overlay" => "Reconstruction"),
+            // Translators: the overlay that shows a heat map of tile errors
+            Self::ErrorMap => tr!("Overlay" => "Error map"),
+            // Translators: the overlay that shows per-pixel differences
+            Self::Difference => tr!("Overlay" => "Difference"),
         }
     }
 

@@ -55,7 +55,7 @@ Findings marked *re-verified* were checked again directly in the source by the l
 
 ## Status after the 1.0 improvement pass
 
-*Updated 2026-10-15, at `eov` master @ `89f2f08`, version 1.0.0 (every component, plugins included, moved to 1.0.0).*
+*Updated 2026-11-23 (localisation), at `eov` master @ `c4753c8` plus uncommitted work, version 1.0.0 (every component, plugins included, moved to 1.0.0; eov-plugin-api is 1.1.0 since localisation).*
 
 The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.
 
@@ -82,7 +82,6 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 - §14.3 **Z-stacks / focal planes** (partly): OME-TIFF Z-stacks and time series: Ctrl+↑/↓ and the HUD's Z stepper step through the focal planes, Ctrl+→/← and the T stepper through the time points, with the minimap, copies, Slide Information and the Channels panel following. Vendor Z-stacks (NDPI, VMS, multi-focal DICOM) are read through OpenSlide, which exposes one plane.
 - §14.3 **Remote slides (DICOMweb, HTTP, OMERO)** (not done): Out of scope for the offline host; slide-format plugins are the way (the audit's suggestion), but eov opens only files through them so far, not URIs.
 - §14.4 **Signed binaries and metadata** (partly): Verification and signing steps exist; no release key or certificates are configured yet (owner action).
-- §14.4 **Localisation** (partly): The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English.
 
 ### Per-finding status
 
@@ -323,7 +322,7 @@ The findings in §§3–13 describe the audited 0.4.9 revision and are left as w
 | Managed deployment | Done | `53fa2fc` | `policy.toml`, system plugin directories, `eov plugin lock` / `sync`. |
 | Single instance and multi-instance safety | Done | `3b5904d` `53fa2fc` `2cedb1b` |  |
 | Accessibility | Done | `cd7bc2d` `8db0f7b` `558fa52` `e5af868` `c634b7b` | Accessible roles, names, states and default actions on the window's controls (checked through Slint's testing backend; no screen reader was run), keyboard access to every dialog and panel, and light and high-contrast themes (contrast tested). |
-| Localisation | **Partly** | `260686e` | The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English. |
+| Localisation | Done | `260686e` | 31 languages (English and 30 machine-drafted translations awaiting native review): the window's `@tr` texts and the texts made in Rust (`tr!`) are translated from gettext catalogs compiled in; the language follows `--language`, the Language dialog (`language` in config.toml) or the system's, and switches at runtime; plugins ship their own catalogs (`[i18n]`) and follow; RTL text is aligned and isolated (layouts are not mirrored, Slint 1.19 cannot); CLI output, logs, files and text burned into exports stay English. See docs/translating.md. |
 | Diagnostics | Done | `3620def` | Session log, crash reports, Open Log Folder. |
 
 **§14.5 Analysis and research workflows**

@@ -4,6 +4,7 @@
 use super::{MAX_MODEL_BYTES, PlannedFile, check_url};
 use crate::update::policy::{Policy, redacted_url};
 use crate::update::transport::{HttpResponse, Transport, UreqTransport};
+use eov_plugin_api::i18n::{isolate, tr};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -57,46 +58,62 @@ impl FetchError {
     }
 }
 
+/// In the language of the interface: eov's window shows it, and plugins
+/// get it with `ModelFetched`.
 impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        let text = match self {
             Self::Invalid(message) | Self::Refused(message) | Self::Conflict(message) => {
-                f.write_str(message)
+                return f.write_str(message);
             }
-            Self::NoUrl { what } => write!(
-                f,
-                "no download address is set for {what}: give its URL, ask your administrator to add the site's copy to model_urls in policy.toml, or import the file with `eov model import`"
+            // Translators: model_urls, policy.toml and `eov model import`
+            // are names: keep them as they are.
+            Self::NoUrl { what } => tr!(
+                "no download address is set for {}: give its URL, ask your administrator to add a download address for it to model_urls in policy.toml, or import the file with `eov model import`",
+                isolate(what)
             ),
-            Self::Http { url, status } => write!(f, "{url} answered HTTP {status}"),
-            Self::Network { url, message } => write!(
-                f,
-                "could not download {url}: {message}\nCheck the network connection; the download continues where it stopped when tried again. Behind a proxy, set HTTPS_PROXY (and NO_PROXY); behind a TLS-inspecting firewall, install its root certificate in the operating system or set SSL_CERT_FILE."
+            Self::Http { url, status } => tr!(
+                "{url} answered HTTP {status}",
+                url = isolate(url),
+                status = status
             ),
-            Self::TooLarge { file, limit } => {
-                write!(
-                    f,
-                    "{file} is larger than expected ({limit} bytes); it was deleted"
-                )
-            }
+            // Translators: HTTPS_PROXY, NO_PROXY and SSL_CERT_FILE are
+            // names of settings: keep them as they are.
+            Self::Network { url, message } => tr!(
+                "could not download {url}: {message}\nCheck the network connection; the download continues where it stopped when tried again. Behind a proxy, set HTTPS_PROXY (and NO_PROXY); behind a TLS-inspecting firewall, install its root certificate in the operating system or set SSL_CERT_FILE.",
+                url = isolate(url),
+                message = message
+            ),
+            Self::TooLarge { file, limit } => tr!(
+                "{file} is larger than expected ({n} byte); it was deleted"
+                    | "{file} is larger than expected ({n} bytes); it was deleted" % *limit,
+                file = isolate(file)
+            ),
             Self::Size {
                 file,
                 expected,
                 actual,
-            } => write!(
-                f,
-                "{file} has the wrong size: expected {expected} bytes, got {actual}; it was deleted"
+            } => tr!(
+                "{file} has the wrong size: expected {n} byte, got {actual}; it was deleted"
+                    | "{file} has the wrong size: expected {n} bytes, got {actual}; it was deleted"
+                        % *expected,
+                file = isolate(file),
+                actual = actual
             ),
             Self::Integrity {
                 file,
                 expected,
                 actual,
-            } => write!(
-                f,
-                "{file} does not match its SHA-256: expected {expected}, got {actual}; it was deleted"
+            } => tr!(
+                "{file} does not match its SHA-256: expected {expected}, got {actual}; it was deleted",
+                file = isolate(file),
+                expected = expected,
+                actual = actual
             ),
-            Self::Local { path, message } => write!(f, "{}: {message}", path.display()),
-            Self::Cancelled => f.write_str("the download was cancelled"),
-        }
+            Self::Local { path, message } => return write!(f, "{}: {message}", path.display()),
+            Self::Cancelled => tr!("the download was cancelled"),
+        };
+        f.write_str(&text)
     }
 }
 
@@ -170,15 +187,17 @@ impl ModelClient {
                 200..=299 => return Ok(Some((current, response))),
                 301 | 302 | 303 | 307 | 308 => {
                     let location = response.location.ok_or_else(|| {
-                        FetchError::Refused(format!(
+                        FetchError::Refused(tr!(
                             "{} redirects without saying where",
-                            redacted_url(&current)
+                            isolate(redacted_url(&current))
                         ))
                     })?;
                     current = current.join(&location).map_err(|error| {
-                        FetchError::Refused(format!(
-                            "{} redirects to '{location}', which is not a URL: {error}",
-                            redacted_url(&current)
+                        FetchError::Refused(tr!(
+                            "{url} redirects to '{location}', which is not a URL: {error}",
+                            url = isolate(redacted_url(&current)),
+                            location = isolate(&location),
+                            error = error
                         ))
                     })?;
                 }
@@ -191,9 +210,10 @@ impl ModelClient {
                 }
             }
         }
-        Err(FetchError::Refused(format!(
-            "{} redirects more than {MAX_REDIRECTS} times",
-            redacted_url(url)
+        Err(FetchError::Refused(tr!(
+            "{url} redirects more than {n} time"
+                | "{url} redirects more than {n} times" % MAX_REDIRECTS,
+            url = isolate(redacted_url(url))
         )))
     }
 }
@@ -420,7 +440,11 @@ pub(super) fn download(
     {
         return Err(FetchError::Network {
             url: shown,
-            message: format!("the connection closed after {size} of {declared} bytes"),
+            message: tr!(
+                "the connection closed after {size} of {n} byte"
+                    | "the connection closed after {size} of {n} bytes" % declared,
+                size = size
+            ),
         });
     }
     if let Some(expected) = file.size

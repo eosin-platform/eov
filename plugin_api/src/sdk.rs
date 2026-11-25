@@ -85,6 +85,7 @@ use crate::abi::{
     PluginFfi, PluginFfi_TO, PluginModule, PluginModuleRef, RasterUpload, RegionRequest, SlideBox,
     SlideFfi, SlideFfi_TO, SlideRegion, SlideSourceBox, SlideSourceFfi, SlideSourceFfi_TO,
 };
+use crate::i18n::Catalog;
 use crate::protocol::{methods, *};
 use abi_stable::{
     prefix_type::PrefixTypeTrait,
@@ -118,7 +119,8 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     /// Creates the plugin. Keep `host` to call back into eov later.
     fn create(host: Host, init: PluginInit) -> Result<Self, String>;
 
-    /// Handles an event. Returned errors are logged and shown to the user.
+    /// Handles an event. A returned error is shown to the user as a
+    /// warning, as it is (translate it with `tr!`).
     fn on_event(&self, event: HostEvent) -> Result<(), String> {
         let _ = event;
         Ok(())
@@ -151,8 +153,11 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     ///
     /// Called on worker threads, possibly several at once, with no host
     /// locks held; it may take a while (a network round trip), but it must
-    /// return. An error is shown to the user as the reason the slide did
-    /// not open; a panic stops the plugin.
+    /// return. A panic stops the plugin. An error says why the slide did not
+    /// open, in English, as eov's own readers say it: eov writes it to its
+    /// log, returns it to scripts, and shows it to the user inside its own,
+    /// translated message (do not translate it, or [`crate::i18n::isolate`]
+    /// values in it).
     fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
         Err(format!(
             "this plugin reads no slide formats (asked for '{}')",
@@ -416,8 +421,23 @@ impl Host {
 
     // -- feedback ----------------------------------------------------------
 
-    /// Writes to the eov log. Warnings and errors also reach the user's
-    /// notification list.
+    /// Writes `message` to eov's log as it is. Warnings and errors also reach
+    /// the user: eov shows the same text, unchanged, as a notification.
+    ///
+    /// eov's log stays in English (it goes into bug reports), so write log
+    /// messages in English, without [`isolate`](crate::i18n::isolate). To
+    /// tell the user about a problem in their language, show the translated
+    /// text with [`notify`](Self::notify) or
+    /// [`notify_error`](Self::notify_error) and log the English one with
+    /// [`info`](Self::info) or [`debug`](Self::debug), both written by the
+    /// same code with
+    /// [`i18n::shown_and_english`](crate::i18n::shown_and_english):
+    /// `let (shown, english) = i18n::shown_and_english(|| tr!("{} failed",
+    /// i18n::isolate(&name)));` ([`i18n::in_english`](crate::i18n::in_english)
+    /// runs any code that makes texts in English). A plugin that hands
+    /// translated text to [`warn`](Self::warn) or [`error`](Self::error) has
+    /// it shown in the user's language, and accepts that eov's log gets that
+    /// language too.
     pub fn log(&self, level: LogLevel, message: impl Into<String>) {
         let _ = self.command(
             methods::LOG,
@@ -436,10 +456,16 @@ impl Host {
         self.log(LogLevel::Info, message);
     }
 
+    /// Logs a warning and shows the same text to the user as a warning
+    /// notification. eov's log is in English: for a text in the user's
+    /// language, see [`log`](Self::log).
     pub fn warn(&self, message: impl Into<String>) {
         self.log(LogLevel::Warn, message);
     }
 
+    /// Logs an error and shows the same text to the user as an error
+    /// notification. eov's log is in English: for a text in the user's
+    /// language, see [`log`](Self::log).
     pub fn error(&self, message: impl Into<String>) {
         self.log(LogLevel::Error, message);
     }
@@ -1256,6 +1282,53 @@ fn guarded<T>(f: impl FnOnce() -> Result<T, FfiError>) -> FfiResult<T> {
 pub struct Adapter<P: Plugin> {
     /// Shared with the slide source ([`slide_source`]).
     plugin: Arc<P>,
+    /// The folder and domain of the plugin's catalogs (`[i18n]`).
+    catalogs: Option<(std::path::PathBuf, String)>,
+    /// For warnings about catalogs that cannot be read.
+    host: Option<Host>,
+}
+
+/// The folder and domain of the catalogs the manifest in `plugin_root`
+/// declares, if any.
+fn plugin_catalogs(plugin_root: &str) -> Result<Option<(std::path::PathBuf, String)>, String> {
+    let root = std::path::Path::new(plugin_root);
+    let path = root.join(crate::manifest::MANIFEST_FILENAME);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let manifest = crate::PluginManifest::from_file(&path).map_err(|e| e.to_string())?;
+    Ok(manifest.catalogs(root))
+}
+
+/// Makes `tag` the language of [`crate::i18n`] in this library and loads
+/// the plugin's catalog for it. English (no catalog) when the language is
+/// unknown or the plugin has no catalog for it; the error says why a
+/// catalog could not be read.
+fn switch_language(
+    catalogs: Option<&(std::path::PathBuf, String)>,
+    tag: Option<&str>,
+) -> Result<(), String> {
+    use crate::i18n;
+    let language = tag.and_then(i18n::by_tag).unwrap_or(i18n::source());
+    let catalog = match catalogs {
+        Some((dir, domain)) => Catalog::load(dir, domain, language).map_err(|e| e.message),
+        None => Ok(None),
+    };
+    match catalog {
+        Ok(catalog) => {
+            i18n::set_catalog(language, catalog);
+            match tag {
+                Some(tag) if i18n::by_tag(tag).is_none() => Err(format!(
+                    "eov's language '{tag}' is unknown to this plugin's SDK; texts are in English"
+                )),
+                _ => Ok(()),
+            }
+        }
+        Err(error) => {
+            i18n::set_catalog(language, None);
+            Err(format!("translations not loaded: {error}"))
+        }
+    }
 }
 
 impl<P: Plugin> Adapter<P> {
@@ -1263,6 +1336,15 @@ impl<P: Plugin> Adapter<P> {
         let event: HostEvent = serde_json::from_str(event_json).map_err(|e| {
             FfiError::new(FfiErrorKind::InvalidArguments, format!("bad event: {e}"))
         })?;
+        if let HostEvent::LanguageChanged { language } = &event
+            && let Err(error) = switch_language(self.catalogs.as_ref(), Some(language))
+            && let Some(host) = &self.host
+        {
+            // The plugin still gets the event, and shows English texts. Logged
+            // only: eov shows warnings to users, and a bad catalog is for
+            // the plugin's developers to fix.
+            host.info(error);
+        }
         match event {
             HostEvent::ContextMenuRequested(context) => {
                 let items = self.plugin.context_menu(&context);
@@ -1339,9 +1421,19 @@ impl<P: Plugin> PluginFfi for Adapter<P> {
 /// the host never sees the type).
 #[doc(hidden)]
 pub fn into_plugin_box<P: Plugin>(plugin: P) -> PluginBox {
+    into_plugin_box_with_catalogs(plugin, None, None)
+}
+
+fn into_plugin_box_with_catalogs<P: Plugin>(
+    plugin: P,
+    catalogs: Option<(std::path::PathBuf, String)>,
+    host: Option<Host>,
+) -> PluginBox {
     PluginFfi_TO::from_value(
         Adapter {
             plugin: Arc::new(plugin),
+            catalogs,
+            host,
         },
         TD_CanDowncast,
     )
@@ -1445,8 +1537,19 @@ pub fn create_plugin<P: Plugin>(host: HostBox, init_json: &str) -> Result<Plugin
     guarded(|| {
         let init: PluginInit = serde_json::from_str(init_json)
             .map_err(|e| FfiError::new(FfiErrorKind::InvalidArguments, format!("bad init: {e}")))?;
-        let plugin = P::create(Host::from_ffi(host), init).map_err(FfiError::failed)?;
-        Ok(into_plugin_box(plugin))
+        let host = Host::from_ffi(host);
+        // The plugin's texts are in the interface's language from the start.
+        // Problems with the plugin's catalogs are logged, not shown: the
+        // plugin then runs in English, and its developers fix the catalog.
+        let catalogs = plugin_catalogs(&init.plugin_root).unwrap_or_else(|error| {
+            host.info(format!("translations not loaded: {error}"));
+            None
+        });
+        if let Err(error) = switch_language(catalogs.as_ref(), init.language.as_deref()) {
+            host.info(error);
+        }
+        let plugin = P::create(host.clone(), init).map_err(FfiError::failed)?;
+        Ok(into_plugin_box_with_catalogs(plugin, catalogs, Some(host)))
     })
     .into_result()
 }

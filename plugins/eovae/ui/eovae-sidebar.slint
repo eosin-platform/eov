@@ -1,9 +1,20 @@
 // The eovae sidebar. Every property is pushed by the plugin (only changed
 // values are applied); callbacks that can reject input return the value to
-// show.
+// show. Texts are marked with `@tr` (eov compiles the sidebar with eovae's
+// catalogs); the plugin pushes the texts it makes in the same language.
 
 import { ComboBox, CheckBox, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+
+// The writing direction of the interface, which eov gives the sidebar as
+// `eov-rtl`. Arabic, Persian and Hebrew are written from right to left: a
+// line of text starts at the right. Things whose direction is physical
+// (the legend's and the histogram's axes) are not mirrored.
+global Direction {
+    in-out property <bool> rtl: false;
+    out property <TextHorizontalAlignment> start: root.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    out property <TextHorizontalAlignment> end: root.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
+}
 
 export struct HistogramBin {
     label: string,
@@ -36,13 +47,15 @@ component ActionButton inherits Rectangle {
     }
 
     Text {
-        width: parent.width;
+        x: 4px;
+        width: parent.width - 8px;
         height: parent.height;
         text: root.text;
         color: root.enabled ? white : #ffffff66;
         font-size: 12px;
         horizontal-alignment: center;
         vertical-alignment: center;
+        overflow: elide;
     }
 }
 
@@ -77,6 +90,7 @@ component SectionHeader inherits Rectangle {
             color: Theme.text-primary;
             font-size: 13px;
             font-weight: 600;
+            horizontal-alignment: Direction.start;
             vertical-alignment: center;
         }
 
@@ -85,7 +99,7 @@ component SectionHeader inherits Rectangle {
             text: root.expanded ? "" : root.summary;
             color: Theme.text-secondary;
             font-size: 11px;
-            horizontal-alignment: right;
+            horizontal-alignment: Direction.end;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -96,6 +110,7 @@ component Label inherits Text {
     color: Theme.text-secondary;
     font-size: 11px;
     wrap: word-wrap;
+    horizontal-alignment: Direction.start;
 }
 
 component Note inherits Text {
@@ -104,6 +119,7 @@ component Note inherits Text {
     color: root.error ? #e57373 : (root.warning ? #e0b050 : Theme.text-secondary);
     font-size: 11px;
     wrap: word-wrap;
+    horizontal-alignment: Direction.start;
 }
 
 component Field inherits HorizontalLayout {
@@ -115,6 +131,7 @@ component Field inherits HorizontalLayout {
         text: root.label;
         color: Theme.text-secondary;
         font-size: 11px;
+        horizontal-alignment: Direction.start;
         vertical-alignment: center;
     }
 
@@ -146,6 +163,7 @@ component RegionRow inherits Rectangle {
             text: root.region.label;
             color: Theme.text-primary;
             font-size: 11px;
+            horizontal-alignment: Direction.start;
             overflow: elide;
         }
 
@@ -153,12 +171,23 @@ component RegionRow inherits Rectangle {
             text: root.region.score;
             color: Theme.text-secondary;
             font-size: 10px;
+            horizontal-alignment: Direction.start;
             overflow: elide;
         }
     }
 }
 
 export component EovaeSidebar inherits Rectangle {
+    // Set by eov: the interface is written from right to left (see
+    // Direction).
+    in property <bool> eov-rtl;
+    init => {
+        Direction.rtl = root.eov-rtl;
+    }
+    changed eov-rtl => {
+        Direction.rtl = root.eov-rtl;
+    }
+
     // Sections.
     in-out property <bool> model-expanded: true;
     in-out property <bool> analysis-expanded: true;
@@ -169,7 +198,7 @@ export component EovaeSidebar inherits Rectangle {
     in property <int> model-state: 0;
     in property <string> model-name;
     in property <string> model-detail;
-    in property <string> model-message: "No model loaded.";
+    in property <string> model-message: @tr("No model loaded.");
     in property <bool> model-message-error: false;
     in property <string> engine-label;
     in property <string> engine-note;
@@ -189,7 +218,7 @@ export component EovaeSidebar inherits Rectangle {
     in property <[string]> warnings;
     in property <string> contract-source;
     in property <string> contract-summary;
-    in property <[string]> scaling-options: ["[-1, 1]", "[0, 1]", "[0, 255]", "ImageNet mean/std"];
+    in property <[string]> scaling-options: ["[-1, 1]", "[0, 1]", "[0, 255]", @tr("Preprocessing" => "ImageNet mean/std")];
     in-out property <int> input-scaling-index: 0;
     in-out property <int> output-scaling-index: 0;
     in-out property <bool> composite-white: true;
@@ -197,12 +226,14 @@ export component EovaeSidebar inherits Rectangle {
     in property <bool> contract-overridden: false;
 
     // Analysis.
-    in property <[string]> device-options: ["Auto", "CPU", "CUDA"];
+    // Translators: inference device: CUDA when it works, else the CPU
+    in property <[string]> device-options: [@tr("Device" => "Auto"), "CPU", "CUDA"];
     in-out property <int> device-index: 0;
-    in property <[string]> resolution-options: ["Auto"];
+    in property <[string]> resolution-options: [@tr("Resolution" => "Auto")];
     in-out property <int> resolution-index: 0;
     in property <string> resolution-note;
     in property <bool> resolution-warning: false;
+    // "auto" is typed as it is, in every language (the plugin reads it).
     in-out property <string> threads-text: "auto";
     in property <string> threads-hint;
     in-out property <string> batch-text: "16";
@@ -223,7 +254,12 @@ export component EovaeSidebar inherits Rectangle {
 
     // Results.
     in property <string> slide-name;
-    in property <[string]> view-options: ["Original", "Reconstruction", "Error map", "Difference"];
+    in property <[string]> view-options: [
+        @tr("Overlay" => "Original"),
+        @tr("Overlay" => "Reconstruction"),
+        @tr("Overlay" => "Error map"),
+        @tr("Overlay" => "Difference"),
+    ];
     in-out property <int> view-index: 0;
     in property <string> adjustment-note;
     in property <bool> adjustment-warning: false;
@@ -293,7 +329,8 @@ export component EovaeSidebar inherits Rectangle {
 
             // ---------------------------------------------------------- Model
             SectionHeader {
-                title: "Model";
+                // Translators: the sidebar's section about the ONNX model
+                title: @tr("Model");
                 summary: root.model-name;
                 expanded: root.model-expanded;
                 toggled => {
@@ -307,10 +344,11 @@ export component EovaeSidebar inherits Rectangle {
                 spacing: 6px;
 
                 Text {
-                    text: root.model-name == "" ? "No model" : root.model-name;
+                    text: root.model-name == "" ? @tr("No model") : root.model-name;
                     color: Theme.text-primary;
                     font-size: 12px;
                     wrap: word-wrap;
+                    horizontal-alignment: Direction.start;
                 }
 
                 if root.model-detail != "": Label { text: root.model-detail; }
@@ -320,14 +358,15 @@ export component EovaeSidebar inherits Rectangle {
                     error: root.model-message-error;
                 }
 
-                if root.engine-label != "": Label { text: "Running on " + root.engine-label; }
+                // Translators: {} is the inference device, e.g. CPU · 8 threads
+                if root.engine-label != "": Label { text: @tr("Running on {}", root.engine-label); }
                 if root.engine-note != "": Note { text: root.engine-note; warning: true; }
 
                 HorizontalLayout {
                     spacing: 6px;
 
                     ActionButton {
-                        text: "Load ONNX…";
+                        text: @tr("Load ONNX…");
                         base: #2f6db5;
                         hover: #3f82d1;
                         enabled: root.model-state != 1;
@@ -335,13 +374,15 @@ export component EovaeSidebar inherits Rectangle {
                     }
 
                     ActionButton {
-                        text: "Clear";
+                        // Translators: unloads the model
+                        text: @tr("Clear");
                         enabled: root.model-state != 0;
                         clicked => { root.clear-model(); }
                     }
 
                     ActionButton {
-                        text: "Runtime…";
+                        // Translators: chooses the ONNX Runtime library
+                        text: @tr("Runtime…");
                         clicked => { root.choose-runtime(); }
                     }
                 }
@@ -365,7 +406,7 @@ export component EovaeSidebar inherits Rectangle {
                         }
 
                         ActionButton {
-                            text: root.download-address ? "Hide address" : "Address…";
+                            text: root.download-address ? @tr("Hide address") : @tr("Address…");
                             clicked => { root.download-address = !root.download-address; }
                         }
                     }
@@ -379,7 +420,7 @@ export component EovaeSidebar inherits Rectangle {
                         spacing: 4px;
 
                         Label {
-                            text: "Your site's copy of the model (the .onnx file; the reference model's .onnx.data comes from the same folder):";
+                            text: @tr("Your site's copy of the model (the .onnx file; the reference model's .onnx.data comes from the same folder):");
                         }
 
                         LineEdit {
@@ -394,12 +435,12 @@ export component EovaeSidebar inherits Rectangle {
                         }
 
                         Label {
-                            text: "SHA-256 of your own model at that address (empty: the reference model, checked against the SHA-256 eovae knows):";
+                            text: @tr("SHA-256 of your own model at that address (empty: the reference model, checked against the SHA-256 eovae knows):");
                         }
 
                         LineEdit {
                             text <=> root.download-sha256;
-                            placeholder-text: "64 hex digits";
+                            placeholder-text: @tr("64 hex digits");
                             accepted(text) => { root.download-sha256 = root.download-sha256-committed(text); }
                             changed has-focus => {
                                 if !self.has-focus {
@@ -413,10 +454,12 @@ export component EovaeSidebar inherits Rectangle {
                 if root.model-state == 2: VerticalLayout {
                     spacing: 6px;
 
-                    Label { text: "Input: " + root.input-text; }
+                    // Translators: {} is the model's input: name · type · shape
+                    Label { text: @tr("Input: {}", root.input-text); }
 
                     Field {
-                        label: "Output";
+                        // Translators: the model's output the sidebar reads
+                        label: @tr("Output");
                         ComboBox {
                             horizontal-stretch: 1;
                             model: root.output-options;
@@ -438,16 +481,17 @@ export component EovaeSidebar inherits Rectangle {
                     Rectangle { height: 1px; background: Theme.border; }
 
                     Text {
-                        text: "Preprocessing";
+                        text: @tr("Preprocessing");
                         color: Theme.text-primary;
                         font-size: 12px;
                         font-weight: 600;
+                        horizontal-alignment: Direction.start;
                     }
 
                     Label { text: root.contract-source; }
 
                     Field {
-                        label: "Input range";
+                        label: @tr("Input range");
                         ComboBox {
                             horizontal-stretch: 1;
                             model: root.scaling-options;
@@ -459,7 +503,7 @@ export component EovaeSidebar inherits Rectangle {
                     }
 
                     Field {
-                        label: "Output range";
+                        label: @tr("Output range");
                         ComboBox {
                             horizontal-stretch: 1;
                             model: root.scaling-options;
@@ -471,13 +515,13 @@ export component EovaeSidebar inherits Rectangle {
                     }
 
                     CheckBox {
-                        text: "Composite transparency onto white";
+                        text: @tr("Composite transparency onto white");
                         checked <=> root.composite-white;
                         toggled => { root.composite-white-toggled(self.checked); }
                     }
 
                     CheckBox {
-                        text: "Turn near-black pixels white";
+                        text: @tr("Turn near-black pixels white");
                         checked <=> root.black-to-white;
                         toggled => { root.black-to-white-toggled(self.checked); }
                     }
@@ -485,7 +529,7 @@ export component EovaeSidebar inherits Rectangle {
                     if root.contract-overridden: HorizontalLayout {
                         alignment: start;
                         ActionButton {
-                            text: "Use the model's preprocessing";
+                            text: @tr("Use the model's preprocessing");
                             min-width: 200px;
                             clicked => { root.reset-preprocessing(); }
                         }
@@ -497,7 +541,7 @@ export component EovaeSidebar inherits Rectangle {
 
             // ------------------------------------------------------- Analysis
             SectionHeader {
-                title: "Analysis";
+                title: @tr("Analysis");
                 summary: root.job-running ? root.job-status : root.last-result;
                 expanded: root.analysis-expanded;
                 toggled => {
@@ -511,7 +555,8 @@ export component EovaeSidebar inherits Rectangle {
                 spacing: 6px;
 
                 Field {
-                    label: "Device";
+                    // Translators: the inference device (CPU or CUDA)
+                    label: @tr("Device");
                     ComboBox {
                         horizontal-stretch: 1;
                         model: root.device-options;
@@ -523,7 +568,8 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 Field {
-                    label: "Resolution";
+                    // Translators: the pyramid level tiles are read from
+                    label: @tr("Resolution");
                     ComboBox {
                         horizontal-stretch: 1;
                         model: root.resolution-options;
@@ -540,7 +586,8 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 Field {
-                    label: "Threads";
+                    // Translators: CPU inference threads
+                    label: @tr("Threads");
                     threads := LineEdit {
                         horizontal-stretch: 1;
                         text <=> root.threads-text;
@@ -555,7 +602,8 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 Field {
-                    label: root.batch-fixed ? "Batch (model)" : "Batch";
+                    // Translators: batch size (tiles per run); (model): the model fixes it
+                    label: root.batch-fixed ? @tr("Batch (model)") : @tr("Batch");
                     LineEdit {
                         horizontal-stretch: 1;
                         enabled: !root.batch-fixed;
@@ -570,19 +618,20 @@ export component EovaeSidebar inherits Rectangle {
                 }
 
                 CheckBox {
-                    text: "Allow TF32 on CUDA (faster)";
+                    // Translators: TF32 is a faster, less precise number format of NVIDIA GPUs (CUDA); the computed errors change slightly.
+                    text: @tr("Allow TF32 on CUDA (faster, less precise)");
                     checked <=> root.tf32;
                     toggled => { root.tf32-toggled(self.checked); }
                 }
 
                 CheckBox {
-                    text: "Skip background tiles";
+                    text: @tr("Skip background tiles");
                     checked <=> root.skip-background;
                     toggled => { root.skip-background-toggled(self.checked); }
                 }
 
                 CheckBox {
-                    text: "Analyse visible tiles automatically";
+                    text: @tr("Analyse visible tiles automatically");
                     checked <=> root.auto-analyze;
                     toggled => { root.auto-analyze-toggled(self.checked); }
                 }
@@ -592,7 +641,8 @@ export component EovaeSidebar inherits Rectangle {
 
                     ActionButton {
                         horizontal-stretch: 1;
-                        text: "Viewport";
+                        // Translators: analyses the visible part of the slide
+                        text: @tr("Viewport");
                         base: #206a5d;
                         hover: #2b8777;
                         enabled: root.can-analyze;
@@ -601,7 +651,8 @@ export component EovaeSidebar inherits Rectangle {
 
                     ActionButton {
                         horizontal-stretch: 1;
-                        text: "ROI";
+                        // Translators: analyses the region of interest drawn on the slide
+                        text: @tr("ROI");
                         base: #2e5e8a;
                         hover: #3b74a8;
                         enabled: root.can-analyze && root.has-roi;
@@ -610,7 +661,7 @@ export component EovaeSidebar inherits Rectangle {
 
                     ActionButton {
                         horizontal-stretch: 1;
-                        text: "Whole slide";
+                        text: @tr("Whole slide");
                         base: #8a5a12;
                         hover: #aa711d;
                         enabled: root.can-analyze;
@@ -619,7 +670,8 @@ export component EovaeSidebar inherits Rectangle {
 
                     ActionButton {
                         horizontal-stretch: 1;
-                        text: "Cancel";
+                        // Translators: stops the running analysis
+                        text: @tr("Cancel");
                         base: #922f2f;
                         hover: #b33d3d;
                         enabled: root.job-running;
@@ -634,6 +686,7 @@ export component EovaeSidebar inherits Rectangle {
                         text: root.job-title;
                         color: Theme.text-primary;
                         font-size: 11px;
+                        horizontal-alignment: Direction.start;
                     }
 
                     Rectangle {
@@ -666,7 +719,7 @@ export component EovaeSidebar inherits Rectangle {
 
             // -------------------------------------------------------- Results
             SectionHeader {
-                title: "Results";
+                title: @tr("Results");
                 summary: root.slide-name;
                 expanded: root.results-expanded;
                 toggled => {
@@ -680,7 +733,8 @@ export component EovaeSidebar inherits Rectangle {
                 spacing: 6px;
 
                 Field {
-                    label: "Overlay";
+                    // Translators: what the overlay shows: Original, Reconstruction, …
+                    label: @tr("Overlay");
                     ComboBox {
                         horizontal-stretch: 1;
                         model: root.view-options;
@@ -708,8 +762,9 @@ export component EovaeSidebar inherits Rectangle {
                         background: @linear-gradient(90deg, #440154 0%, #46327e 14%, #365c8d 29%, #277f8e 43%, #1fa187 57%, #4ac16d 71%, #9fda3a 86%, #fde725 100%);
                     }
 
+                    // The gradient runs left to right in every language.
                     HorizontalLayout {
-                        Label { text: root.legend-lo; }
+                        Label { text: root.legend-lo; horizontal-alignment: left; }
                         Label { text: root.legend-hi; horizontal-alignment: right; }
                     }
                 }
@@ -741,8 +796,8 @@ export component EovaeSidebar inherits Rectangle {
                                 touch := TouchArea {
                                     changed has-hover => {
                                         if self.has-hover {
-                                            root.hovered-bin = bin.label + " tiles";
-                                        } else if root.hovered-bin == bin.label + " tiles" {
+                                            root.hovered-bin = bin.label;
+                                        } else if root.hovered-bin == bin.label {
                                             root.hovered-bin = "";
                                         }
                                     }
@@ -751,8 +806,9 @@ export component EovaeSidebar inherits Rectangle {
                         }
                     }
 
+                    // The bins run left to right in every language.
                     HorizontalLayout {
-                        Label { text: root.histogram-lo; }
+                        Label { text: root.histogram-lo; horizontal-alignment: left; }
                         Label {
                             text: root.hovered-bin;
                             horizontal-alignment: center;
@@ -765,10 +821,11 @@ export component EovaeSidebar inherits Rectangle {
                 if root.stats-text != "": Label { text: root.stats-text; }
 
                 if root.hot-regions.length > 0: Text {
-                    text: "Highest-error regions";
+                    text: @tr("Highest-error regions");
                     color: Theme.text-primary;
                     font-size: 12px;
                     font-weight: 600;
+                    horizontal-alignment: Direction.start;
                 }
 
                 for region in root.hot-regions: RegionRow {
@@ -780,21 +837,23 @@ export component EovaeSidebar inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     ActionButton {
-                        text: "Export CSV…";
+                        text: @tr("Export CSV…");
                         min-width: 110px;
                         enabled: root.can-export;
                         clicked => { root.export-csv(); }
                     }
                 }
 
-                Note { text: "Research use only; not for diagnosis."; }
+                // Translators: the intended use: keep its meaning exactly
+                Note { text: @tr("Research use only; not for diagnosis."); }
             }
 
             Rectangle { height: 1px; background: Theme.border; }
 
             // ---------------------------------------------------------- Cache
             SectionHeader {
-                title: "Cache";
+                // Translators: the section about eovae's stored results
+                title: @tr("Cache");
                 summary: root.cache-text;
                 expanded: root.cache-expanded;
                 toggled => {
@@ -812,7 +871,7 @@ export component EovaeSidebar inherits Rectangle {
                 if root.cache-error != "": Note { text: root.cache-error; error: true; }
 
                 CheckBox {
-                    text: "Keep reconstructions on disk (large)";
+                    text: @tr("Keep reconstructions on disk (large)");
                     enabled: root.cache-enabled;
                     checked <=> root.keep-pixels;
                     toggled => { root.keep-pixels-toggled(self.checked); }
@@ -821,7 +880,7 @@ export component EovaeSidebar inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     ActionButton {
-                        text: "Clear cache…";
+                        text: @tr("Clear cache…");
                         min-width: 110px;
                         enabled: root.cache-enabled;
                         clicked => { root.clear-cache(); }

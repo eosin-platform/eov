@@ -1,0 +1,302 @@
+term	translation	note
+(style) register	您（尽量不用人称代词）	中文界面通常省略主语：“请先打开切片”“确定要启用吗？”。确需称呼用户时用“您”（专业科研/医疗软件的惯例），不用“你”
+(style) spacing	中文与西文、数字、占位符之间加半角空格	例：打开 {}、{n} 张切片、eov 无法启动、使用 GPU 渲染器。全角标点前后不加空格。数字与 %、°、× 之间不加空格（12.5%、90°、20×）；µm、mm、px、MB、GiB 等单位前加空格（5 µm、{} MB）。例外：占位符代入的是中文文字（语言名称、操作名称、完整句子）时不加空格，必要时用冒号或引号隔开：撤销：{}、{title}：失败、不允许{what}、此切片标记为“{}”染色
+(style) punctuation	，。：；？！	中文句子用全角标点。英文以句号结尾的句子用“。”结尾；没有句号的标签、按钮、状态文字不加句号。命令、配置示例、路径、URL 内保持半角
+(style) parentheses	（）	中文语境用全角括号；命令、代码、配置示例、版本范围中的括号保持原样
+(style) quotation marks	“”	文件名、名称、取值用“”括起。config.toml 中书写的值（如 "Ctrl+B"）、命令和代码保持原样
+(style) ellipsis	…	打开对话框的菜单项末尾保留“…”（单个省略号，与 Windows/macOS 中文界面一致）；进行中的状态写作“正在…”
+(style) buttons and menus	动词或动宾短语	不模仿英文的首字母大写。例：复制图像、导出图像…、关闭其他标签页
+(style) counters	{n} 张切片、{n} 个图块、{n} 条消息	切片、图像用“张”；消息、记录用“条”；表格行用“行”；属性、条目用“项”；其他用“个”。中文没有单复数：复数只有 1 种形式，必须包含 {n}
+(style) list separator	、	并列项之间用顿号（“苏木精 ×1.20、伊红已隐藏”）
+For research and education. Not a medical device; not for primary diagnosis.	仅供科研和教学使用。本软件不是医疗器械，不得用于病理初诊。	安全声明。完整翻译，不得弱化或省略
+research use only (RUO)	仅供科研使用（RUO）	与试剂标签上的“仅供科研使用”一致；不得用于临床决策，不得缩写或弱化
+not for diagnosis	不得用于诊断	安全声明。不要弱化为“不建议”
+primary diagnosis	病理初诊	监管用语（primary diagnosis：病例首次作出的最终病理诊断，区别于会诊）。写“病理初诊”，避免单独的“初诊”被理解为门诊的首次就诊。不用“原发诊断”（易误解为原发肿瘤的诊断）或“初步诊断”（意为临时诊断）
+medical device	医疗器械	《医疗器械监督管理条例》用语，不用“医疗设备”
+synthetic (image, channel, stain)	合成	由算法计算得出的像素。不用“人工”“伪造”“模拟”
+predicted	预测	预测图像、预测标志物；不得省略“预测”
+generated	生成	“生成的图像”
+slide	切片	组织切片玻片及其扫描图像，量词“张”。不是演示文稿的幻灯片。强调玻璃时用“玻片”
+whole-slide image (WSI)	全切片图像（WSI）	缩写 WSI 保留。“WSI 文件”
+slide viewer, viewer	切片查看器、查看器	
+tab	标签页	窗格中打开的一张切片（类似浏览器标签页）
+pane	窗格	窗口中并排的查看区域
+focused pane	当前窗格	
+view	视图	窗格的显示状态（位置、缩放、旋转）。“将视图加入书签”“返回上一视图”
+viewport	视口	绘制切片的区域。Viewport lock = 视口锁定
+minimap	导航图	整张切片的小概览图，标出当前可见区域
+scale bar	比例尺	
+HUD	浮动面板	浮在切片上方的小面板；metadata HUD = 元数据浮动面板
+toolbar	工具栏	
+sidebar	侧边栏	
+status bar	状态栏	
+series bar	序列栏	列出文件夹中切片的横条；series = 序列（与 DICOM 序列一致）
+Home screen	主页	未打开切片时的起始页；标签页标题“主页”
+zoom	缩放	屏幕上的显示比例（%）
+Zoom in / Zoom out	放大 / 缩小	
+magnification (20×)	放大倍数（20×）	相当于物镜的光学放大倍数；20× 保持原样
+optical-equivalent zoom	等效光学放大倍数	
+digital zoom	数字缩放	
+objective	物镜	
+objective power	物镜倍数	
+pixel size	像素尺寸	
+MPP (µm per pixel)	MPP（µm/像素）	MPP 保留；µm/px 保留
+calibration	校准	
+level, pyramid level	层级、金字塔层级	图像金字塔的分辨率层级；L0 = 最高分辨率
+level-0 pixels	第 0 层级像素	
+tile	图块	一次加载的图像方块
+cache	缓存	
+rotate, rotation	旋转	Rotate Right 90° = 向右旋转 90°
+flip horizontally	水平翻转	Unflip = 取消翻转；mirror = 镜像
+focal plane (Z)	焦平面（Z）	
+Z-stack	Z 堆栈	
+time point (T)	时间点（T）	
+time series	时间序列	
+link (panes)	联动	联动窗格、取消联动
+alignment, align	对齐	Align from Landmarks = 按标志点对齐
+landmark	标志点	用于对齐的参考点
+bookmark	书签	保存的切片视图
+session	会话	
+recent files	最近使用的文件	Recently Opened = 最近打开
+region of interest (ROI)	感兴趣区域（ROI）	界面中通常只写“感兴趣区域”；ROI 缩写保留
+measurement	测量	测量结果、测量列表
+Measure (tool)	测量（工具）	
+distance	距离	
+path length	路径长度	
+area	面积	（“保存切片副本”对话框中的 Area = 范围）
+angle	角度	
+perimeter	周长	
+annotation	标注	具有含义的绘制（点、区域、线、文字），不是自由文本备注
+comment	备注	
+class (annotation class)	类别	“肿瘤”“间质”等
+cell count, counting	细胞计数、计数	
+high-power field (HPF)	高倍视野（HPF）	HPF 缩写保留；“/10 HPF”
+layer	图层	
+overlay	叠加层	
+opacity	不透明度	0–100%
+heat map	热图	
+colour map	色图	
+stain	染色	染色方法，或颜色反卷积中的染色成分（量词“种”）
+H&E	H&E	苏木精-伊红染色
+hematoxylin	苏木精	缩写 H
+eosin	伊红	缩写 E
+IHC	免疫组化（IHC）	全称“免疫组织化学”；IHC 保留
+DAB	DAB	
+chromogen	色原	DAB、AEC 等显色底物
+stain normalization	染色归一化	Macenko、Vahadane 为方法名，不翻译
+colour normalisation	颜色归一化	
+stain target	染色目标	归一化所对照的染色外观
+reference (stain vectors, H&E)	参考（参考染色向量、参考 H&E）	
+stain model	染色模型	
+stain preset	染色预设	
+stain vector	染色向量	
+fit (stain fit)	拟合	从切片估计染色向量；“拟合被舍弃”
+color deconvolution	颜色反卷积	Ruifrok–Johnston 方法
+isolated stain/channel	单独显示（染色/通道）	仅以灰度显示一种染色
+intensity	强度	
+concentration	浓度	染色浓度
+optical density	光密度	
+quantify	定量	“定量染色”
+H-score	H 评分	
+weak / moderate / strong (1+/2+/3+)	弱 / 中等 / 强	IHC 染色强度分级
+positive	阳性	“DAB 阳性”
+threshold	阈值	
+colour management	色彩管理	
+colour profile, ICC profile	颜色配置文件、ICC 配置文件	
+colours as scanned	原始扫描颜色	未进行色彩管理
+channel	通道	荧光或计算得到的通道；通道名不翻译
+multiplex immunofluorescence (mIF)	多重免疫荧光（mIF）	
+marker	标志物	CD3、Ki-67、PanCK 等名称不翻译
+sharpness, gamma, brightness, contrast	锐度、伽马、亮度、对比度	
+filtering (bilinear, trilinear, Lanczos)	过滤（双线性、三线性、Lanczos）	纹理过滤；Filtering mode = 过滤模式；Lanczos 为名称
+render, renderer	渲染、渲染器	CPU、GPU 保留
+backend	后端	
+theme (dark, light, high contrast)	主题（深色、浅色、高对比度）	
+tissue	组织	
+tissue QC	组织质控	扫描组织的质量控制
+tissue quality	组织质量	
+pen marks	笔迹	切片上的记号笔痕迹
+folds	折叠	组织切片折叠（组织重叠处）
+blur, out of focus	模糊、失焦	“可能失焦”“模糊区域”
+tissue detection, tissue mask	组织检测、组织掩膜	
+background	背景	
+dataset	数据集	
+patch, patch extraction	图像块、图像块提取	用于机器学习的小图像
+tile size (dataset)	图块大小	
+stride	步长	相邻图像块之间的间距
+white threshold	白色阈值	视为背景（白色）的比例
+export	导出	
+save a copy	保存副本	Save a Copy of the Slide = 保存切片副本
+convert	转换	
+de-identify	去标识化	去除可识别患者身份的数据（标签图像、元数据）；与《个人信息保护法》用语一致
+label image, macro image, thumbnail	标签图像、玻片全景图、缩略图	界面卡片标题：标签、玻片全景、概览（Overview）
+pyramidal TIFF	金字塔 TIFF	
+compression, lossless	压缩、无损	
+resolution	分辨率	
+format	格式	
+metadata	元数据	
+property (slide)	属性	
+vendor	厂商	
+scanner	扫描仪	
+case	病例	
+folder	文件夹	
+clipboard	剪贴板	
+log folder	日志文件夹	
+plugin	插件	
+package (.eop)	插件包（.eop）	一般语境可简称“包”
+plugin API	插件 API	
+model, model store	模型、模型库	机器学习模型及 eov 存放模型的位置
+inference	推理	
+update (software)	更新	不暗示后台自动更新
+Check for Updates…	检查更新…	联网前会先询问
+update helper	更新助手	
+release	发行版	与 GitHub 中文界面一致；prerelease = 预发行版；release tag = 发行版标签
+release notes	发行说明	
+manifest	清单	release manifest = 发行清单
+artifact	构件	发行版中各平台的下载文件
+repository	仓库	
+signature	签名	
+administrator policy	管理员策略	policy file = 策略文件
+safe mode	安全模式	
+restart	重新启动	按钮可用“重启”：Update and Restart = 更新并重启
+self-update	自我更新	eov 更新自身
+staging, stage (an update)	暂存	退出后再应用的更新；状态“已暂存”
+hotkey	热键	按键本身称“键”
+install, uninstall	安装、卸载	
+official (plugin)	官方	
+Annotations (plugin name)	标注	描述性名称，翻译
+Gamepad (plugin name)	游戏手柄	
+Example Plugin	示例插件	
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris、eovae/EOVAE、HistoVAE	产品名，不翻译
+Open	打开	
+Open File	打开文件	
+Open Folder…	打开文件夹…	
+Close	关闭	
+Cancel	取消	
+OK	确定	
+Confirm	确认	
+Save, Save…	保存、保存…	
+Delete	删除	
+Remove	移除	从列表中移除或卸载插件
+Settings	设置	
+Apply	应用	
+Reset	重置	Reset to Defaults = 恢复默认值
+Show / Hide	显示 / 隐藏	
+Toggle …	显示/隐藏…	开关面板时用“显示/隐藏”，其他用“切换”
+Import	导入	
+Copy	复制	
+Undo / Redo	撤销 / 重做	
+Fit	适应	Fit the slide to the pane = 使切片适应窗格
+Enable / Disable	启用 / 禁用	状态：已启用 / 已禁用
+Add	添加	
+Edit	编辑	
+Clear	清除	
+Done	完成	
+Download	下载	
+Retry	重试	
+Back / Forward / Up	后退 / 前进 / 向上	
+Next / Previous	下一个 / 上一个	
+Filter (a list)	筛选	插件的图像滤镜（Filter）= 滤镜
+Messages	消息	
+Error / Warning / Information	错误 / 警告 / 信息	
+Language	语言	
+Automatic (System Default)	自动（系统默认）	
+Unknown	未知	
+None	无	
+N/A (not recorded)	无	文件未记录的属性
+Loading…	正在加载…	
+Could not …	无法…	报告失败；也可用“…失败”
+Cannot …	无法…	
+Keyboard Shortcuts	键盘快捷键	
+Navigate (tool)	导航	移动视图的工具
+order: A–Z / Newest / Stain / Case	名称 / 最新 / 染色 / 病例	序列栏的排序方式
+Solo (channel)	单独	只显示一个通道
+Units	单位	微米（µm）、毫米（mm）、英寸和密耳
+toast, notification	通知	
+crash	崩溃	
+(style) placeholders with names	“{}”	插入的名称、ID、键名、值用“”括起，可避免中西文混排的空格问题：插件“{}”未安装、热键“{key}”
+cell (biology)	细胞	细胞计数、组织细胞；注意组织质控中的 grid cell = 网格单元
+nucleus, nuclei	细胞核	
+tumour	肿瘤	
+stroma	间质	
+necrosis	坏死	
+fibrin	纤维蛋白	不用易与“纤维素（cellulose）”混淆的说法
+grid cell (tissue QC)	网格单元	组织质控网格的单元，不是生物细胞
+point, line, arrow, polygon, rectangle, ellipse	点、线、箭头、多边形、矩形、椭圆	标注与测量的形状
+shape, outline	形状、轮廓	
+coordinates	坐标	
+pan (the view)	平移	Pan left = 向左平移
+split (a pane)	拆分	Split Right = 向右拆分
+Go (button)	转到	跳转到测量或书签所在位置
+Ready (status)	就绪	
+histogram	直方图	
+lower end, upper end (display window)	下限、上限	通道显示窗口的两端
+auto contrast	自动对比度	
+colour-blind safe	色盲友好	
+downsample	下采样倍数	
+Placement (heat map)	放置方式	
+Figure (export section)	图示	导出图像中附加的比例尺、颜色处理说明等
+stroke, solid, dashed, dotted, caps	线型、实线、虚线、点线、线端	Round / Square / Flat = 圆形 / 方形 / 平头
+prediction, predictions	预测结果	模型输出；不得省略“预测”
+reconstruction	重建	（eovae）模型重建的图像属于合成/预测图像
+density	密度	细胞密度等；optical density = 光密度
+database	数据库	
+batch	批量	
+runtime	运行时	ONNX Runtime 为名称，不翻译
+merge	合并	
+lock, locked	锁定、已锁定	lock file = 锁文件
+plugin registry	插件注册表	
+schema (file format version)	架构	
+digest (SHA-256)	摘要	
+pointer (gamepad)	指针	
+stick (gamepad)	摇杆	left stick = 左摇杆
+controller (gamepad)	手柄	
+Undo {} / Redo {}	撤销：{} / 重做：{}	{} 为操作名称
+panel tab (sidebar section)	选项卡	面板内的分页，如“计数”选项卡、“数据”选项卡；切片标签页仍用“标签页”
+click, Shift+click, Alt+click, Ctrl+click	点击、Shift+点击、Alt+点击、Ctrl+点击	与 eov 一致用“点击”；double-click = 双击，right-click = 右键单击
+Notes (layer notes)	说明	图层说明；与 comment（备注）、description（描述）区分。不用“注释”（易与标注混淆）
+description (annotation)	描述	
+review status: Draft / Verified / Rejected	审核状态：草稿 / 已核实 / 已驳回	Mark verified = 标记为已核实
+second reader, another reader	第二阅片者、另一位阅片者	second read = 二次阅片
+blinded copy	盲法副本	供另一位阅片者使用的去除作者、备注等信息的副本
+attach (annotations to the open slide)	关联	将旧切片（重新保存、转换或去标识化前）的标注关联到当前打开的切片
+Bring them in (pre-1.0 annotations)	迁移	将 eov 1.0 之前的标注迁移到当前数据库；Not now = 以后再说
+HPF field	高倍视野	“HPF field”中 HPF 已含视野之意，只译一次；{} /HPF field = {} /HPF；HPF field tool = 高倍视野工具
+field number (FN)	视场数	目镜视场数（mm）
+combined positive score (CPS)	综合阳性评分（CPS）	PD-L1 CPS
+count point, count class	计数点、计数类别	second count class = 第二计数类别
+active class	当前类别	
+even-odd rule	奇偶规则	自相交轮廓的填充规则
+hole (of a polygon)	孔洞	
+self-intersecting outline, cross itself	自相交	轮廓自相交
+brush, eraser, brush stroke	画笔、橡皮擦、画笔绘制	stroke（笔画本身）= 笔触
+freehand outline	手绘轮廓	
+cut from (a region)	剪除	add to region = 添加到区域
+DICOM bulk annotations	DICOM 批量标注	IOD 名称 Microscopy Bulk Simple Annotations 保留英文；modality = 模态；study = 检查；series = 序列
+GeoJSON feature	要素	FeatureCollection 保留原文
+archive (eov annotation archive)	存档	
+readout, region readout (Cellaris)	读数、区域读数	
+cell (Cellaris grid cell)	网格单元	Cellaris 中 cell 指一次预测的小方格，不是生物细胞，不得译为“细胞”
+tissue block (Cellaris, 5 µm square)	组织方格	5 µm 见方的组织小格；不是石蜡包埋的组织块（蜡块）。block = 方格
+window (model input image)	窗口	模型每次预测所用的方形图像
+display window (marker)	显示窗口	标志物颜色绘制所覆盖的数值范围；ends: Black / White = 黑色 / 白色
+model card	模型卡	built-in model card = 内置模型卡
+sidecar file	附属文件	模型旁的 <model>.eovae.json
+reconstruction error, error map	重建误差、误差图	VAE 异常分析；Original / Reconstruction / Difference = 原始图像 / 重建图像 / 差异图
+preprocessing	预处理	
+batch size, dynamic batch	批大小、动态批大小	
+reference model	参考模型	
+your site's copy (of a model)	本站点的副本	与 eov 中“本站点的副本”一致
+build (of a program)	构建版本	GPU build of ONNX Runtime = GPU 版本
+profile (gamepad settings)	配置方案	保存的一套游戏手柄设置；不用“配置文件”（与颜色配置文件区分）
+dead zone	死区	stick drift = 摇杆漂移
+trigger, shoulder button, D-pad	扳机、肩键、方向键	LT/RT、LB/RB；D-Pad Left = 方向键左
+South / East / North / West Button	下方 / 右方 / 上方 / 左方按钮	游戏手柄正面按钮按位置命名
+mappings (gamepad)	按键映射	
+response curve	响应曲线	
+Remote Desktop portal	远程桌面门户	Wayland 桌面门户
+marker (example plugin point)	标记	示例插件中放置的点；生物标志物仍用“标志物”
+host (plugin host)	宿主程序	插件运行所在的宿主应用程序，即 eov；eovae 错误信息：宿主程序为 {width}×{height} 的区域返回了 {n} 字节
+worker thread	工作线程	插件或 eov 在后台工作的线程
+flagged (tissue QC)	被组织质控标记	供复核的提示，并非确定结论；pen marks, possible folds or blur = 笔迹、可能的折叠或模糊
+patch size (dataset)	图像块大小	数据集对话框中的 Patch Size；错误信息中的 tile size 仍为“图块大小”

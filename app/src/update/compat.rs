@@ -26,10 +26,11 @@
 //!   packages before they are installed.
 
 use anyhow::{Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::{Comparator, Op, Prerelease, Version, VersionReq};
 
 /// The plugin API version implemented by this host.
-pub const HOST_PLUGIN_API_VERSION: &str = "1.0.0";
+pub const HOST_PLUGIN_API_VERSION: &str = "1.1.0";
 
 /// The eov version of this build.
 pub fn host_version() -> Version {
@@ -41,10 +42,66 @@ pub fn host_api_version() -> Version {
     Version::parse(HOST_PLUGIN_API_VERSION).expect("valid plugin API version")
 }
 
+/// Why a version requirement of a manifest cannot be used. `Display` says it
+/// in English (logs, the audit log, the command line);
+/// [`RequirementError::localized`] in the interface's language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RequirementError {
+    /// Not a SemVer requirement: the requirement, and the version
+    /// library's words.
+    Invalid { requirement: String, error: String },
+    /// A requirement without a lower bound (`*`, `<2`).
+    NoLowerBound(String),
+}
+
+impl std::fmt::Display for RequirementError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RequirementError::Invalid { requirement, error } => {
+                write!(
+                    f,
+                    "'{requirement}' is not a valid SemVer requirement: {error}"
+                )
+            }
+            RequirementError::NoLowerBound(requirement) => write!(
+                f,
+                "'{requirement}' has no lower bound; declare a range such as \">=1.0.0, <2.0.0\""
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RequirementError {}
+
+impl RequirementError {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            RequirementError::Invalid { requirement, error } => {
+                // Translators: {requirement} is a range of versions such as ">=1.0.0, <2.0.0"; {error} the error of the version library.
+                tr!(
+                    "'{requirement}' is not a valid SemVer requirement: {error}",
+                    requirement = isolate(requirement),
+                    error = error
+                )
+            }
+            RequirementError::NoLowerBound(requirement) => {
+                // Translators: {} is a range of versions; keep ">=1.0.0, <2.0.0" as it is.
+                tr!(
+                    "'{}' has no lower bound; declare a range such as \">=1.0.0, <2.0.0\"",
+                    isolate(requirement)
+                )
+            }
+        }
+    }
+}
+
 /// Parses a requirement and adds the implicit upper bound when it has none.
-pub fn bounded_requirement(text: &str) -> Result<VersionReq> {
-    let mut requirement = VersionReq::parse(text)
-        .map_err(|error| anyhow::anyhow!("'{text}' is not a valid SemVer requirement: {error}"))?;
+pub fn bounded_requirement(text: &str) -> Result<VersionReq, RequirementError> {
+    let mut requirement = VersionReq::parse(text).map_err(|error| RequirementError::Invalid {
+        requirement: text.to_string(),
+        error: error.to_string(),
+    })?;
     if requirement.comparators.iter().any(is_upper_bound) {
         return Ok(requirement);
     }
@@ -61,7 +118,7 @@ pub fn bounded_requirement(text: &str) -> Result<VersionReq> {
         })
         .max()
     else {
-        bail!("'{text}' has no lower bound; declare a range such as \">=1.0.0, <2.0.0\"");
+        return Err(RequirementError::NoLowerBound(text.to_string()));
     };
     let (major, minor, patch) = lower;
     let cap = if major > 0 {
@@ -118,7 +175,9 @@ pub fn api_requirement(raw_manifest: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// The outcome of a compatibility check.
+/// The outcome of a compatibility check. The reason is in the interface's
+/// language ([`Incompatibility::localized`]); [`incompatibility`] gives it
+/// as data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Compatibility {
     Compatible,
@@ -138,43 +197,164 @@ impl Compatibility {
     }
 }
 
+/// Why a plugin does not run with this eov, as data. `Display` says it in
+/// English (logs, the audit log); [`Incompatibility::localized`] in the
+/// interface's language, when it is shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Incompatibility {
+    /// The manifest's range of eov versions leaves this eov out; `bounded`
+    /// is the range eov takes an open-ended one for.
+    Eov {
+        required: String,
+        bounded: Option<String>,
+        version: String,
+    },
+    /// The manifest's range of eov versions cannot be used.
+    InvalidEov(RequirementError),
+    /// Built for a plugin API this eov does not provide.
+    Api { required: String, provided: String },
+    /// The manifest's range of plugin API versions cannot be used.
+    InvalidApi(RequirementError),
+}
+
+impl std::fmt::Display for Incompatibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Incompatibility::Eov {
+                required,
+                bounded: None,
+                version,
+            } => write!(f, "requires eov {required}; this is eov {version}"),
+            Incompatibility::Eov {
+                required,
+                bounded: Some(bounded),
+                version,
+            } => write!(
+                f,
+                "requires eov {required} (bounded to {bounded}); this is eov {version}"
+            ),
+            Incompatibility::InvalidEov(error) => write!(f, "invalid eov requirement: {error}"),
+            Incompatibility::Api { required, provided } => write!(
+                f,
+                "built for plugin API {required}; this eov provides plugin API {provided}"
+            ),
+            Incompatibility::InvalidApi(error) => {
+                write!(f, "invalid plugin API requirement: {error}")
+            }
+        }
+    }
+}
+
+impl Incompatibility {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            Incompatibility::Eov {
+                required,
+                bounded: None,
+                version,
+            } => {
+                // Translators: why a plugin does not run; {required} is a range of eov versions such as ">=1.0.0, <2.0.0".
+                tr!(
+                    "requires eov {required}; this is eov {version}",
+                    required = isolate(required),
+                    version = isolate(version)
+                )
+            }
+            Incompatibility::Eov {
+                required,
+                bounded: Some(bounded),
+                version,
+            } => {
+                // Translators: why a plugin does not run; {required} is a range of eov versions such as ">=1.1", {bounded} the range eov takes it for (">=1.1, <2.0.0").
+                tr!(
+                    "requires eov {required} (bounded to {bounded}); this is eov {version}",
+                    required = isolate(required),
+                    bounded = isolate(bounded),
+                    version = isolate(version)
+                )
+            }
+            Incompatibility::InvalidEov(error) => {
+                tr!("invalid eov requirement: {}", error.localized())
+            }
+            Incompatibility::Api { required, provided } => {
+                // Translators: why a plugin does not run; {required} is a range of versions of eov's plugin API, {provided} a version.
+                tr!(
+                    "built for plugin API {required}; this eov provides plugin API {provided}",
+                    required = isolate(required),
+                    provided = isolate(provided)
+                )
+            }
+            Incompatibility::InvalidApi(error) => {
+                tr!("invalid plugin API requirement: {}", error.localized())
+            }
+        }
+    }
+}
+
+/// Why a plugin with the declared requirements does not run with an eov
+/// version and plugin API version, if it does not.
+pub fn incompatibility(
+    environment: &str,
+    api: Option<&str>,
+    eov: &Version,
+    plugin_api: &Version,
+) -> Option<Incompatibility> {
+    match bounded_requirement(environment) {
+        Ok(requirement) if version_matches(&requirement, eov) => {}
+        Ok(requirement) => {
+            let bounded = requirement.to_string();
+            return Some(Incompatibility::Eov {
+                required: environment.to_string(),
+                bounded: (bounded != environment).then_some(bounded),
+                version: eov.to_string(),
+            });
+        }
+        Err(error) => return Some(Incompatibility::InvalidEov(error)),
+    }
+    if let Some(api) = api {
+        match bounded_requirement(api) {
+            Ok(requirement) if version_matches(&requirement, plugin_api) => {}
+            Ok(_) => {
+                return Some(Incompatibility::Api {
+                    required: api.to_string(),
+                    provided: plugin_api.to_string(),
+                });
+            }
+            Err(error) => return Some(Incompatibility::InvalidApi(error)),
+        }
+    }
+    None
+}
+
 /// Checks a plugin's declared requirements against an eov version and
-/// plugin API version.
+/// plugin API version (the reason in the interface's language).
 pub fn check(
     environment: &str,
     api: Option<&str>,
     eov: &Version,
     plugin_api: &Version,
 ) -> Compatibility {
-    match bounded_requirement(environment) {
-        Ok(requirement) if version_matches(&requirement, eov) => {}
-        Ok(requirement) => {
-            return Compatibility::Incompatible(if requirement.to_string() == environment {
-                format!("requires eov {environment}; this is eov {eov}")
-            } else {
-                format!("requires eov {environment} (bounded to {requirement}); this is eov {eov}")
-            });
-        }
-        Err(error) => {
-            return Compatibility::Incompatible(format!("invalid eov requirement: {error}"));
-        }
+    match incompatibility(environment, api, eov, plugin_api) {
+        None => Compatibility::Compatible,
+        Some(reason) => Compatibility::Incompatible(reason.localized()),
     }
-    if let Some(api) = api {
-        match bounded_requirement(api) {
-            Ok(requirement) if version_matches(&requirement, plugin_api) => {}
-            Ok(_) => {
-                return Compatibility::Incompatible(format!(
-                    "built for plugin API {api}; this eov provides plugin API {plugin_api}"
-                ));
-            }
-            Err(error) => {
-                return Compatibility::Incompatible(format!(
-                    "invalid plugin API requirement: {error}"
-                ));
-            }
-        }
-    }
-    Compatibility::Compatible
+}
+
+/// Why a package with this `[environment] version` and raw manifest does
+/// not run with this host's plugin API and the eov version `eov`, if it
+/// does not ([`check_manifest`], as data).
+pub fn package_incompatibility(
+    environment: &str,
+    raw_manifest: &str,
+    eov: &Version,
+) -> Option<Incompatibility> {
+    incompatibility(
+        environment,
+        api_requirement(raw_manifest).as_deref(),
+        eov,
+        &host_api_version(),
+    )
 }
 
 /// Checks an inspected manifest against this host.
@@ -183,12 +363,10 @@ pub fn check_manifest(
     raw_manifest: &str,
     eov: &Version,
 ) -> Compatibility {
-    check(
-        &manifest.environment.version,
-        api_requirement(raw_manifest).as_deref(),
-        eov,
-        &host_api_version(),
-    )
+    match package_incompatibility(&manifest.environment.version, raw_manifest, eov) {
+        None => Compatibility::Compatible,
+        Some(reason) => Compatibility::Incompatible(reason.localized()),
+    }
 }
 
 /// Validates a plugin id that eov will use as a file name and library name:
@@ -205,7 +383,11 @@ pub fn validate_plugin_id(id: &str) -> Result<()> {
     };
     if !valid {
         bail!(
-            "plugin ID '{id}' is not valid: IDs use 1-64 lowercase letters, digits and '_', starting with a letter or digit"
+            "{}",
+            tr!(
+                "plugin ID '{}' is not valid: IDs use 1-64 lowercase letters, digits and '_', starting with a letter or digit",
+                isolate(id)
+            )
         );
     }
     const RESERVED: &[&str] = &[
@@ -214,7 +396,13 @@ pub fn validate_plugin_id(id: &str) -> Result<()> {
         "lpt9",
     ];
     if RESERVED.contains(&id) {
-        bail!("plugin ID '{id}' is a reserved Windows device name");
+        bail!(
+            "{}",
+            tr!(
+                "plugin ID '{}' is a reserved Windows device name",
+                isolate(id)
+            )
+        );
     }
     Ok(())
 }
@@ -293,6 +481,51 @@ mod tests {
         assert!(
             reason.contains("bounded to") && reason.contains("<0.5.0"),
             "{reason}"
+        );
+    }
+
+    /// Why a plugin does not run is data: English for logs and the audit
+    /// log, the interface's language (versions isolated in right-to-left
+    /// languages) when it is shown.
+    #[test]
+    fn incompatibilities_are_worded_when_shown() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let reason = incompatibility(">=2.0.0", None, &v("1.0.0"), &v("1.0.0")).unwrap();
+        assert_eq!(
+            reason,
+            Incompatibility::Eov {
+                required: ">=2.0.0".into(),
+                bounded: Some(">=2.0.0, <3.0.0".into()),
+                version: "1.0.0".into(),
+            }
+        );
+        let english = "requires eov >=2.0.0 (bounded to >=2.0.0, <3.0.0); this is eov 1.0.0";
+        assert_eq!(reason.to_string(), english);
+        assert_eq!(reason.localized(), english);
+        let invalid = incompatibility("1.0, <2", Some("nonsense"), &v("1.0.0"), &v("1.0.0"));
+        assert!(matches!(
+            invalid,
+            Some(Incompatibility::InvalidApi(
+                RequirementError::Invalid { .. }
+            ))
+        ));
+
+        let _english = English;
+        i18n::set_catalog(i18n::by_tag("fa").unwrap(), None);
+        assert_eq!(reason.to_string(), english);
+        assert!(!invalid.unwrap().to_string().contains('\u{2068}'));
+        let shown = check(">=2.0.0", None, &v("1.0.0"), &v("1.0.0"));
+        assert_eq!(shown.reason(), Some(reason.localized().as_str()));
+        assert!(
+            reason.localized().contains("\u{2068}>=2.0.0\u{2069}"),
+            "{}",
+            reason.localized()
         );
     }
 

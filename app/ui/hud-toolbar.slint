@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { ContextMenuItem, HudToolbarButtonData } from "types.slint";
 import { DialogKeys } from "dialog-keys.slint";
@@ -697,9 +698,12 @@ export component HudToolbar inherits Rectangle {
                 Text {
                     x: 26px;
                     y: (parent.height - self.height) / 2;
+                    width: parent.width - 34px;
                     text: item.label;
                     color: item.enabled ? Theme.text-strong : Theme.text-disabled;
                     font-size: 12px;
+                    horizontal-alignment: Locale.start;
+                    overflow: elide;
                     accessible-role: none;
                 }
 

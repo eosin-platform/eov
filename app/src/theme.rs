@@ -3,6 +3,7 @@
 //! themselves are the tokens of `app/ui/theme.slint`.
 
 use crate::{AppWindow, ContextMenuItem, Theme, ThemeKind};
+use eov_plugin_api::i18n::tr;
 use slint::ComponentHandle;
 
 impl ThemeKind {
@@ -27,11 +28,12 @@ impl ThemeKind {
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    /// The name in the theme menu, in the interface's language.
+    pub(crate) fn label(self) -> String {
         match self {
-            ThemeKind::Dark => "Dark",
-            ThemeKind::Light => "Light",
-            ThemeKind::HighContrast => "High Contrast",
+            ThemeKind::Dark => tr!("Theme" => "Dark"),
+            ThemeKind::Light => tr!("Theme" => "Light"),
+            ThemeKind::HighContrast => tr!("Theme" => "High Contrast"),
         }
     }
 

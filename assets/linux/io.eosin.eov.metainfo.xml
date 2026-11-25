@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The summary and description in other languages (xml:lang) are the
+  translations of eov's catalogs: edit only the English, together with its
+  declaration for the translators in app/src/file_types/mod.rs, and write
+  the translations with EOV_REGENERATE_ASSETS=1 cargo test -p eov file_types
+  (see docs/translating.md).
+-->
 <component type="desktop-application">
   <id>io.eosin.eov</id>
   <metadata_license>CC0-1.0</metadata_license>

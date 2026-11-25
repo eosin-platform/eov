@@ -7,6 +7,7 @@
 //! needs ONNX Runtime, `protoc` or the whole file in memory.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Component, Path};
@@ -217,10 +218,35 @@ impl<R: Read + Seek> Wire<R> {
     }
 }
 
+/// Why a file is not an ONNX model, in the [`io::Error`]s of
+/// [`scan_file`]: the technical detail, in English like a library's
+/// (`model::inspect` words the rest in the language of the interface).
+#[derive(Debug)]
+pub struct InvalidModel(String);
+
+impl InvalidModel {
+    /// The detail, when `error` says that a file is not an ONNX model.
+    pub fn detail(error: &io::Error) -> Option<&str> {
+        error
+            .get_ref()?
+            .downcast_ref::<InvalidModel>()
+            .map(|invalid| invalid.0.as_str())
+    }
+}
+
+impl fmt::Display for InvalidModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "not a valid ONNX model: {}", self.0)
+    }
+}
+
+impl std::error::Error for InvalidModel {}
+
+/// A file that is not an ONNX model; `message` is the technical detail.
 fn invalid(message: &str) -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidData,
-        format!("not a valid ONNX model: {message}"),
+        InvalidModel(message.to_string()),
     )
 }
 

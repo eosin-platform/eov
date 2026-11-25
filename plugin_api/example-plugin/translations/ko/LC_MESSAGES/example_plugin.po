@@ -1,0 +1,122 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Korean\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"도구 모음 버튼, 사이드바, 오버레이 레이어, 실행 취소를 지원하는 점 도구, 필"
+"터, 백그라운드 작업을 보여 주는 예제입니다."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "예제 플러그인"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "예제 체커보드 슬라이드"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "예제 사이드바"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "마커 배치"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "색 반전"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "반전"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "각 슬라이드의 조직 비율과 평균 조직 색"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "픽셀 수가 이 값 이하인 가장 세밀한 레벨 읽기"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "마커"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "마커 {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "마커 추가"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "10까지 세기"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step}/{total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "여기에 마커 추가"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "열린 슬라이드의 마커 {n}개"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "예제 플러그인"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "슬라이드 없음"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "마커 {n}개"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "마커 지우기"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "색 반전"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "백그라운드 작업 실행"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "설명"

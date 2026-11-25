@@ -21,6 +21,7 @@ use crate::plugin_runtime::loader;
 use crate::plugin_runtime::settings::SettingsStore;
 use crate::plugin_runtime::shared::{Command, HostShared, Published, PublishedFile};
 use crate::plugin_runtime::{EventTarget, PluginInfo, PluginRuntime};
+use crate::update::policy::ThirdPartyUse;
 use anyhow::{Context, Result, bail};
 use eov_common::WsiFile;
 use eov_plugin_api::protocol::{
@@ -136,7 +137,7 @@ impl Headless {
             bail!("plugin '{plugin_id}' is disabled (eov plugin enable {plugin_id})");
         }
         if !package.system && package.provenance.kind != "official" {
-            policy.ensure_third_party_allowed("Running this plugin")?;
+            policy.ensure_third_party_allowed(ThirdPartyUse::RunPlugin)?;
         }
         let descriptor = crate::plugins::discovery::load_descriptor(&package.package_path)
             .map_err(|error| anyhow::anyhow!("could not unpack the package: {error}"))?;

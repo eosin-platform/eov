@@ -1,0 +1,124 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Hebrew\n"
+"Language: he\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"הדגמה של לחצני סרגל כלים, סרגל צד, שכבות-על, כלי נקודות עם ביטול פעולה, מסנן "
+"ועבודות ברקע."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "תוסף לדוגמה"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "שקופיות לוח שחמט לדוגמה"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "סרגל צד לדוגמה"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "הצבת סמן"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "היפוך צבעים"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "היפוך"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "חלק הרקמה וצבע הרקמה הממוצע של כל שקופית"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "קריאת הרמה המפורטת ביותר שיש בה לכל היותר מספר זה של פיקסלים"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "סמנים"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "סמן {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "הוספת סמן"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "ספירה עד עשר"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} מתוך {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "הוספת סמן כאן"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "סמן אחד בשקופיות הפתוחות"
+msgstr[1] "{n} סמנים בשקופיות הפתוחות"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "תוסף לדוגמה"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "אין שקופית"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "סמן אחד"
+msgstr[1] "{n} סמנים"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "ניקוי הסמנים"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "היפוך צבעים"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "הרצת עבודה ברקע"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "תיאור"

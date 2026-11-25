@@ -1,0 +1,292 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Для научных исследований и обучения. Не является медицинским изделием; не предназначено для первичной диагностики.	Safety text of the Home screen: translate in full, never shorten or soften.
+not a medical device	не является медицинским изделием	Regulatory term «медицинское изделие» (Federal Law 323-FZ, art. 38). Never «медицинский прибор» or «медицинское устройство».
+medical device	медицинское изделие	
+primary diagnosis	первичная диагностика	The first, final diagnosis of a case: «не предназначено для первичной диагностики».
+not for diagnosis	не предназначено для диагностики	Never weaken to «не рекомендуется».
+intended use	назначение	Regulatory sense («назначение медицинского изделия»).
+research use only (RUO)	только для исследовательских целей (RUO)	The phrase printed on RUO reagents; keep RUO.
+synthetic (image, channel, stain)	синтетический	Computed by an algorithm. Never «искусственный», «поддельный» or «симулированный».
+predicted	предсказанный	Noun: «предсказание» (a prediction is not a measurement).
+generated	сгенерированный	Computed by a model or an algorithm.
+slide	препарат	Histological slide and its scan («гистологический препарат»). Never «слайд» or «снимок». The glass itself: «стекло», «предметное стекло».
+whole-slide image (WSI)	изображение целого препарата (WSI)	Keep the abbreviation WSI: «файлы WSI».
+slide viewer, viewer	программа просмотра препаратов, программа просмотра	
+tab	вкладка	One open slide in a pane, as in a browser. Not «закладка» (that is a bookmark).
+pane	окно просмотра	One of the side-by-side viewing areas: «разделить окно просмотра», «связать окна просмотра». Not «область» (that is a region) and not «панель» (that is a panel).
+panel	панель	A section of the window (Channels, Plugins, Measurements, Keyboard Shortcuts…).
+view	вид	What a pane shows (position, magnification, rotation): «предыдущий вид».
+viewport	область просмотра	The area of a pane where the slide is drawn.
+viewport lock	синхронизация видов	The toolbar toggle that makes panes of the same slide follow each other.
+minimap	миникарта	
+scale bar	масштабная линейка	The bar showing a physical length (µm, mm).
+HUD	плавающая панель	Panels floating over the slide: «плавающая панель метаданных».
+toolbar	панель инструментов	
+sidebar	боковая панель	
+status bar	строка состояния	
+series bar	панель серии	The bar listing the slides and folders of the current folder.
+Home screen	начальный экран	The Home tab itself: «Главная».
+window	окно	The application window; a pane is «окно просмотра».
+zoom	масштаб	Screen scale (100% = one slide pixel per screen pixel). Never «увеличение» (that is magnification).
+Zoom in / Zoom out	Приблизить / Отдалить	Keeps zoom apart from magnification («увеличение»).
+magnification (20×)	увеличение (20×)	Objective-equivalent optical magnification; 20× stays 20×.
+objective, objective power	объектив, увеличение объектива	
+optical-equivalent zoom	оптически эквивалентное увеличение	versus «цифровой масштаб» (digital zoom).
+pixel	пиксель	«пиксели уровня 0».
+pixel size	размер пикселя	
+MPP (µm per pixel)	MPP (µm на пиксель)	MPP stays; units stay as written (µm, mm, px).
+calibration	калибровка	
+level, pyramid level	уровень, уровень пирамиды	Level-0 pixels: «пиксели уровня 0».
+downsample	коэффициент уменьшения	The factor between a pyramid level and level 0.
+resolution	разрешение	
+tile	тайл	A square piece of the image; «размер тайла».
+patch (dataset)	патч	Patch extraction: «извлечение патчей».
+cache	кэш	
+region of interest (ROI)	область интереса (ROI)	Keep ROI as the abbreviation.
+region (annotation)	область	A drawn area. Measured «area» is «площадь»; areas of a slide (blurred areas) are «участки».
+measurement	измерение	
+Measure (tool)	Измерение	Tool name; verbs «измерять», «измерить».
+Navigate (tool)	Навигация	The tool that moves the view.
+distance	расстояние	
+path length	длина ломаной	Measure mode of a polyline.
+area	площадь	«площадь многоугольника».
+perimeter	периметр	
+angle	угол	
+polygon	многоугольник	
+rectangle	прямоугольник	
+ellipse	эллипс	
+outline	контур	
+annotation	аннотация	A drawn mark with a meaning; a free-text comment is «комментарий».
+class (annotation class)	класс	E.g. «Опухоль», «Строма»; «класс аннотации».
+layer	слой	
+overlay	наложение	Graphics drawn over the slide; «слой наложения» where a layer is meant.
+cell count, counting	подсчёт клеток, подсчёт	
+high-power field (HPF)	поле зрения при большом увеличении (HPF)	Keep HPF as the abbreviation: «поле HPF» (a placed field), «митозы на 10 HPF».
+field number (FN)	полевое число (FN)	Eyepiece field number in mm.
+density	плотность	E.g. cells per mm².
+H&E	H&E	Hematoxylin and eosin («окраска гематоксилином и эозином»); keep the abbreviation H&E.
+hematoxylin	гематоксилин	One-letter abbreviation H (as in H&E, H-DAB).
+eosin	эозин	One-letter abbreviation E.
+IHC	IHC	Immunohistochemistry («иммуногистохимия»); keep the abbreviation IHC.
+DAB	DAB	Chromogen: «DAB-положительный».
+chromogen	хромоген	
+stain (staining, stain type)	окраска	The method or type: «окраска H&E», «нормализация окраски»; series order «Окраска».
+stain (one dye of a stain model)	краситель	«изолированный краситель», «векторы красителей», «модель окраски с 2 красителями».
+stain normalization	нормализация окраски	Macenko and Vahadane stay as they are: «нормализация окраски по Macenko».
+stain target	целевая окраска	The appearance normalisation maps slides onto: «Использовать этот препарат как целевую окраску».
+reference stain target	эталонная целевая окраска	eov's built-in target.
+stain model	модель окраски	E.g. H&E, H-DAB.
+stain vectors	векторы красителей	
+stain fit	оценка красителей	Estimating a slide's stain vectors: «оценка красителей по Macenko».
+color deconvolution	цветовая деконволюция	Ruifrok–Johnston stays.
+colour management	управление цветом	
+colour profile (ICC)	цветовой профиль (ICC)	
+colours as scanned	цвета сканера	Shown without colour management.
+colour map	цветовая карта	Of a heat map or a channel.
+colour-blind safe	различимые при дальтонизме	A palette option for colour-blind viewers.
+H-score	H-score	Keep as is.
+weak / moderate / strong (1+, 2+, 3+)	слабое / умеренное / сильное (1+, 2+, 3+)	Staining intensity classes (agree with «окрашивание»).
+intensity	интенсивность	
+optical density	оптическая плотность	
+quantify, quantification	оценить количественно, количественная оценка	«Количественная оценка окраски».
+threshold	порог	«пороговое значение» where clearer; white threshold: «порог белого».
+histogram	гистограмма	
+channel	канал	
+multiplex immunofluorescence (mIF)	мультиплексная иммунофлуоресценция (mIF)	
+marker	маркер	Marker names (CD3, Ki-67, PanCK…) are never translated.
+focal plane (Z)	фокальная плоскость (Z)	The stack of planes: «Z-стек».
+time point (T), time series	временная точка (T), временной ряд	
+heat map	тепловая карта	
+opacity	непрозрачность	0–100%.
+tissue	ткань	
+tissue QC	контроль качества ткани (QC)	
+pen marks	пометки маркером	Marks of a marker pen on the glass.
+folds	складки	«складки ткани».
+blur, out of focus	размытие, не в фокусе	Blurred areas: «размытые участки».
+tissue detection, tissue mask	обнаружение ткани, маска ткани	
+background	фон	
+dataset	набор данных	
+stride	шаг	The step between patches.
+export	экспортировать; экспорт	Menu item «Экспортировать изображение…»; dialog title «Экспорт изображения».
+save a copy	сохранить копию	
+convert	преобразовать	«Преобразовать цвета в sRGB».
+de-identify	обезличить	Remove patient-identifying data (label, macro image, metadata); the term of Russian data-protection law (152-FZ). Adjective: «обезличенный». Not «анонимизировать», which promises more.
+label image	изображение этикетки	Caption: «Этикетка».
+macro image	макроснимок	Photo of the whole glass slide.
+overview image	обзорное изображение	Caption: «Обзор».
+thumbnail	миниатюра	
+associated image	вспомогательное изображение	Label, macro, thumbnail stored in a slide file.
+bookmark	закладка	A saved view of a slide.
+session	сеанс	
+case	случай	The patient case (accession) slides belong to.
+vendor, scanner	производитель, сканер	
+property (of a slide)	свойство	Slide properties as the scanner wrote them.
+metadata	метаданные	
+plugin	плагин	
+package (.eop)	пакет (.eop)	«пакет плагина».
+repository	репозиторий	
+registry (of plugins)	реестр	«реестр плагинов».
+model, model store	модель, хранилище моделей	Machine-learning model files.
+inference	инференс	Running a model on images: «движок инференса».
+batch	батч	Of a model: «размер батча». Not «пакет» (that is a package).
+thread	поток	Processor core: «ядро».
+render	отрисовывать, отрисовка	
+renderer (CPU, GPU)	отрисовка на CPU / на GPU	CPU and GPU stay as they are; the software renderer: «программная отрисовка».
+backend (CPU, GPU)	способ отрисовки (CPU, GPU)	Where eov draws the image; CPU and GPU stay as they are.
+graphics adapter	графический адаптер	
+filtering (bilinear, trilinear, Lanczos)	фильтрация (билинейная, трилинейная, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	резкость, гамма, яркость, контрастность	Gamma symbol γ.
+image adjustments	коррекция изображения	
+theme (dark, light, high contrast)	тема (тёмная, светлая, высокая контрастность)	
+Check for Updates…	Проверить наличие обновлений…	Asks before going online; never imply automatic background updates.
+update	обновление; обновить	
+release, release notes	выпуск, примечания к выпуску	«манифест выпуска».
+prerelease	предварительный выпуск	
+staged (update)	ожидает установки; подготовленный	A plugin update waiting to be installed after eov exits: «ожидает установки»; a staged package or release: «подготовленный пакет».
+roll back	откатить; откат	«--rollback» stays.
+signature	подпись	Signed: «подписанный».
+checksum	контрольная сумма	SHA-256 stays.
+artifact (of a release)	артефакт	A file published with a release or a build.
+administrator policy	политика администратора	«отключено политикой администратора»
+safe mode	безопасный режим	
+log folder	папка журналов	
+crash	сбой; аварийно завершиться	
+messages	сообщения	The notification list in the status bar.
+landmark (alignment)	опорная точка	
+align, alignment	совместить, совмещение	Of linked slides.
+link / unlink panes	связать / разъединить окна просмотра	
+rotate, rotation	повернуть, поворот	«Повернуть вправо на 90°».
+flip horizontally	отразить по горизонтали	
+pan	перемещать	Moving the view.
+point, line, arrow, text	точка, линия, стрелка, текст	
+brush, eraser	кисть, ластик	
+hole (of a polygon)	отверстие	
+comment, author	комментарий, автор	
+nucleus, nuclei	ядро, ядра	Cell nuclei: «ядра клеток».
+tumour cells	опухолевые клетки	
+reader (of annotations)	эксперт	Another pathologist reading the same slide: «второй эксперт».
+blinded copy	заслеплённая копия	As in «заслепление» of clinical trials.
+gamepad	геймпад	
+Annotations (plugin name)	Аннотации	Descriptive plugin name: translated.
+Gamepad (plugin name)	Геймпад	Descriptive plugin name: translated.
+Example Plugin (plugin name)	Пример плагина	Descriptive plugin name: translated.
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	Coined product names: never translated.
+eov	eov	Lowercase and undeclined; where agreement is needed use «приложение eov» (neuter), or rephrase.
+Open	Открыть	Buttons and menu items use the infinitive, sentence case.
+Close	Закрыть	
+Cancel	Отмена	
+OK	ОК	Cyrillic, as in Windows and macOS.
+Save, Save…, Save As…	Сохранить, Сохранить…, Сохранить как…	
+Delete	Удалить	
+Remove	Удалить	From a list or the view: «Убрать» where nothing is deleted (a heat map from the slide).
+Clear	Очистить	A list: «Очистить все измерения», «Очистить список недавних файлов», «Очистить сообщения»; a region of interest or landmarks: «Удалить область интереса», «Удалить опорные точки».
+Settings, Preferences	Настройки	
+Apply	Применить	
+Reset, Reset to Defaults	Сбросить, Восстановить значения по умолчанию	Reset Rotation: «Сбросить поворот».
+Show / Hide	Показать / Скрыть	
+Toggle …	Показать/скрыть …	Toolbar toggles.
+Import	Импортировать	
+Copy	Копировать	Status messages: «Скопировано: {}».
+Paste	Вставить	
+Undo / Redo	Отменить / Повторить	With a label: «Отменить «{}»»; undo-step labels are verbal nouns («Добавление измерения»).
+Fit	Вписать	«Вписать препарат в окно просмотра».
+Zoom to …	Приблизить к …	«Приблизить к области интереса»; to a magnification: «Перейти к увеличению 20×».
+Enable / Disable	Включить / Отключить	States: «Включено» / «Отключено».
+Confirm	Подтвердить	
+Done	Готово	
+Add	Добавить	
+Edit	Изменить	The Edit menu: «Правка».
+Rename	Переименовать	
+Filter	Фильтровать; фильтр	
+Back / Forward / Up	Назад / Вперёд / Вверх	
+Next / Previous	Следующий / Предыдущий	Agree with the noun; a wizard button: «Далее».
+Download	Скачать	«Load» is «Загрузить».
+Load	Загрузить	
+Install / Uninstall	Установить / Удалить	
+Restart	Перезапустить	
+Retry	Повторить	
+Quit	Выйти	«Выйти из eov».
+Lock / Unlock	Заблокировать / Разблокировать	
+Merge	Объединить	
+Select	Выбрать	«Выделить» for selecting objects on the slide.
+Preview	Предпросмотр	
+None	Нет	
+Default	По умолчанию	
+Full screen	Полноэкранный режим	
+Format, Quality, Compression	Формат, Качество, Сжатие	
+lossless	без потерь	
+Units	Единицы	
+Width / Height	Ширина / Высота	
+Loading…	Загрузка…	
+Ready	Готово	
+Error / Warning / Information	Ошибка / Предупреждение / Сведения	
+Language	Язык	Language names are capitalised list entries: «Немецкий».
+colour	цвет	Colour names: «Тёмно-синий».
+keyboard shortcut, hotkey	сочетание клавиш	The panel: «Сочетания клавиш».
+key	клавиша	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) stay as they are.
+tooltip	подсказка	
+clipboard	буфер обмена	
+folder, directory	папка	
+file manager	файловый менеджер	
+path	путь	
+recent files	недавние файлы	
+stroke (line style)	линия	Styles: сплошная, штриховая, точечная; dash length «длина штриха», caps «концы».
+focused pane	активное окно просмотра	
+self-update	самообновление	eov updating itself (eov update); not «автоматическое».
+update helper	помощник обновления	eov-update-helper stays as it is.
+app bundle (macOS)	пакет приложения	Also a Flatpak bundle: «пакет Flatpak».
+proxy	прокси-сервер	
+N/A, Unknown (values)	нет данных, неизвестно	A property the file does not record.
+Copied/Saved/Exported {}	Скопировано/Сохранено/Экспортировано: {}	Status pattern that avoids gender agreement with a name.
+{} of {}	{} из {}	«Временная точка 2 из 5».
+you (register)	вы	Polite form, lowercase in the interface; instructions use the polite imperative («Выберите», «Откройте»).
+ellipsis …	…	Kept at the end of items that open a dialog.
+quotation marks « »	« »	Russian guillemets; inner quotes „ “.
+number and unit	12 MB, 50%, 90°, 20×	Space before units (12 MB, 5 µm); none before % (as in Russian Windows and macOS), ° or ×; 1024 × 768 px.
+shape (annotation)	фигура	Vertices: «вершины»; a freehand outline: «контур от руки».
+count point	точка подсчёта	Points placed by the Count tool; the Count tab: «Подсчёт».
+hotkey (of an annotation class)	клавиша класса	A single character that makes a class active; the field label: «Клавиша».
+Unclassified	Без класса	An annotation without a class.
+review status: Draft / Verified / Rejected	статус проверки: Черновик / Проверено / Отклонено	Undo labels «Статус: черновик» etc.
+annotation database	база данных аннотаций	
+back up, backup	создать резервную копию, резервная копия	Button «Резервная копия…».
+merge (databases)	объединить; объединение баз данных	Button «Объединить…».
+attach (annotations to a slide)	привязать	«Привязать аннотации к открытому препарату».
+blinded copy, second reader	заслеплённая копия, второй эксперт	Section heading «ВТОРОЙ ЭКСПЕРТ».
+DICOM bulk annotations	массовые аннотации DICOM	The IOD name Microscopy Bulk Simple Annotations stays in English.
+even-odd rule	правило чёт-нечет	For self-crossing outlines.
+Feret diameter (max / min caliper)	макс. / мин. диаметр (Ферета)	
+combined positive score (CPS)	комбинированный показатель позитивности (CPS)	PD-L1 scoring.
+95% confidence interval	95% ДИ	«(95% ДИ {low}–{high})».
+immune cells	иммунные клетки	«PD-L1-положительные иммунные клетки».
+undo-step labels (plugins)	отглагольные существительные	«Добавление точки», «Удаление слоя», «Блокировка»; buttons and menu items with the same English text use the infinitive.
+annotations menu items	существительные	The Import/Export menu of the annotations sidebar is 230 px wide: «Импорт аннотаций…», «Экспорт в GeoJSON (QuPath)…».
+PREDICTED (label)	ПРЕДСКАЗАНИЕ	Always with «только для исследовательских целей, не предназначено для диагностики».
+region readout (Cellaris)	показатели области	The tool: «Показатели области Cellaris».
+cell (Cellaris grid)	ячейка	A small square of the slide predicted at once — never «клетка».
+window (model input)	окно	A square image the model predicts from.
+tissue block (5 µm square)	квадрат ткани	Not «блок» (that is a paraffin block).
+display window (of a marker)	окно отображения	The value range a colour is drawn over.
+model card	карточка модели	
+bright-field	светлое поле; светлопольный	
+reconstruction error	ошибка реконструкции	MAE stays (средняя абсолютная ошибка).
+error map	карта ошибок	Overlays: «Оригинал», «Реконструкция», «Карта ошибок», «Разность».
+reference model	эталонная модель	
+your site's model / copy	модель (копия) вашей организации	Buttons: «Скачать модель организации».
+ONNX Runtime (library), runtime	библиотека ONNX Runtime, среда выполнения	Buttons «ONNX Runtime…».
+sidecar file	сопроводительный файл	<model>.eovae.json.
+preprocessing	предобработка	
+embeddings	эмбеддинги	
+result cache	кэш результатов	
+background tiles	тайлы фона	
+batch processing (eov batch)	пакетная обработка	A model's batch stays «батч».
+game controller	игровой контроллер	
+stick, trigger, D-pad, shoulder button	стик, триггер, крестовина, бампер	Face buttons by position: «Нижняя/Правая/Верхняя/Левая кнопка».
+dead zone	мёртвая зона	Trigger dead zone: «Порог триггеров» (narrow label).
+response curve	кривая отклика	
+mapping (gamepad)	назначение	«Назначения» (section).
+profile (gamepad)	профиль	
+system pointer	системный указатель	
+Remote Desktop portal; Accessibility (macOS)	портал удалённого рабочего стола; Универсальный доступ	System permission names as the systems show them in Russian.
+On / Off (small switch)	Вкл / Выкл	
+marker (example plugin)	метка	A placed point, not a biomarker.

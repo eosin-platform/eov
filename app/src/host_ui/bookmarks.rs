@@ -7,6 +7,7 @@ use crate::ContextMenuItem;
 use crate::bookmarks::{self, Bookmark};
 use crate::shortcuts::Action;
 use crate::state::{AppState, PaneId};
+use eov_plugin_api::i18n::{self, isolate, tr};
 use eov_plugin_api::protocol::NotifyLevel;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::rc::Rc;
@@ -32,13 +33,15 @@ pub(super) struct BookmarkMenu {
     bookmarks: Vec<Bookmark>,
 }
 
-/// " (Ctrl+Shift+B)" for an action with a key, "" without.
-fn key_hint(action: Action) -> String {
-    let key = crate::shortcuts::current().label(action);
-    if key.is_empty() {
-        String::new()
+/// A number as eov_common writes it (no trailing zeros), with the decimal
+/// separator of the interface's language.
+fn localized(number: f64) -> String {
+    let text = eov_common::format_decimal(number);
+    let separator = i18n::current().decimal_separator;
+    if separator == '.' {
+        text
     } else {
-        format!(" ({key})")
+        text.replacen('.', &separator.to_string(), 1)
     }
 }
 
@@ -49,15 +52,22 @@ fn magnification_text(magnification: f64) -> String {
     } else {
         magnification.round()
     };
-    format!("{}×", eov_common::format_decimal(rounded))
+    format!("{}×", localized(rounded))
 }
 
 /// How a zoom reads: a magnification when the slide's is known.
 fn scale_text(native_magnification: Option<f64>, zoom: f64) -> String {
     match native_magnification {
         Some(native) => magnification_text(native * zoom),
-        None => format!("{} %", eov_common::format_decimal((zoom * 100.0).round())),
+        // Translators: a percentage, e.g. "25 %" or "0.4 %".
+        None => tr!("{} %", localized((zoom * 100.0).round())),
     }
+}
+
+/// The name a new bookmark gets when it is given none: "Bookmark 3" for a
+/// slide that has `count` = 2 already.
+fn default_name(count: usize) -> String {
+    tr!("Bookmark {}", count + 1)
 }
 
 /// The slide shown in the pane keyboard commands act on, and that pane.
@@ -67,11 +77,15 @@ fn focused_slide(state: &AppState) -> Option<(i32, PaneId)> {
 }
 
 fn slide_key(state: &AppState, file_id: i32) -> Result<String, String> {
-    let file = state.get_file(file_id).ok_or("The slide was closed")?;
+    let file = state
+        .get_file(file_id)
+        .ok_or_else(|| tr!("The slide was closed"))?;
     file.wsi
         .identity()
         .map(|identity| identity.key().to_string())
-        .map_err(|error| format!("This slide cannot be identified: {error}"))
+        // Translators: eov could not work out which slide file this is (its
+        // fingerprint, under which bookmarks are kept); not about the patient.
+        .map_err(|error| tr!("This slide cannot be identified: {}", error))
 }
 
 impl UiHost {
@@ -101,7 +115,7 @@ impl UiHost {
             })
         };
         let Some(Some((key, mut pending, native))) = prepared else {
-            self.status("Open a slide to bookmark a view");
+            self.status(&tr!("Open a slide to bookmark a view"));
             return;
         };
         pending.key = match key {
@@ -109,7 +123,7 @@ impl UiHost {
             Err(error) => {
                 self.notify(
                     NotifyLevel::Warning,
-                    "Cannot add a bookmark",
+                    &tr!("Cannot add a bookmark"),
                     Some(&error),
                     None,
                 );
@@ -118,27 +132,42 @@ impl UiHost {
         };
         let count = bookmarks::list(&pending.key).len();
         if count >= bookmarks::MAX_PER_SLIDE {
+            let key = crate::shortcuts::current().label(Action::Bookmarks);
+            let max = bookmarks::MAX_PER_SLIDE;
+            let detail = if key.is_empty() {
+                tr!(
+                    "A slide can have at most {n} bookmark. Delete some from the bookmark menu."
+                        | "A slide can have at most {n} bookmarks. Delete some from the bookmark menu."
+                            % max
+                )
+            } else {
+                tr!(
+                    "A slide can have at most {n} bookmark. Delete some from the bookmark menu ({key})."
+                        | "A slide can have at most {n} bookmarks. Delete some from the bookmark menu ({key})."
+                            % max,
+                    key = isolate(&key)
+                )
+            };
             self.notify(
                 NotifyLevel::Warning,
-                "Cannot add a bookmark",
-                Some(&format!(
-                    "A slide can have at most {} bookmarks. Delete some from the bookmark menu{}.",
-                    bookmarks::MAX_PER_SLIDE,
-                    key_hint(Action::Bookmarks)
-                )),
+                &tr!("Cannot add a bookmark"),
+                Some(&detail),
                 None,
             );
             return;
         }
         let scale = scale_text(native, pending.zoom);
-        ui.set_bookmark_dialog_name(format!("Bookmark {}", count + 1).into());
+        ui.set_bookmark_dialog_name(default_name(count).into());
         ui.set_bookmark_dialog_detail(
-            format!(
-                "{} at {}, {} of {}",
-                scale,
-                pending.center_x.round(),
-                pending.center_y.round(),
-                pending.file_name
+            // Translators: where a bookmark looks: its magnification or
+            // zoom, the point in the middle of the view (level-0 pixels)
+            // and the slide's file name.
+            tr!(
+                "{scale} at {x}, {y} of {file}",
+                scale = isolate(&scale),
+                x = pending.center_x.round(),
+                y = pending.center_y.round(),
+                file = isolate(&pending.file_name)
             )
             .into(),
         );
@@ -156,7 +185,7 @@ impl UiHost {
         };
         let name = name.trim();
         let name = if name.is_empty() {
-            format!("Bookmark {}", bookmarks::list(&pending.key).len() + 1)
+            default_name(bookmarks::list(&pending.key).len())
         } else {
             name.chars().take(bookmarks::MAX_NAME_CHARS).collect()
         };
@@ -176,14 +205,18 @@ impl UiHost {
             Ok(name) => {
                 let key = crate::shortcuts::current().label(Action::Bookmarks);
                 self.status(&if key.is_empty() {
-                    format!("Bookmarked “{name}”")
+                    tr!("Bookmarked “{}”", name)
                 } else {
-                    format!("Bookmarked “{name}”; {key} lists the slide's bookmarks")
+                    tr!(
+                        "Bookmarked “{name}”; {key} lists the slide's bookmarks",
+                        name = name,
+                        key = isolate(&key)
+                    )
                 })
             }
             Err(error) => self.notify(
                 NotifyLevel::Warning,
-                "Cannot add a bookmark",
+                &tr!("Cannot add a bookmark"),
                 Some(&error),
                 None,
             ),
@@ -212,7 +245,7 @@ impl UiHost {
         let (file_id, key, native) = {
             let state = self.state.read();
             let Some((file_id, _)) = focused_slide(&state) else {
-                self.status("Open a slide to see its bookmarks");
+                self.status(&tr!("Open a slide to see its bookmarks"));
                 return;
             };
             let native = state
@@ -230,9 +263,12 @@ impl UiHost {
         if list.is_empty() {
             let key = crate::shortcuts::current().label(Action::BookmarkAdd);
             self.status(&if key.is_empty() {
-                "This slide has no bookmarks yet".to_string()
+                tr!("This slide has no bookmarks yet")
             } else {
-                format!("This slide has no bookmarks yet: {key} adds one")
+                tr!(
+                    "This slide has no bookmarks yet: {} adds one",
+                    isolate(&key)
+                )
             });
             return;
         }
@@ -266,9 +302,9 @@ impl UiHost {
             }
             .into(),
             label: if deleting {
-                "Back to Bookmarks"
+                tr!("Back to Bookmarks")
             } else {
-                "Delete a Bookmark…"
+                tr!("Delete a Bookmark…")
             }
             .into(),
             icon: "".into(),
@@ -341,14 +377,14 @@ impl UiHost {
         // the menu opened (another eov window may have edited it).
         let current = bookmarks::list(&menu.key);
         if current.get(index) != Some(&bookmark) {
-            self.status("The bookmarks changed; open the menu again");
+            self.status(&tr!("The bookmarks changed; open the menu again"));
             return true;
         }
         match bookmarks::remove(&menu.key, index) {
-            Ok(()) => self.status(&format!("Deleted the bookmark “{}”", bookmark.name)),
+            Ok(()) => self.status(&tr!("Deleted the bookmark “{}”", bookmark.name)),
             Err(error) => self.notify(
                 NotifyLevel::Warning,
-                "Cannot delete the bookmark",
+                &tr!("Cannot delete the bookmark"),
                 Some(&error),
                 None,
             ),
@@ -363,7 +399,7 @@ impl UiHost {
             if state.active_file_id_for_pane(pane) != Some(file_id) {
                 // The menu's slide is no longer the pane's.
                 drop(state);
-                self.status("The slide of that bookmark is no longer shown here");
+                self.status(&tr!("The slide of that bookmark is no longer shown here"));
                 return;
             }
             if let Some(viewport) = state.active_viewport_mut() {

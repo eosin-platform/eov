@@ -948,18 +948,28 @@ fn begin_color_frame(state: &mut AppState) {
     state.request_render();
 }
 
-/// Message shown when the GPU renderer fails while running.
+/// Logged when the GPU renderer fails while running ([`gpu_failed_message`]
+/// is shown).
 const GPU_FAILED_MESSAGE: &str = "The GPU renderer failed; slides are drawn by the CPU renderer";
 
+/// [`GPU_FAILED_MESSAGE`] in the interface's language.
+fn gpu_failed_message() -> String {
+    eov_plugin_api::i18n::tr!("The GPU renderer failed; slides are drawn by the CPU renderer")
+}
+
 /// The GPU failed (a wgpu error or a lost device): slides are drawn by the
-/// CPU renderer from now on (RND-7).
-fn use_cpu_after_gpu_failure(ui: &AppWindow, state: &mut AppState, reason: &str) {
+/// CPU renderer from now on (RND-7). The log says why in English.
+fn use_cpu_after_gpu_failure(
+    ui: &AppWindow,
+    state: &mut AppState,
+    reason: &crate::gpu::GpuFailure,
+) {
     tracing::warn!("{GPU_FAILED_MESSAGE}: {reason}");
     crate::with_gpu_renderer(|renderer| renderer.borrow_mut().disable());
     state.gpu_backend_available = false;
     state.select_render_backend(RenderBackend::Cpu);
     crate::ui_update::update_render_backend(ui, state);
-    ui.set_status_text(GPU_FAILED_MESSAGE.into());
+    ui.set_status_text(gpu_failed_message().into());
 }
 
 pub(crate) fn update_and_render(
@@ -979,8 +989,8 @@ pub(crate) fn update_and_render(
         crate::host_ui::with_host(|host| {
             host.notify(
                 eov_plugin_api::protocol::NotifyLevel::Warning,
-                GPU_FAILED_MESSAGE,
-                Some(&reason),
+                &gpu_failed_message(),
+                Some(&reason.localized()),
                 None,
             )
         });
@@ -2996,7 +3006,7 @@ mod tests {
                 state.gpu_backend_available = true;
                 state.select_render_backend(RenderBackend::Gpu);
             }
-            crate::gpu::record_failure("GPU error: test".to_string());
+            crate::gpu::record_failure(crate::gpu::GpuFailure::Error("test".to_string()));
             update_and_render(&ui, &state, &tile_cache);
             let state = state.read();
             assert_eq!(state.render_backend, RenderBackend::Cpu);

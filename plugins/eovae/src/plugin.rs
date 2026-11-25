@@ -19,6 +19,7 @@ use crate::config::Config;
 use crate::contract::Contract;
 use crate::db::{DbTile, ResultCache, RunWrite};
 use crate::engine::{Backend, EngineInfo, EngineRequest, InferenceEngine};
+use crate::message::{Message, cancelled};
 use crate::model::{self, ModelInfo};
 use crate::pipeline::{
     JobControl, JobOutcome, JobSink, JobSpec, PixelSource, Progress, TileOutcome, run_job,
@@ -29,6 +30,7 @@ use crate::run::RunSpec;
 use crate::slide::{self, SlideIdentity};
 use crate::tiling::{LevelChoice, SlideGeometry, TileCoord, TileGrid, choose_level};
 use eov_plugin_api::abi::RegionRequest;
+use eov_plugin_api::i18n;
 use eov_plugin_api::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -47,6 +49,21 @@ pub const SIDEBAR_COMPONENT: &str = "EovaeSidebar";
 const TOOL_ICON: &str = include_str!("../ui/icons/tool.svg");
 const GRID_ICON: &str = include_str!("../ui/icons/grid.svg");
 const VIEW_ICON: &str = include_str!("../ui/icons/visualize-transform.svg");
+
+// The tooltips of eovae's buttons, handed to eov at the start and again
+// when the language changes.
+
+fn toolbar_tooltip() -> String {
+    tr!("VAE reconstruction analysis")
+}
+
+fn grid_tooltip() -> String {
+    tr!("VAE tile grid")
+}
+
+fn view_tooltip() -> String {
+    tr!("VAE overlay")
+}
 
 /// Automatic analysis stops at this many visible tiles (zoomed out, the
 /// view would turn into a whole-slide run, VAE-6)…
@@ -78,6 +95,31 @@ pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Warns the user in their language and writes the same text in English to
+/// eov's log, both from `write` (see [`i18n::shown_and_english`]). eov
+/// shows a plugin's logged warnings and errors to the user as they are
+/// (PLG-15), so `Host::warn` and `Host::error` would show the log's
+/// English: problems are logged at info level and notified separately.
+fn warn_user(host: &Host, write: impl Fn() -> String) {
+    let (shown, english) = i18n::shown_and_english(write);
+    host.info(english);
+    host.notify(NotifyLevel::Warning, shown);
+}
+
+/// `text` for eov's log: without the marks [`i18n::isolate`] puts around
+/// names in right-to-left languages.
+fn log_text(text: &str) -> String {
+    text.replace(['\u{2068}', '\u{2069}'], "")
+}
+
+/// What a panic said, when it said it in text.
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    payload
+        .downcast_ref::<&str>()
+        .map(|text| text.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -86,7 +128,7 @@ pub enum ModelState {
     None,
     Loading { path: PathBuf },
     Ready { info: Arc<ModelInfo> },
-    Failed { path: PathBuf, error: String },
+    Failed { path: PathBuf, error: Message },
 }
 
 /// What the engine cell last reported.
@@ -97,7 +139,7 @@ pub struct EngineStatus {
     /// Info of the engine built for a results signature.
     pub info: Option<(String, EngineInfo)>,
     /// The last build failure: (signature, error).
-    pub error: Option<(String, String)>,
+    pub error: Option<(String, Message)>,
 }
 
 /// What one pane shows of a slide.
@@ -178,6 +220,28 @@ impl JobKind {
     pub fn explicit(self) -> bool {
         self != Self::Auto
     }
+
+    /// The running job, as the sidebar names it.
+    pub fn title(self) -> String {
+        match self {
+            Self::WholeSlide => tr!("Whole slide"),
+            Self::Viewport => tr!("Viewport"),
+            Self::Roi => tr!("Region of interest"),
+            Self::Auto => tr!("Visible tiles"),
+        }
+    }
+
+    /// What a finished job's summary is about, as a label ("Viewport:
+    /// everything was already analysed."); sentences name it themselves
+    /// (see [`JobSummary::text`]).
+    fn subject(self) -> String {
+        match self {
+            Self::WholeSlide => tr!("Whole slide"),
+            Self::Viewport => tr!("Viewport"),
+            Self::Roi => tr!("Region of interest"),
+            Self::Auto => tr!("Automatic analysis"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -198,10 +262,30 @@ pub struct RunningJob {
     pub started: Instant,
 }
 
+/// How the last job ended; the sidebar shows it until the next one, in
+/// the language of the interface (see [`Self::text`]).
 #[derive(Clone, Debug)]
 pub struct JobSummary {
-    pub text: String,
-    pub error: bool,
+    pub kind: JobKind,
+    pub outcome: JobOutcome,
+    pub elapsed: Duration,
+}
+
+/// How a job's run ended.
+struct JobEnd {
+    outcome: JobOutcome,
+    /// The job was in eov's job panel and failed there: eov has told the
+    /// user (its "… failed" notification, with the error).
+    reported: bool,
+}
+
+impl From<JobOutcome> for JobEnd {
+    fn from(outcome: JobOutcome) -> Self {
+        Self {
+            outcome,
+            reported: false,
+        }
+    }
 }
 
 pub struct State {
@@ -218,7 +302,9 @@ pub struct State {
     pub active_file: Option<FileId>,
     pub job: Option<RunningJob>,
     pub last_job: Option<JobSummary>,
-    pub auto_hint: Option<String>,
+    /// Automatic analysis waits for the user to zoom in: the number of
+    /// visible tiles.
+    pub auto_hint: Option<u64>,
     pub sidebar: Option<Surface>,
     /// Pending dialog request ids.
     pub model_dialog: Option<String>,
@@ -309,24 +395,16 @@ impl State {
 pub fn download_args(config: &Config) -> ModelFetchArgs {
     let reference = model::reference();
     match &config.download_sha256 {
-        Some(sha256) if *sha256 != reference.main().sha256 => {
-            let file = config.download_url.as_deref().and_then(|url| {
-                url.split(['?', '#'])
-                    .next()
-                    .and_then(|path| path.rsplit('/').next())
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_string)
-            });
-            ModelFetchArgs {
-                url: config.download_url.clone(),
-                sha256: sha256.clone(),
-                name: Some(match file {
-                    Some(file) => format!("the site's VAE model {file}"),
-                    None => "the site's VAE model".to_string(),
-                }),
-                ..Default::default()
-            }
-        }
+        Some(sha256) if *sha256 != reference.main().sha256 => ModelFetchArgs {
+            url: config.download_url.clone(),
+            sha256: sha256.clone(),
+            // What eov's dialogs call the model, and its name in eov's
+            // model store, which keeps it: the address's file name, the
+            // same in every language. Without an address, eov names the
+            // model itself, in the language of the interface.
+            name: config.download_url.as_deref().and_then(url_file_name),
+            ..Default::default()
+        },
         _ => {
             let main = reference.main();
             ModelFetchArgs {
@@ -352,6 +430,42 @@ pub fn download_args(config: &Config) -> ModelFetchArgs {
             }
         }
     }
+}
+
+/// The file name at the end of an address (`our%20vae.onnx` is
+/// `our vae.onnx`, as eov names the file it downloads); `None` when the
+/// address names no file.
+fn url_file_name(url: &str) -> Option<String> {
+    let url = url.split(['?', '#']).next().unwrap_or_default();
+    // The path starts after the scheme and the server.
+    let path = match url.split_once("://") {
+        Some((_, rest)) => rest.split_once('/')?.1,
+        None => url,
+    };
+    let segment = path.rsplit('/').next().filter(|name| !name.is_empty())?;
+    Some(percent_decoded(segment).unwrap_or_else(|| segment.to_string()))
+}
+
+/// `%XX` escapes decoded; `None` when they do not make printable text.
+fn percent_decoded(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if let [b'%', high, low, ..] = bytes[i..]
+            && let (Some(high), Some(low)) =
+                (char::from(high).to_digit(16), char::from(low).to_digit(16))
+        {
+            decoded.push((high * 16 + low) as u8);
+            i += 3;
+        } else {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(decoded)
+        .ok()
+        .filter(|text| !text.chars().any(char::is_control))
 }
 
 /// The engine `config` asks for to run `model`.
@@ -381,25 +495,35 @@ pub fn results_signature(request: &EngineRequest) -> String {
 pub enum NoRun {
     NoModel,
     ModelLoading,
-    ModelFailed(String),
+    ModelFailed(Message),
     EngineNotReady,
-    EngineFailed(String),
+    EngineFailed(Message),
     SlideResolving,
     NoLevels,
     UnknownFile,
 }
 
 impl NoRun {
-    pub fn message(&self) -> String {
+    /// Why, in the interface's language and in English (when it ends a
+    /// job, eov's log gets the English).
+    pub fn message(&self) -> Message {
+        Message::new(|| self.text())
+    }
+
+    /// Why, in the language being written (see [`Message`]).
+    pub fn text(&self) -> String {
         match self {
-            Self::NoModel => "Load an ONNX model first.".to_string(),
-            Self::ModelLoading => "The model is still loading.".to_string(),
-            Self::ModelFailed(error) => format!("The model could not be loaded: {error}"),
-            Self::EngineNotReady => "Preparing the inference engine…".to_string(),
-            Self::EngineFailed(error) => error.clone(),
-            Self::SlideResolving => "Identifying the slide…".to_string(),
-            Self::NoLevels => "The slide reports no pyramid levels.".to_string(),
-            Self::UnknownFile => "The slide is not open.".to_string(),
+            Self::NoModel => tr!("Load an ONNX model first."),
+            Self::ModelLoading => tr!("The model is still loading."),
+            Self::ModelFailed(error) => tr!("The model could not be loaded: {}", error),
+            Self::EngineNotReady => tr!("Preparing the inference engine…"),
+            Self::EngineFailed(error) => error.to_string(),
+            // Translators: eovae is working out which slide file this is (its
+            // content fingerprint), to find its stored results; it does not
+            // identify a patient.
+            Self::SlideResolving => tr!("Identifying the slide…"),
+            Self::NoLevels => tr!("The slide reports no pyramid levels."),
+            Self::UnknownFile => tr!("The slide is not open."),
         }
     }
 }
@@ -469,11 +593,18 @@ pub struct DirtyFlags {
     pub status: bool,
     pub all_overlays: bool,
     pub overlays: BTreeSet<FileId>,
+    /// The language changed: texts eov keeps are handed over again.
+    pub language: bool,
 }
 
 impl DirtyFlags {
     pub fn any(&self) -> bool {
-        self.sidebar || self.hud || self.status || self.all_overlays || !self.overlays.is_empty()
+        self.sidebar
+            || self.hud
+            || self.status
+            || self.all_overlays
+            || !self.overlays.is_empty()
+            || self.language
     }
 }
 
@@ -525,7 +656,7 @@ struct EngineSlot {
     signature: Option<String>,
     engine: Option<Box<dyn InferenceEngine>>,
     busy: bool,
-    failed: Option<(String, String)>,
+    failed: Option<(String, Message)>,
 }
 
 /// Holds the one inference engine; built on worker threads, reused while
@@ -585,28 +716,28 @@ pub struct Core<B: Backend> {
 
 impl<B: Backend> Core<B> {
     pub fn create(host: Host, init: PluginInit) -> Result<Arc<Self>, String> {
-        let (config, warning) = Config::from_settings(&init.settings);
+        let (config, unreadable) = Config::from_settings(&init.settings);
         let plugin_root = PathBuf::from(&init.plugin_root);
         let cache = ResultCache::open(&PathBuf::from(&init.cache_dir), config.cache_limit_bytes());
         // Without a window there is nothing to show.
         if !init.headless {
             host.add_toolbar_button(ToolbarButtonSpec {
                 button_id: TOOLBAR_BUTTON.into(),
-                tooltip: "VAE reconstruction analysis".into(),
+                tooltip: toolbar_tooltip(),
                 icon_svg: TOOL_ICON.into(),
                 ..Default::default()
             })
             .map_err(String::from)?;
             host.add_hud_button(HudButtonSpec {
                 button_id: HUD_GRID.into(),
-                tooltip: "VAE tile grid".into(),
+                tooltip: grid_tooltip(),
                 icon_svg: GRID_ICON.into(),
                 ..Default::default()
             })
             .map_err(String::from)?;
             host.add_hud_button(HudButtonSpec {
                 button_id: HUD_VIEW.into(),
-                tooltip: "VAE overlay".into(),
+                tooltip: view_tooltip(),
                 icon_svg: VIEW_ICON.into(),
                 menu: view_menu(Mode::Original),
                 ..Default::default()
@@ -615,8 +746,14 @@ impl<B: Backend> Core<B> {
         }
         // `eov batch run eovae:analyze` (hosts without batch runs refuse it).
         let _ = host.register_batch_command(crate::batch::command_spec(&config));
-        if let Some(warning) = warning {
-            host.warn(warning);
+        if let Some(error) = unreadable {
+            warn_user(&host, || {
+                // Translators: eovae is this plugin's name; {} says why, in English
+                tr!(
+                    "eovae settings were unreadable and were reset ({})",
+                    i18n::isolate(&error)
+                )
+            });
         }
         let results = ResultStore::new(config.memory_limit_bytes());
         let core = Arc::new(Self {
@@ -658,9 +795,17 @@ impl<B: Backend> Core<B> {
             .name(format!("eovae-{name}"))
             .spawn(move || {
                 let result = catch_unwind(AssertUnwindSafe(|| f(Arc::clone(&core))));
-                if result.is_err() {
-                    core.host
-                        .error("an eovae worker thread failed unexpectedly");
+                if let Err(payload) = result {
+                    // English in the log, the user's language on screen
+                    // (see `warn_user`).
+                    core.host.info("an eovae worker thread failed unexpectedly");
+                    // Translators: the title of an error notification; eovae is
+                    // this plugin's name
+                    let message = tr!("An eovae worker thread failed unexpectedly");
+                    match panic_text(&*payload) {
+                        Some(detail) => core.host.notify_error(message, detail),
+                        None => core.host.notify(NotifyLevel::Error, message),
+                    }
                 }
             });
         if let Ok(handle) = spawned {
@@ -750,8 +895,49 @@ impl<B: Backend> Core<B> {
                 }
                 Ok(())
             }
+            HostEvent::LanguageChanged { .. } => {
+                self.on_language_changed();
+                Ok(())
+            }
             _ => Ok(()),
         }
+    }
+
+    /// The user chose another language: `tr!` answers in it already (the
+    /// sidebar's `@tr` texts changed by themselves). eov shows what eovae
+    /// handed over in the old language until it is handed over again: the
+    /// tooltips and the overlay menu here, the batch command, and through
+    /// the presenter every pane's menu, the status text, the layers' names
+    /// and the sidebar's texts.
+    fn on_language_changed(self: &Arc<Self>) {
+        if !self.headless {
+            let _ = self.host.update_toolbar_button(ButtonUpdate {
+                button_id: TOOLBAR_BUTTON.into(),
+                tooltip: Some(toolbar_tooltip()),
+                ..Default::default()
+            });
+            let _ = self.host.update_hud_button(ButtonUpdate {
+                button_id: HUD_GRID.into(),
+                tooltip: Some(grid_tooltip()),
+                ..Default::default()
+            });
+            let _ = self.host.update_hud_button(ButtonUpdate {
+                button_id: HUD_VIEW.into(),
+                tooltip: Some(view_tooltip()),
+                menu: Some(view_menu(Mode::Original)),
+                ..Default::default()
+            });
+        }
+        let config = lock(&self.state).config.clone();
+        let _ = self
+            .host
+            .register_batch_command(crate::batch::command_spec(&config));
+        self.dirty.mark(|d| {
+            d.language = true;
+            d.sidebar = true;
+            d.hud = true;
+            d.status = true;
+        });
     }
 
     fn on_ready(self: &Arc<Self>, restore_sidebar: bool) -> Result<(), String> {
@@ -929,9 +1115,11 @@ impl<B: Backend> Core<B> {
     pub fn without_pane_layers(&self) {
         let changed = std::mem::replace(&mut lock(&self.state).pane_layers, false);
         if changed {
-            self.host.warn(
-                "This eov cannot show layers in some panes only: every pane of a slide shows the same VAE overlay.",
-            );
+            warn_user(&self.host, || {
+                tr!(
+                    "This eov cannot show layers in some panes only: every pane of a slide shows the same VAE overlay."
+                )
+            });
             self.dirty.everything();
         }
     }
@@ -1069,7 +1257,7 @@ impl<B: Backend> Core<B> {
         if needs_model {
             self.host.notify(
                 NotifyLevel::Info,
-                "Load an ONNX model in the VAE sidebar to analyse this slide.",
+                tr!("Load an ONNX model in the VAE sidebar to analyse this slide."),
             );
             if lock(&self.state).sidebar.is_none() {
                 self.open_sidebar()?;
@@ -1114,7 +1302,7 @@ impl<B: Backend> Core<B> {
             .host
             .open_surface(
                 SurfaceSpec::new(SurfaceKind::Sidebar, SIDEBAR_UI, SIDEBAR_COMPONENT)
-                    .with_title("VAE analysis")
+                    .with_title(tr!("VAE analysis"))
                     .with_size(360.0, None),
             )
             .map_err(String::from)?;
@@ -1159,7 +1347,9 @@ impl<B: Backend> Core<B> {
             drop(state);
             self.host.notify(
                 NotifyLevel::Info,
-                "The ONNX Runtime library is used from the next start of eov if a runtime is already loaded.",
+                tr!(
+                    "The ONNX Runtime library is used from the next start of eov if a runtime is already loaded."
+                ),
             );
             self.prebuild_engine();
         } else if let Some(file_id) = export {
@@ -1183,12 +1373,13 @@ impl<B: Backend> Core<B> {
         if ours && confirmed {
             self.spawn("clear", |core| {
                 match core.cache.clear() {
-                    Ok(()) => core
-                        .host
-                        .notify(NotifyLevel::Success, "The VAE result cache was cleared."),
+                    Ok(()) => core.host.notify(
+                        NotifyLevel::Success,
+                        tr!("The VAE result cache was cleared."),
+                    ),
                     Err(error) => core
                         .host
-                        .notify_error("Could not clear the VAE result cache", error),
+                        .notify_error(tr!("Could not clear the VAE result cache"), error),
                 }
                 core.dirty.mark(|d| d.sidebar = true);
             });
@@ -1217,7 +1408,7 @@ impl<B: Backend> Core<B> {
         self.dirty.everything();
         self.spawn("model", move |core| {
             let result = catch_unwind(AssertUnwindSafe(|| model::inspect(&path, &cancel)))
-                .unwrap_or_else(|_| Err("the model file could not be read".to_string()));
+                .unwrap_or_else(|_| Err(Message::new(|| tr!("the model file could not be read"))));
             let mut state = lock(&core.state);
             if state.model_generation != generation {
                 return;
@@ -1246,7 +1437,7 @@ impl<B: Backend> Core<B> {
             match failure {
                 Some(error) => {
                     core.host
-                        .notify_error("The VAE model could not be loaded", error);
+                        .notify_error(tr!("The VAE model could not be loaded"), error.shown);
                 }
                 None => core.prebuild(),
             }
@@ -1300,10 +1491,10 @@ impl<B: Backend> Core<B> {
             }
             Err(error) if error.is_unsupported() => {
                 state.model_store = false;
-                state.download_note = Some(
+                // Translators: "Load ONNX…" is the sidebar's button of that name
+                state.download_note = Some(tr!(
                     "This eov cannot download models: load the model file with Load ONNX…"
-                        .to_string(),
-                );
+                ));
             }
             Err(error) => state.download_note = Some(error.to_string()),
         }
@@ -1391,12 +1582,12 @@ impl<B: Backend> Core<B> {
         request: &EngineRequest,
         stop: &Arc<AtomicBool>,
         retry_failed: bool,
-    ) -> Result<Box<dyn InferenceEngine>, String> {
+    ) -> Result<Box<dyn InferenceEngine>, Message> {
         let signature = request.signature();
         let mut slot = lock(&self.engine.slot);
         loop {
             if stop.load(Ordering::SeqCst) || self.stopping.load(Ordering::SeqCst) {
-                return Err("cancelled".to_string());
+                return Err(cancelled());
             }
             if !slot.busy {
                 if slot.signature.as_deref() == Some(signature.as_str())
@@ -1424,8 +1615,12 @@ impl<B: Backend> Core<B> {
                         &flags,
                     )
                 }))
-                .unwrap_or_else(|_| Err("the inference engine failed unexpectedly".to_string()));
-                let cancelled = stop.load(Ordering::SeqCst) || self.stopping.load(Ordering::SeqCst);
+                .unwrap_or_else(|_| {
+                    Err(Message::new(|| {
+                        tr!("the inference engine failed unexpectedly")
+                    }))
+                });
+                let stopped = stop.load(Ordering::SeqCst) || self.stopping.load(Ordering::SeqCst);
                 let mut slot = lock(&self.engine.slot);
                 let result = match built {
                     Ok(engine) => {
@@ -1433,14 +1628,14 @@ impl<B: Backend> Core<B> {
                         slot.failed = None;
                         Ok(engine)
                     }
-                    Err(_) if cancelled => {
+                    Err(_) if stopped => {
                         // Abandoned, not broken: build again when asked.
                         slot.busy = false;
                         drop(slot);
                         self.engine.changed.notify_all();
                         lock(&self.state).engine.building = None;
                         self.dirty.mark(|d| d.sidebar = true);
-                        return Err("cancelled".to_string());
+                        return Err(cancelled());
                     }
                     Err(error) => {
                         slot.busy = false;
@@ -1467,12 +1662,15 @@ impl<B: Backend> Core<B> {
                 {
                     self.host.notify(
                         NotifyLevel::Warning,
-                        format!("VAE inference runs on the CPU: {reason}"),
+                        tr!(
+                            "VAE inference runs on the CPU: {}",
+                            crate::engine::reason_text(reason)
+                        ),
                     );
                 }
                 if let Err(error) = &result {
                     self.host
-                        .notify_error("The VAE model cannot run", error.clone());
+                        .notify_error(tr!("The VAE model cannot run"), error.shown.clone());
                 }
                 self.dirty.everything();
                 return result;
@@ -1509,10 +1707,7 @@ impl<B: Backend> Core<B> {
                         let range = ctx.grid.range_in(&view.visible);
                         let tile_px = ctx.grid.screen_size(view.zoom);
                         if range.len() > AUTO_MAX_TILES || tile_px < AUTO_MIN_TILE_PX {
-                            state.auto_hint = Some(format!(
-                                "Zoom in to analyse automatically ({} tiles visible), or run Viewport or Whole slide.",
-                                range.len()
-                            ));
+                            state.auto_hint = Some(range.len());
                             false
                         } else {
                             state.auto_hint = None;
@@ -1556,7 +1751,7 @@ impl<B: Backend> Core<B> {
                 control: Arc::clone(&control),
                 host_job: None,
                 progress: Progress::default(),
-                phase: "Starting…".to_string(),
+                phase: tr!("Starting…"),
                 started: Instant::now(),
             });
         }
@@ -1605,14 +1800,14 @@ impl<B: Backend> Core<B> {
         id: u64,
         request: &JobRequest,
         control: &Arc<JobControl>,
-    ) -> Result<JobOutcome, String> {
+    ) -> Result<JobEnd, Message> {
         if control.is_cancelled() {
-            return Ok(JobOutcome::Cancelled(Counts::default()));
+            return Ok(JobOutcome::Cancelled(Counts::default()).into());
         }
         let engine_request = lock(&self.state)
             .engine_request()
             .ok_or_else(|| NoRun::NoModel.message())?;
-        self.set_phase(id, "Preparing the model…");
+        self.set_phase(id, &tr!("Preparing the model…"));
         let mut engine = match self.acquire_engine(
             &engine_request,
             control.stop_flag(),
@@ -1620,7 +1815,7 @@ impl<B: Backend> Core<B> {
         ) {
             Ok(engine) => engine,
             Err(_) if control.is_cancelled() => {
-                return Ok(JobOutcome::Cancelled(Counts::default()));
+                return Ok(JobOutcome::Cancelled(Counts::default()).into());
             }
             Err(error) => return Err(error),
         };
@@ -1635,7 +1830,7 @@ impl<B: Backend> Core<B> {
         request: &JobRequest,
         control: &Arc<JobControl>,
         engine: &mut dyn InferenceEngine,
-    ) -> Result<JobOutcome, String> {
+    ) -> Result<JobEnd, Message> {
         let waited = Instant::now();
         let (ctx, config, mode) = loop {
             let attempt = {
@@ -1653,7 +1848,7 @@ impl<B: Backend> Core<B> {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 Err(_) if control.is_cancelled() => {
-                    return Ok(JobOutcome::Cancelled(Counts::default()));
+                    return Ok(JobOutcome::Cancelled(Counts::default()).into());
                 }
                 Err(reason) => return Err(reason.message()),
             }
@@ -1664,8 +1859,11 @@ impl<B: Backend> Core<B> {
                 let roi = self
                     .host
                     .roi(request.file_id)
-                    .map_err(String::from)?
-                    .ok_or_else(|| "Draw a region of interest on the slide first.".to_string())?;
+                    // eov's reason, in English.
+                    .map_err(|e| Message::plain(e.message))?
+                    .ok_or_else(|| {
+                        Message::new(|| tr!("Draw a region of interest on the slide first."))
+                    })?;
                 let range = ctx.grid.range_in(&roi);
                 let center = ctx
                     .grid
@@ -1683,7 +1881,7 @@ impl<B: Backend> Core<B> {
                             .and_then(|p| p.view)
                     })
                     .filter(|view| view.file_id == request.file_id)
-                    .ok_or_else(|| "The slide is not shown in a pane.".to_string())?;
+                    .ok_or_else(|| Message::new(|| tr!("The slide is not shown in a pane.")))?;
                 let range = ctx.grid.range_in(&view.visible);
                 let center = ctx.grid.tile_units(view.center_x, view.center_y);
                 (range.center_out(center), mode.needs_pixels())
@@ -1734,13 +1932,13 @@ impl<B: Backend> Core<B> {
             }
         }
         if needs.is_empty() {
-            return Ok(JobOutcome::Completed(Counts::default()));
+            return Ok(JobOutcome::Completed(Counts::default()).into());
         }
         let host_job = if request.kind.explicit() {
             let title = match request.kind {
-                JobKind::WholeSlide => "VAE: whole slide",
-                JobKind::Roi => "VAE: region of interest",
-                _ => "VAE: viewport",
+                JobKind::WholeSlide => tr!("VAE: whole slide"),
+                JobKind::Roi => tr!("VAE: region of interest"),
+                _ => tr!("VAE: viewport"),
             };
             self.host.start_job(title, true).ok()
         } else {
@@ -1750,7 +1948,7 @@ impl<B: Backend> Core<B> {
             let mut state = lock(&self.state);
             if let Some(job) = state.job.as_mut().filter(|j| j.id == id) {
                 job.host_job = host_job.as_ref().map(|j| j.id().to_string());
-                job.phase = format!("Analysing on {}", engine.info().label);
+                job.phase = tr!("Analysing on {}", engine.info().text());
                 job.progress.total = needs.len();
             }
         }
@@ -1782,16 +1980,19 @@ impl<B: Backend> Core<B> {
             run_job(&spec, &pixels, engine, &sink, control)
         }))
         .unwrap_or_else(|_| JobOutcome::Failed {
-            error: "internal error while analysing tiles".to_string(),
+            error: Message::new(|| tr!("internal error while analysing tiles")),
             counts: Counts::default(),
         });
+        // eov tells the user that a job of its job panel failed, in their
+        // language.
+        let reported = host_job.is_some() && matches!(outcome, JobOutcome::Failed { .. });
         if let Some(job) = host_job {
             job.finish(match &outcome {
-                JobOutcome::Failed { error, .. } => Some(error.clone()),
+                JobOutcome::Failed { error, .. } => Some(error.shown.clone()),
                 _ => None,
             });
         }
-        Ok(outcome)
+        Ok(JobEnd { outcome, reported })
     }
 
     /// Loads a run's stored results once.
@@ -1815,25 +2016,23 @@ impl<B: Backend> Core<B> {
         id: u64,
         request: &JobRequest,
         control: &JobControl,
-        outcome: std::thread::Result<Result<JobOutcome, String>>,
+        outcome: std::thread::Result<Result<JobEnd, Message>>,
     ) {
-        let outcome = match outcome {
-            Ok(Ok(outcome)) => outcome,
+        let JobEnd { outcome, reported } = match outcome {
+            Ok(Ok(end)) => end,
             Ok(Err(error)) => JobOutcome::Failed {
                 error,
                 counts: Counts::default(),
-            },
-            Err(payload) => JobOutcome::Failed {
-                error: format!(
-                    "internal error: {}",
-                    payload
-                        .downcast_ref::<&str>()
-                        .map(|s| s.to_string())
-                        .or_else(|| payload.downcast_ref::<String>().cloned())
-                        .unwrap_or_default()
-                ),
-                counts: Counts::default(),
-            },
+            }
+            .into(),
+            Err(payload) => {
+                let panic = panic_text(&*payload).unwrap_or_default();
+                JobOutcome::Failed {
+                    error: Message::new(|| tr!("internal error: {}", panic)),
+                    counts: Counts::default(),
+                }
+                .into()
+            }
         };
         let (elapsed, superseded) = {
             let state = lock(&self.state);
@@ -1843,26 +2042,31 @@ impl<B: Backend> Core<B> {
                 current.is_none(),
             )
         };
-        let summary = summarize_outcome(request.kind, &outcome, elapsed);
-        let failed = matches!(outcome, JobOutcome::Failed { .. });
+        let summary = JobSummary {
+            kind: request.kind,
+            outcome: outcome.clone(),
+            elapsed,
+        };
+        let failed = summary.failed();
         {
             let mut state = lock(&self.state);
             if state.job.as_ref().is_some_and(|j| j.id == id) {
                 state.job = None;
             }
-            if let Some(summary) = summary.clone()
-                && (request.kind.explicit() || failed)
-                && !(superseded && control.is_cancelled())
-            {
+            if (request.kind.explicit() || failed) && !(superseded && control.is_cancelled()) {
                 state.last_job = Some(summary);
             }
         }
         if let JobOutcome::Failed { error, .. } = &outcome {
-            self.host.error(format!("VAE analysis failed: {error}"));
-            if !request.kind.explicit() {
-                // Explicit jobs report through the host job; automatic ones
-                // would otherwise fail silently.
-                self.host.notify_error("VAE analysis failed", error.clone());
+            // The log gets the error in English (see `warn_user`). The user
+            // is told once, in their language: by eov when the job was in
+            // its job panel, else here (automatic jobs never are; explicit
+            // ones that fail before they start analysing are not yet).
+            self.host
+                .info(format!("VAE analysis failed: {}", log_text(&error.english)));
+            if !reported {
+                self.host
+                    .notify_error(tr!("VAE analysis failed"), error.shown.clone());
             }
         }
         self.dirty.everything();
@@ -1890,7 +2094,7 @@ impl<B: Backend> Core<B> {
             Ok(ctx) => ctx,
             Err(reason) => {
                 self.host
-                    .notify_error("Nothing to export", reason.message());
+                    .notify_error(tr!("Nothing to export"), reason.text());
                 return;
             }
         };
@@ -1948,11 +2152,14 @@ impl<B: Backend> Core<B> {
         match written {
             Ok(()) => self.host.notify(
                 NotifyLevel::Success,
-                format!("Exported {} tiles to {}", rows.len(), path.display()),
+                tr!(
+                    "Exported {n} tile to {file}" | "Exported {n} tiles to {file}" % rows.len(),
+                    file = i18n::isolate(path.display())
+                ),
             ),
             Err(error) => self
                 .host
-                .notify_error("The export failed", error.to_string()),
+                .notify_error(tr!("The export failed"), error.to_string()),
         }
     }
 
@@ -1967,8 +2174,13 @@ impl<B: Backend> Core<B> {
             state.config.clone()
         };
         if let Err(error) = self.host.set_setting(crate::config::SETTINGS_KEY, &config) {
-            self.host
-                .warn(format!("eovae settings could not be saved: {error}"));
+            warn_user(&self.host, || {
+                // Translators: eovae is this plugin's name; {} is eov's reason, in English
+                tr!(
+                    "eovae settings could not be saved: {}",
+                    i18n::isolate(&error)
+                )
+            });
         }
     }
 
@@ -2005,75 +2217,178 @@ pub fn view_menu(current: Mode) -> Vec<MenuItem> {
         .into_iter()
         .map(|mode| MenuItem {
             item_id: mode.id().to_string(),
-            label: mode.label().to_string(),
+            label: mode.label(),
             checked: Some(mode == current),
             ..Default::default()
         })
         .collect()
 }
 
+/// A duration for people (`12 s`, `3m 05s`, `1h 02m`).
 fn format_duration(duration: Duration) -> String {
     let seconds = duration.as_secs();
     match seconds {
-        0..=59 => format!("{seconds} s"),
-        60..=3599 => format!("{}m {:02}s", seconds / 60, seconds % 60),
-        _ => format!("{}h {:02}m", seconds / 3600, seconds / 60 % 60),
+        // Translators: a duration in seconds
+        0..=59 => tr!("{} s", seconds),
+        // Translators: a duration in minutes and seconds, e.g. "3m 05s"
+        60..=3599 => tr!(
+            "{minutes}m {seconds}s",
+            minutes = seconds / 60,
+            seconds = format!("{:02}", seconds % 60)
+        ),
+        // Translators: a duration in hours and minutes, e.g. "1h 02m"
+        _ => tr!(
+            "{hours}h {minutes}m",
+            hours = seconds / 3600,
+            minutes = format!("{:02}", seconds / 60 % 60)
+        ),
     }
 }
 
+/// The time a job still needs, for the sidebar and the job's progress.
 pub fn format_eta(progress: &Progress) -> String {
     progress
         .eta()
-        .map(|eta| format!("about {} left", format_duration(eta)))
+        .map(|eta| tr!("about {} left", format_duration(eta)))
         .unwrap_or_default()
 }
 
-fn summarize_outcome(kind: JobKind, outcome: &JobOutcome, elapsed: Duration) -> Option<JobSummary> {
-    let describe = |counts: &Counts| {
-        let mut parts = vec![format!("{} analysed", counts.analysed)];
-        if counts.background > 0 {
-            parts.push(format!("{} background", counts.background));
-        }
-        if counts.failed > 0 {
-            parts.push(format!("{} unreadable", counts.failed));
-        }
-        parts.join(", ")
-    };
-    let what = match kind {
-        JobKind::WholeSlide => "Whole slide",
-        JobKind::Viewport => "Viewport",
-        JobKind::Roi => "Region of interest",
-        JobKind::Auto => "Automatic analysis",
-    };
-    match outcome {
-        JobOutcome::Completed(counts) if counts.total() == 0 => Some(JobSummary {
-            text: format!("{what}: everything was already analysed."),
-            error: false,
-        }),
-        JobOutcome::Completed(counts) => Some(JobSummary {
-            text: format!(
-                "{what} finished in {}: {}.",
-                format_duration(elapsed),
-                describe(counts)
+/// The tiles a job analysed, found to be glass and could not read.
+fn describe_counts(counts: &Counts) -> String {
+    let (analysed, background, unreadable) = (counts.analysed, counts.background, counts.failed);
+    match (background > 0, unreadable > 0) {
+        (false, false) => tr!("{analysed} analysed", analysed),
+        (true, false) => tr!(
+            "{analysed} analysed, {background} background",
+            analysed,
+            background
+        ),
+        (false, true) => tr!(
+            "{analysed} analysed, {unreadable} unreadable",
+            analysed,
+            unreadable
+        ),
+        (true, true) => tr!(
+            "{analysed} analysed, {background} background, {unreadable} unreadable",
+            analysed,
+            background,
+            unreadable
+        ),
+    }
+}
+
+impl JobSummary {
+    pub fn failed(&self) -> bool {
+        matches!(self.outcome, JobOutcome::Failed { .. })
+    }
+
+    /// The summary in the language of the interface. Each kind of job has
+    /// whole sentences of its own, so that translations can make the verb
+    /// agree with what finished, was cancelled or failed.
+    pub fn text(&self) -> String {
+        use JobKind::{Auto, Roi, Viewport, WholeSlide};
+        let (tiles, total) = match &self.outcome {
+            JobOutcome::Completed(counts)
+            | JobOutcome::Cancelled(counts)
+            | JobOutcome::Failed { counts, .. } => (counts, counts.total()),
+        };
+        let duration = format_duration(self.elapsed);
+        let counts = describe_counts(tiles);
+        match (&self.outcome, self.kind) {
+            (JobOutcome::Completed(_), kind) if total == 0 => {
+                let what = kind.subject();
+                // Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
+                tr!("{what}: everything was already analysed.", what)
+            }
+            // Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Completed(_), WholeSlide) => tr!(
+                "Whole slide finished in {duration}: {counts}.",
+                duration,
+                counts
             ),
-            error: false,
-        }),
-        JobOutcome::Cancelled(counts) => Some(JobSummary {
-            text: format!(
-                "{what} cancelled after {}: {}.",
-                format_duration(elapsed),
-                describe(counts)
+            // Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Completed(_), Viewport) => tr!(
+                "Viewport finished in {duration}: {counts}.",
+                duration,
+                counts
             ),
-            error: false,
-        }),
-        JobOutcome::Failed { error, counts } => Some(JobSummary {
-            text: if counts.total() > 0 {
-                format!("{what} failed ({}): {error}", describe(counts))
-            } else {
-                format!("{what} failed: {error}")
-            },
-            error: true,
-        }),
+            // Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Completed(_), Roi) => tr!(
+                "Region of interest finished in {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            // Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Completed(_), Auto) => tr!(
+                "Automatic analysis finished in {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            // Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Cancelled(_), WholeSlide) => tr!(
+                "Whole slide cancelled after {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            // Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Cancelled(_), Viewport) => tr!(
+                "Viewport cancelled after {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            // Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Cancelled(_), Roi) => tr!(
+                "Region of interest cancelled after {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            // Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+            (JobOutcome::Cancelled(_), Auto) => tr!(
+                "Automatic analysis cancelled after {duration}: {counts}.",
+                duration,
+                counts
+            ),
+            (JobOutcome::Failed { error, .. }, WholeSlide) if total > 0 => {
+                // Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+                tr!("Whole slide failed ({counts}): {error}", counts, error)
+            }
+            (JobOutcome::Failed { error, .. }, Viewport) if total > 0 => {
+                // Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+                tr!("Viewport failed ({counts}): {error}", counts, error)
+            }
+            (JobOutcome::Failed { error, .. }, Roi) if total > 0 => {
+                // Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+                tr!(
+                    "Region of interest failed ({counts}): {error}",
+                    counts,
+                    error
+                )
+            }
+            (JobOutcome::Failed { error, .. }, Auto) if total > 0 => {
+                // Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
+                tr!(
+                    "Automatic analysis failed ({counts}): {error}",
+                    counts,
+                    error
+                )
+            }
+            (JobOutcome::Failed { error, .. }, WholeSlide) => {
+                // Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
+                tr!("Whole slide failed: {error}", error)
+            }
+            (JobOutcome::Failed { error, .. }, Viewport) => {
+                // Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
+                tr!("Viewport failed: {error}", error)
+            }
+            (JobOutcome::Failed { error, .. }, Roi) => {
+                // Translators: the analysis of the region of interest failed; {error}: why
+                tr!("Region of interest failed: {error}", error)
+            }
+            (JobOutcome::Failed { error, .. }, Auto) => {
+                // Translators: {error}: why
+                tr!("Automatic analysis failed: {error}", error)
+            }
+        }
     }
 }
 
@@ -2087,13 +2402,25 @@ pub(crate) struct HostPixels {
 }
 
 impl PixelSource for HostPixels {
-    fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String> {
-        let image = self.host.read_region(*request).map_err(|e| e.message)?;
+    fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, Message> {
+        // eov's reason, in English.
+        let image = self
+            .host
+            .read_region(*request)
+            .map_err(|e| Message::plain(e.message))?;
         if image.width != request.width || image.height != request.height {
-            return Err(format!(
-                "the host returned {}×{} for a {}×{} region",
-                image.width, image.height, request.width, request.height
-            ));
+            return Err(Message::new(|| {
+                // Translators: why a part of the slide could not be read: the
+                // host (eov) gave an image of another size than asked for, in
+                // pixels.
+                tr!(
+                    "the host returned {width}×{height} for a {asked_width}×{asked_height} region",
+                    width = image.width,
+                    height = image.height,
+                    asked_width = request.width,
+                    asked_height = request.height
+                )
+            }));
         }
         Ok(image.data)
     }
@@ -2158,20 +2485,138 @@ impl<B: Backend> JobSink for CoreSink<'_, B> {
             }
         }
         if let Some(job) = self.host_job {
-            let message = format!(
-                "{} of {} tiles{}",
-                progress.done,
-                progress.total,
-                match format_eta(progress) {
-                    eta if eta.is_empty() => String::new(),
-                    eta => format!(", {eta}"),
+            let done = progress.done;
+            let message = match format_eta(progress) {
+                eta if eta.is_empty() => {
+                    // Translators: the progress of an analysis, e.g. "40 of 120 tiles"
+                    tr!(
+                        "{done} of {n} tile" | "{done} of {n} tiles" % progress.total,
+                        done
+                    )
                 }
-            );
+                // Translators: {eta} is the time left, e.g. "about 2m 05s left"
+                eta => tr!(
+                    "{done} of {n} tile, {eta}" | "{done} of {n} tiles, {eta}" % progress.total,
+                    done,
+                    eta
+                ),
+            };
             job.update(Some(progress.fraction()), Some(&message));
         }
         self.core.dirty.mark(|d| {
             d.sidebar = true;
             d.status = true;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_site_model_is_named_by_its_file_in_every_language() {
+        let name = |url: Option<&str>| {
+            download_args(&Config {
+                download_url: url.map(str::to_string),
+                download_sha256: Some("b".repeat(64)),
+                ..Default::default()
+            })
+            .name
+        };
+        // eov shows the name in its dialogs and keeps it in its model
+        // store: the file's name, as eov names the file it downloads.
+        assert_eq!(
+            name(Some("https://models.example.org/vae/our-vae.onnx")).as_deref(),
+            Some("our-vae.onnx")
+        );
+        assert_eq!(
+            name(Some(
+                "https://models.example.org/our%20vae%C3%A9.onnx?key=1#top"
+            ))
+            .as_deref(),
+            Some("our vaeé.onnx")
+        );
+        // Escapes that make no printable text stay as they are.
+        assert_eq!(
+            name(Some("https://models.example.org/a%FF%2.onnx")).as_deref(),
+            Some("a%FF%2.onnx")
+        );
+        assert_eq!(
+            name(Some("https://models.example.org/a%0Ab.onnx")).as_deref(),
+            Some("a%0Ab.onnx")
+        );
+        // Without a file (or an address), eov names the model itself.
+        assert_eq!(name(Some("https://models.example.org/")), None);
+        assert_eq!(name(Some("https://models.example.org")), None);
+        assert_eq!(name(None), None);
+        // The reference model keeps its proper name.
+        assert_eq!(
+            download_args(&Config::default()).name.as_deref(),
+            Some(model::reference().name)
+        );
+    }
+
+    #[test]
+    fn job_summaries_are_whole_sentences_of_their_job() {
+        let tiles = Counts {
+            analysed: 30,
+            background: 2,
+            failed: 0,
+        };
+        let text = |kind, outcome| {
+            JobSummary {
+                kind,
+                outcome,
+                elapsed: Duration::from_secs(75),
+            }
+            .text()
+        };
+        let failed = |counts| JobOutcome::Failed {
+            error: Message::plain("disk full"),
+            counts,
+        };
+        // The English is what eovae always said.
+        assert_eq!(
+            text(JobKind::WholeSlide, JobOutcome::Completed(tiles)),
+            "Whole slide finished in 1m 15s: 30 analysed, 2 background."
+        );
+        assert_eq!(
+            text(JobKind::Viewport, JobOutcome::Cancelled(tiles)),
+            "Viewport cancelled after 1m 15s: 30 analysed, 2 background."
+        );
+        assert_eq!(
+            text(JobKind::Roi, failed(tiles)),
+            "Region of interest failed (30 analysed, 2 background): disk full"
+        );
+        assert_eq!(
+            text(JobKind::Auto, failed(Counts::default())),
+            "Automatic analysis failed: disk full"
+        );
+        assert_eq!(
+            text(JobKind::Viewport, JobOutcome::Completed(Counts::default())),
+            "Viewport: everything was already analysed."
+        );
+        // Every job and outcome has a sentence of its own: none is made
+        // by putting a job's name in front of a shared one.
+        let kinds = [
+            JobKind::WholeSlide,
+            JobKind::Viewport,
+            JobKind::Roi,
+            JobKind::Auto,
+        ];
+        let outcomes = [
+            JobOutcome::Completed(tiles),
+            JobOutcome::Cancelled(tiles),
+            failed(tiles),
+            failed(Counts::default()),
+        ];
+        for outcome in outcomes {
+            let texts: BTreeSet<String> = kinds
+                .iter()
+                .map(|kind| text(*kind, outcome.clone()))
+                .collect();
+            assert_eq!(texts.len(), kinds.len(), "{texts:?}");
+        }
     }
 }

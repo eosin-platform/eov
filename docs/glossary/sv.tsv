@@ -1,0 +1,282 @@
+term	translation	note
+eov	eov	Never translated; lowercase.
+slide	preparat	Glass microscope slide and its scan (ett preparat, preparatet, preparat, preparaten). Never "bild", "diabild" or "slide". "objektglas" only for the physical glass.
+whole-slide image (WSI)	digitalt preparat (WSI)	Keep the abbreviation WSI: WSI-fil, WSI-filer. Home screen and desktop entry: "Visningsprogram för digitala preparat".
+slide viewer, viewer	visningsprogram	Never "läsare".
+tab	flik	en flik, fliken, flikar, flikarna. New tab = Ny flik.
+pane	ruta	en ruta, rutan, rutor, rutorna. Split Right = Dela åt höger; Create Left Pane = Skapa ruta till vänster.
+view	vy	en vy, vyn, vyer. What a pane shows (position, magnification, rotation). Bookmark the view = Bokmärk vyn.
+viewport	visningsområde	ett visningsområde, visningsområdet. The area of a pane where the slide is drawn.
+minimap	minikarta	en minikarta, minikartan.
+scale bar	skalstreck	ett skalstreck, skalstrecket (as in Swedish figure legends).
+HUD	panel	The idea, not the abbreviation: metadata HUD = metadatapanel.
+toolbar	verktygsfält	
+sidebar	sidofält	
+status bar	statusfält	
+series bar	seriefält	The strip of slides of a folder. Hide Series Bar = Dölj seriefältet.
+zoom	zoom; zooma	Screen scale. Zoom in = Zooma in; Zoom out = Zooma ut; zoom level = zoomnivå.
+magnification	förstoring	Objective-equivalent optical magnification; 20× stays 20×.
+objective	objektiv	
+objective power	objektivförstoring	
+pixel size	pixelstorlek	Physical size of one image pixel.
+MPP (µm per pixel)	MPP (µm per pixel)	Keep MPP and µm/px.
+calibration	kalibrering	Calibrate = Kalibrera.
+level, pyramid level	nivå, pyramidnivå	en nivå, nivån, nivåer; L0 = full resolution; level-0 pixels = pixlar på nivå 0.
+tile	platta	Square piece of the image loaded at a time (en platta, plattan, plattor, plattorna); tile cache = plattcache.
+patch (dataset)	utsnitt	Small image cut from a slide for machine learning (ett utsnitt, utsnittet, utsnitt, utsnitten). Dataset "Tile Size" = Utsnittsstorlek.
+cache	cache	en cache, cachen.
+region of interest (ROI)	intresseområde (ROI)	Keep ROI as the abbreviation; ett intresseområde, intresseområdet; in running text also "området".
+measurement	mätning	en mätning, mätningen, mätningar.
+measure (tool)	mätverktyg; tool name: Mätning	Measure: Distance = Mätning: Avstånd; "the Measure tool" = mätverktyget.
+Navigate (tool)	Navigering	Tool name.
+region tool	områdesverktyget	The tool that draws the region of interest (key R).
+annotation	annotering	A drawn mark with a meaning (en annotering, annoteringen, annoteringar); not a comment (kommentar).
+class (annotation class)	klass	Annotation class = annoteringsklass.
+cell count, counting	cellräkning, räkning	
+high-power field (HPF)	storförstoringsfält (HPF)	Keep the abbreviation HPF in compact labels (per 10 HPF).
+H&E	H&E	Never HE or translated; H&E-färgning.
+hematoxylin	hematoxylin	Swedish spelling; letter H.
+eosin	eosin	Letter E.
+IHC, immunohistochemistry	IHC, immunhistokemi	Keep IHC; immunhistokemisk.
+DAB	DAB	Keep.
+chromogen	kromogen	
+stain (method, staining)	färgning	H&E, Giemsa, the slide's stain: Färgning: {}; Quantify Stain = Kvantifiera färgning.
+stain (dye, component)	färgämne	Hematoxylin, eosin, DAB as components of a stain model: Isolerat färgämne: {}; Stain to measure = Färgämne att mäta.
+stain names	Hematoxylin, Eosin, Metylblått, Ponceau-fuchsin, Massons trikrom, Giemsa, Retikulin, Kongorött, Van Gieson, Elastin, Alcianblått, Perls berlinerblått, Gram, Grocotts metenaminsilver, Mucikarmin, Ziehl–Neelsen	Capitalised as labels.
+stain model	färgningsmodell	H-DAB stain preset = förinställningen H-DAB.
+stain vectors	färgvektorer	Reference vectors = referensvektorer.
+stain fit, fit (stains)	anpassning, anpassa	Macenko fit = Macenko-anpassning; fit rejected = anpassningen förkastades; the fit did not converge = anpassningen konvergerade inte. A custom stain model = egen ({}), not "anpassad".
+stain normalization (Macenko, Vahadane)	färgnormalisering	Also for "colour normalisation"; Macenko and Vahadane stay. Colour-normalised (state of the view) = Färgnormaliserat.
+stain target	färgningsmål	The appearance normalisation maps onto (ett färgningsmål, färgningsmålet); reference stain target = referensfärgningsmålet; normalisation target = normaliseringsmål.
+color deconvolution	färgdekonvolution	Ruifrok–Johnston.
+optical density	optisk densitet	
+H-score	H-score	Weak (1+) = Svag (1+), Moderate (2+) = Måttlig (2+), Strong (3+) = Stark (3+).
+threshold	tröskelvärde	tröskel in compounds: White Threshold = Vittröskel.
+positive (for a stain)	positiv	DAB-positive = DAB-positiv.
+channel	kanal	en kanal, kanalen, kanaler.
+multiplex immunofluorescence (mIF)	multiplex immunfluorescens (mIF)	
+marker	markör	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	fokalplan	ett fokalplan, fokalplanet, fokalplan, fokalplanen.
+Z-stack	Z-stack	en Z-stack.
+time point (T)	tidpunkt	en tidpunkt, tidpunkter.
+time series	tidsserie	
+heat map	värmekarta	en värmekarta, värmekartan, värmekartor.
+overlay	överlägg	ett överlägg, överlägget, överlägg.
+layer	lager	ett lager, lagret, lager, lagren.
+opacity	opacitet	0–100 %.
+tissue QC	vävnads-QC	kvalitetskontroll av vävnaden in running text; Check Tissue Quality = Kontrollera vävnadskvaliteten.
+pen marks	pennmarkeringar	Marker-pen ink on the glass.
+folds	veck	Tissue folds (ett veck, vecket, veck).
+blur, out of focus	oskärpa, ur fokus	Blurred areas = oskarpa områden.
+tissue detection, tissue mask	vävnadsdetektering, vävnadsmask	
+dataset	dataset	ett dataset, datasetet, dataset.
+patch extraction	extrahering av utsnitt	Dataset extraction = extrahering av dataset.
+stride	steglängd	Step between patches.
+export	exportera; Exportera	Export Image = Exportera bild.
+save a copy	spara en kopia	Save a Copy of the Slide = Spara en kopia av preparatet.
+convert	konvertera	
+de-identify	avidentifiera; Avidentifiera	Swedish health-data practice; de-identified = avidentifierad. Not "anonymisera".
+label image	etikettbild	Photo of the slide's paper label; label = etikett.
+macro image	makrobild	Photo of the whole glass slide.
+thumbnail	miniatyrbild	
+overview (associated image)	översiktsbild	
+associated image	tillhörande bild	Label, macro and thumbnail images stored in a slide file.
+bookmark	bokmärke	ett bokmärke, bokmärket, bokmärken. Bookmark the view = Bokmärk vyn.
+session	session	
+plugin	tillägg	As in Swedish WordPress and Firefox (ett tillägg, tillägget, tillägg, tilläggen); plugin API = tilläggs-API; plugin ID = tilläggs-ID.
+package (.eop)	paket; tilläggspaket	ett paket, paketet.
+model, model store	modell, modellbibliotek	Machine-learning model file; eov:s modellbibliotek.
+inference	inferens	
+render	rendera	rendering = rendering.
+renderer (CPU, GPU, software)	renderare (CPU-renderare, GPU-renderare, programvarurenderare)	CPU and GPU stay.
+backend	backend	
+graphics adapter	grafikkort	
+filtering	filtrering	Filtering mode = Filtreringsläge.
+bilinear, trilinear, Lanczos	bilinjär, trilinjär, Lanczos	Lanczos is a name.
+sharpness	skärpa	
+gamma	gamma	
+brightness	ljusstyrka	
+contrast	kontrast	Auto contrast = Autokontrast.
+theme	tema	ett tema, temat.
+Dark, Light, High Contrast (theme)	Mörkt, Ljust, Hög kontrast	Neuter, agreeing with tema (as in Swedish Windows).
+colour management	färghantering	Colour-managed (state of the view) = Färghanterat, Not colour-managed = Inte färghanterat; colours as scanned = färger som skannade.
+colour profile, ICC profile	färgprofil, ICC-profil	
+Home screen	startskärm	
+Home (tab)	Start	
+Check for Updates…	Sök efter uppdateringar…	Asks before going online; never imply automatic updates.
+research and education	forskning och utbildning	
+not a medical device	inte en medicinteknisk produkt	Regulatory term (MDR, lagen om medicintekniska produkter); never soften.
+primary diagnosis	primärdiagnostik	Not for primary diagnosis = inte för primärdiagnostik.
+research use only (RUO)	endast för forskningsändamål (RUO)	Phrase printed on RUO reagents.
+synthetic, predicted, generated	syntetisk, predikterad, genererad	Computed by an algorithm (beräknad); never "falsk", "konstgjord" or "simulerad".
+intended use	avsedd användning	
+alignment, align	inriktning, rikta in	Of linked slides; Align from Landmarks = Rikta in efter landmärken. Not "justering" (that is adjust).
+adjust, adjustment	justera, justering	Adjust the alignment = Justera inriktningen; image adjustments = bildjusteringar.
+landmark	landmärke	Alignment landmark = landmärke för inriktning.
+link, unlink (panes)	länka, ta bort länkningen	Panes linked = Rutorna är länkade; linked slides = länkade preparat.
+viewport lock	lås visningsområden	Links the views of panes that show the same slide.
+focused pane	den aktiva rutan	
+split (view)	dela	Split Right = Dela åt höger.
+quantify	kvantifiera; Kvantifiera	
+Open	Öppna	Imperative for buttons and menu items; sentence case.
+Open Folder…	Öppna mapp…	
+Close	Stäng	Close Others = Stäng övriga; Close to the Right = Stäng flikar till höger; Close All = Stäng alla.
+Cancel	Avbryt	
+OK	OK	
+Confirm	Bekräfta	
+Done	Klar	Buttons; status "done" (completed) = Klart.
+Ready	Klar	Status bar.
+Save	Spara	
+Save As	Spara som	
+Import	Importera	Imperatives of -era verbs equal the infinitive: Importera, Exportera, Kopiera, Rotera, Aktivera.
+Copy	Kopiera	Copied {} = {} har kopierats; Kopierat: {} when {} is the copied text itself.
+Paste	Klistra in	
+Delete	Radera	Permanent deletion (bookmarks, measurements, files): Radera bokmärke.
+Remove	Ta bort	Remove a plugin, an input, a heat map.
+Add	Lägg till	
+Edit	Redigera	
+Rename	Byt namn	
+Clear	Rensa	Lists: Clear All Measurements = Rensa alla mätningar, Clear messages = Rensa meddelanden; single objects: Clear Region of Interest = Ta bort intresseområdet, Clear Landmarks = Ta bort landmärken.
+Settings	Inställningar	
+Apply	Tillämpa	Applied = tillämpad.
+Reset	Återställ	Reset to Defaults = Återställ standardvärden.
+Restore	Återställ	
+Show, Hide	Visa, Dölj	Hidden = dold.
+Toggle	Visa/dölj; Slå på/av	
+Enable, Disable	Aktivera, Inaktivera	Enabled = aktiverad, Disabled = inaktiverad, Active = aktivt; on/off = på/av.
+Undo, Redo	Ångra, Gör om	Nothing to undo = Inget att ångra.
+undo labels (Undo {}, Redo {})	lowercase noun phrase: ny mätning, redigering av mätning, radering av mätningar, rensning av mätningar, markering/borttagning av intresseområde	Inserted into Ångra {} / Gör om {}: Ångra ny mätning. Avoid "tillägg" here (it means plugin).
+Zoom to {}	Zooma till {}	
+Fit	Anpassa	Fit the slide to the pane = Anpassa preparatet till rutan.
+Rotate, rotation	Rotera, rotation	Rotate Right 90° = Rotera 90° åt höger.
+Flip horizontally	Spegelvänd vågrätt	Unflip = Ta bort spegelvändning; mirror = spegelvända.
+Pan	Panorera	
+Update (verb), update (noun)	Uppdatera, uppdatering	Updating = uppdaterar; up to date = uppdaterad.
+Install, uninstall	Installera, avinstallera	
+Download	Ladda ned; nedladdning	Downloading = laddar ned.
+Load	Läs in	Loading = läser in.
+Filter	Filtrera (verb), filter (noun)	
+Back, Forward, Up	Bakåt, Framåt, Upp	
+Next, Previous	Nästa, Föregående	
+Select, choose	Välj	
+Retry, try again	Försök igen	
+Quit	Avsluta	Quit eov = Avsluta eov.
+Help, About	Hjälp, Om	About eov = Om eov.
+file, folder, path	fil, mapp, sökväg	Open Containing Folder = Öppna filens plats (as in Swedish Windows); Copy Path = Kopiera sökväg; directory (technical messages) = katalog.
+file manager	filhanterare	
+clipboard	urklipp	Copied to the clipboard = kopierad till urklipp.
+properties	egenskaper	Slide properties, as the scanner wrote them.
+metadata	metadata	
+vendor	tillverkare	
+scan date	skanningsdatum	scan = skanna, skanning.
+dimensions	dimensioner	
+file size	filstorlek	
+preview	förhandsvisning	
+format, quality, compression, lossless	format, kvalitet, komprimering, förlustfri	
+resolution	upplösning	
+messages, notification	meddelanden, meddelande	
+error, warning, information	fel, varning, information	
+log folder	loggmapp	Open Log Folder = Öppna loggmappen.
+crash report	kraschrapport	
+safe mode	felsäkert läge	
+language	språk	Automatic (System Default) = Automatiskt (systemstandard). Language names are capitalised list items (Engelska, Svenska).
+Keyboard Shortcuts	Kortkommandon	Shortcut = kortkommando; hotkey = snabbtangent; no key = ingen tangent.
+full screen	helskärm	
+recent files, recently opened	senaste filer, senast öppnade	No recent files = Inga nyligen öppnade filer; Clear Recent Files = Rensa senaste filer.
+administrator policy	administratörspolicy	en policy, policyn; policy file = policyfil.
+release, release notes, prerelease	utgåva, versionsinformation, förhandsutgåva	en utgåva, utgåvan, utgåvor; release manifest = utgåvemanifest; GitHub release = GitHub-utgåva.
+signature, signed, verified	signatur, signerad, verifierad	
+update helper	uppdateringsprogrammet	eov-update-helper stays as a program name.
+staged (update)	förberedd	Installed by the update helper after eov exits.
+repository	kodförråd	GitHub repository = GitHub-kodförråd.
+artifact	artefakt	Release artifact (en artefakt).
+manifest, catalog, registry	manifest, katalog, register	Plugin catalog = tilläggskatalog; plugin registry = tilläggsregister.
+bundle	paket	macOS app bundle = macOS-programpaket; offline update bundle = offlinepaket för uppdatering; Flatpak bundle = Flatpak-paket.
+offline	offline	network access = nätverksåtkomst.
+lock file	låsfil	
+thread, worker thread	tråd, arbetstråd	UI thread = UI-tråden.
+distance, area, angle, length	avstånd, area, vinkel, längd	Measure modes: Avstånd, Banlängd, Polygonarea, Rektangelarea, Ellipsarea, Vinkel.
+colour names	röd, orange, gul, grön, turkos, blå, lila, rosa, vit, grå, svart	Navy = marinblå; letters R, G, B stay.
+units	enheter	Micrometres = mikrometer; millimetres = millimeter; inches = tum ({} tum, {} tum²); mils = tusendels tum (never "mil", which is 10 km in Swedish); unit button in/mil = tum.
+percent	{} %	Space before % in Swedish (50 %).
+time units	h, min, s	{hours} h {minutes} min; {minutes} min {seconds} s.
+A–Z (sort order)	A–Ö	Swedish alphabet order.
+Newest, Stain, Case (sort order)	Nyast, Färgning, Fall	Case = the patient's accession (fall, remiss).
+N/A, Unknown	Saknas, Okänd	Slide property the file does not record.
+Solid, Dashed, Dotted (line style)	Heldragen, Streckad, Prickad	Stroke = Linje; Caps = Ändar (Rund, Fyrkantig, Platt).
+display window (channel), lower/upper end	fönster, nedre/övre gräns	Channels panel.
+colour composite	sammansatt färgbild	
+build (software)	bygge	ett bygge; development build = utvecklingsbygge.
+Copied, Saved, Exported, Removed {}	{} har kopierats, {} har sparats, {} har exporterats, {} har tagits bort	Perfect passive; Could not X {} = {} kunde inte X:as.
+Could not / Cannot	… kunde inte … / … kan inte …	Passive with the object first: Preparatet kunde inte läsas.
+you	du	Swedish platforms use du; prefer impersonal or passive constructions.
+quotation marks	”…”	Swedish quotation marks (U+201D on both sides); keep straight quotes in config examples ("Ctrl+D") and around technical identifiers in command-line messages.
+e.g., i.e.	t.ex., dvs.	
+eov's (genitive)	eov:s	Colon genitive as for initialisms: eov:s modellbibliotek, eov:s tangenter.
+Slide Information (panel)	Preparatinformation	Also the shortcut "Slide information".
+Check (button)	Sök	Confirms an update check: Söka efter uppdateringar för eov? → Sök.
+question titles (Update eov to {}?)	Uppdatera eov till {}?; Söka efter uppdateringar …?	Imperative/infinitive question as in Swedish dialogs; no "Vill du" except in body text.
+plugin update status	uppdaterat, förberett för installation, överhoppat, misslyckat	Neuter participles agreeing with tillägg ({plugin}: {status}).
+plugin origin	officiellt, github ({}), lokalt, ohanterat, system	Neuter, agreeing with tillägg.
+plugin status (Active, Disabled)	Aktivt, Inaktiverat	
+rolled back (update)	rullades tillbaka	Not "återställdes" (ambiguous with restored).
+staging directory	mellanlagringskatalog	
+tissue cell (QC grid)	ruta med vävnad	A cell of the tissue-QC grid, not a biological cell.
+sample values (channel windows)	pixelvärden	
+Copied {} (toast with the copied text)	Kopierat: {}	When {} is the text itself; Copied the results = Resultaten har kopierats.
+Pyramidal TIFF	Pyramid-TIFF	
+Homebrew cask, tap	cask-paket, tap	Caskroom stays.
+optical-equivalent zoom	optiskt motsvarande zoom	Digital zoom = digital zoom.
+annotation database	annoteringsdatabas	Annotations plugin; read-only = skrivskyddad.
+annotation undo labels (Add point, Delete layer, Lock …)	ny punkt, radering av lager, låsning …	Lowercase noun phrases (shown in Ångra {} and in Ändringen ”{}” kunde inte sparas/ångras/göras om). Undo labels for Add to region / Cut from region = utökning av område / utskärning ur område.
+region (annotation)	område	Polygon, rectangle, ellipse or brush area; Add region = nytt område.
+outline	kontur	Freehand outline = Frihandskontur; the outline crossed itself = konturen korsade sig själv; Repair = Reparera.
+shape	form	Kind of shape = formtyp.
+vertex, vertices	hörnpunkt, hörnpunkter	Corners of a polygon = hörn.
+even-odd rule	jämn-udda-regeln	Fill rule for self-crossing outlines.
+count point	räknepunkt	Point placed by the Count tool; Clear counts… = Rensa räknepunkter…
+Count (tab), Count tool	Cellräkning (fliken), räkneverktyget	Count tool (C) = Räkneverktyg (C); the counts layer row = {} · cellräkning. Avoid bare "räkning(ar)" (also means bill).
+second count class	andra räkneklass	Class counted with Shift+click.
+combined positive score (CPS)	kombinerad positiv poäng (CPS)	PD-L1 score; keep CPS.
+field number (FN)	fältnummer (FN)	Eyepiece field number in mm; FN (mm) stays.
+95% confidence interval	95 % KI	Added "KI" where the English shows only (95% low–high).
+brush, eraser, erase	pensel, radergummi, sudda	Brush stroke = penseldrag; Erase (undo label) = suddning; Alt erases = Alt suddar.
+lock, unlock, locked	lås, lås upp, låst	Undo labels: låsning, upplåsning.
+review status: Draft, Verified, Rejected	Utkast, Verifierad, Avvisad	Mark verified (undo label) = markering som verifierad.
+author	författare	Annotation author; Your name or initials = Ditt namn eller dina initialer.
+second reader, reader	andra bedömare, bedömare	Inter-observer comparison; Compare… = Jämför…
+blinded copy	blindad kopia	Export a blinded copy… = Exportera en blindad kopia…
+merge (database)	sammanfoga	Merge… = Sammanfoga…; Merging = Sammanfogar.
+back up, backup	säkerhetskopiera, säkerhetskopia	Back up… = Säkerhetskopiera…
+attach (annotations to a slide)	koppla (till)	Button Attach = Koppla; moves the layers of an older slide record to the open slide.
+bring in (old annotations)	hämta in	Bring them in = Hämta in dem.
+text label (annotation)	textetikett	Not the slide's paper label (etikett) in this sense.
+DICOM bulk annotations	DICOM-bulkannoteringar	Microscopy Bulk Simple Annotations, modality ANN and other DICOM names stay in English.
+DICOM study	undersökning	Swedish PACS usage; patient and study attributes = patient- och undersökningsattribut; series = serie.
+GeoJSON feature	Feature-objekt	FeatureCollection stays.
+readout, region readout (Cellaris)	avläsning, områdesavläsning	Tool name Cellaris region readout = Cellaris-områdesavläsning; REGION READOUT = OMRÅDESAVLÄSNING.
+Cellaris cell (prediction grid square)	platta	Not a biological cell: a square of the slide predicted at once (en platta, plattor).
+tissue block (Cellaris, 5 µm square)	vävnadsruta	Not a paraffin block; bare "block" = ruta (5 µm-rutor).
+window (model input)	fönster	Square image the model predicts from (ett fönster, fönster); s per window = s per fönster.
+display window (marker, Cellaris)	visningsfönster	Black/White ends = Svart/Vit; {}, yours = {}, ditt eget.
+predicted (heading), prediction	PREDIKTERAT, prediktion	PREDICTED — research use only, not for diagnosis = PREDIKTERAT — endast för forskningsändamål, inte för diagnostik.
+not for diagnosis	inte för diagnostik	Never soften; Research use only; not for diagnosis. = Endast för forskningsändamål; inte för diagnostik.
+density r² (optical density)	densitets-r²	Readout column; mean = medel, spread = spridning, marker = markör.
+bright-field	ljusfält	Not bright-field H&E = inte ljusfälts-H&E.
+runtime (ONNX Runtime library)	körmiljö	Choose runtime… = Välj körmiljö…; Runtime… = Körmiljö…; ONNX Runtime itself stays.
+input, output (model)	indata, utdata; ingång, utgång	Countable named tensors = ingång/utgång (ingångar/utgångar); model card Input/Outputs = Indata/Utdata.
+model card	modellkort	Built-in model card = inbyggt modellkort.
+your site's copy, your site's model	organisationens kopia, organisationens modell	Downloaded from an address the institution hosts.
+hex digits	hexadecimala siffror	SHA-256 (64 hex digits) = SHA-256 (64 hexadecimala siffror); its SHA-256 = dess SHA-256-värde.
+reconstruction error, error map	rekonstruktionsfel, felkarta	eovae (VAE); Original, Reconstruction, Difference = Original, Rekonstruktion, Differens.
+result cache	resultatcache	eovae; Clear cache… = Rensa cache…
+preprocessing	förbehandling	eovae sidebar section.
+sidecar file	sidofil	<model>.eovae.json.
+tile (eovae analysis tile)	platta	Tissue tile = vävnadsplatta; background = bakgrund; unreadable = oläsbara.
+gamepad, game controller, controller	spelkontroll	Plugin name Gamepad = Spelkontroll.
+stick, trigger, D-pad, shoulder button	spak, avtryckare, styrkors, axelknapp	Left Stick X = Vänster spak X; Left Stick Click = Vänster spak (tryck); South/East/North/West Button = Nedre/Höger/Övre/Vänster knapp.
+dead zone, response curve	dödzon, responskurva	Tuning = Finjustering.
+mapping, profile	mappning, profil	Mappings = Mappningar; Untitled = Namnlös.
+system pointer	systempekare	System pointer control = Styrning av systempekaren; Move Pointer = Flytta pekaren.
+macOS Accessibility path	Systeminställningar › Integritet och säkerhet › Hjälpmedel	Names as Swedish macOS shows them.
+Remote Desktop portal (Wayland)	fjärrskrivbordsportalen	Remote Desktop permission = behörighet för fjärrskrivbord.

@@ -263,7 +263,9 @@ impl ExportReport {
         self.tiles_failed == 0
     }
 
-    /// A user-facing description of any shortfall.
+    /// A user-facing description of any shortfall, in English (the facts
+    /// are `tiles_failed` of `tiles_drawn + tiles_failed`, and
+    /// `used_fallback`).
     pub fn shortfall_message(&self) -> Option<String> {
         (self.tiles_failed > 0).then(|| {
             format!(

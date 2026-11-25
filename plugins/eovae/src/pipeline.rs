@@ -11,7 +11,9 @@
 //! - A user cancel and an internal abort are separate: the first real error
 //!   is kept (errors outrank each other by severity) and reported as the
 //!   reason, never as "cancelled" (VAE-7). A few unreadable tiles are
-//!   recorded as failed instead of ending a whole-slide run.
+//!   recorded as failed instead of ending a whole-slide run. Errors are
+//!   [`Message`]s: the user reads them in their language, eov's log and
+//!   batch output in English.
 //! - Results are delivered in groups through [`JobSink`], which may block
 //!   (backpressure from the disk cache, VAE-12).
 
@@ -19,10 +21,12 @@ use crate::contract::{
     Contract, Layout, PreparedTile, is_background, prepare, score_output, write_input,
 };
 use crate::engine::{EngineError, InferenceEngine};
+use crate::message::Message;
 use crate::resample::Resampler;
 use crate::results::{Counts, Need, TilePayload, TileState};
 use crate::tiling::{ReadPlan, TileCoord, TileGrid};
 use eov_plugin_api::abi::RegionRequest;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::FileId;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -32,7 +36,7 @@ use std::time::{Duration, Instant};
 /// Reads slide pixels (the host's `read_region`, or a test double).
 pub trait PixelSource: Send + Sync {
     /// Returns `width·height·4` RGBA bytes.
-    fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String>;
+    fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, Message>;
 }
 
 /// The result for one tile.
@@ -98,7 +102,7 @@ pub enum Severity {
 pub struct JobControl {
     stop: Arc<AtomicBool>,
     cancelled: AtomicBool,
-    error: Mutex<Option<(Severity, String)>>,
+    error: Mutex<Option<(Severity, Message)>>,
 }
 
 impl JobControl {
@@ -127,19 +131,19 @@ impl JobControl {
 
     /// Records a failure and stops the job. The first error of the highest
     /// severity is kept.
-    pub fn fail(&self, severity: Severity, message: impl Into<String>) {
+    pub fn fail(&self, severity: Severity, message: Message) {
         let mut slot = self.error.lock().unwrap_or_else(|e| e.into_inner());
         if slot
             .as_ref()
             .is_none_or(|(existing, _)| severity > *existing)
         {
-            *slot = Some((severity, message.into()));
+            *slot = Some((severity, message));
         }
         drop(slot);
         self.stop.store(true, Ordering::SeqCst);
     }
 
-    pub fn error(&self) -> Option<String> {
+    pub fn error(&self) -> Option<Message> {
         self.error
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -153,7 +157,7 @@ impl JobControl {
 pub enum JobOutcome {
     Completed(Counts),
     Cancelled(Counts),
-    Failed { error: String, counts: Counts },
+    Failed { error: Message, counts: Counts },
 }
 
 /// What a job does.
@@ -187,7 +191,7 @@ fn read_resampled(
     spec: &JobSpec,
     source: &dyn PixelSource,
     plan: &ReadPlan,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, Message> {
     let grey = spec.contract.background_rgb();
     let mut resampler = Resampler::new(plan, spec.grid.tile, [grey; 3]);
     let strip = (MAX_READ_PIXELS / plan.width.max(1)).clamp(1, plan.height.max(1));
@@ -225,10 +229,10 @@ pub fn run_job(
     let info = engine.info().clone();
     if info.item_len != item_len {
         return JobOutcome::Failed {
-            error: format!(
+            error: Message::plain(format!(
                 "the engine expects {} values per tile but tiles have {item_len}",
                 info.item_len
-            ),
+            )),
             counts: Counts::default(),
         };
     }
@@ -301,12 +305,21 @@ pub fn run_job(
                                 }
                             }
                             None => {
+                                let bytes = rgba.len();
                                 control.fail(
                                     Severity::Read,
-                                    format!(
-                                        "the host returned {} bytes for a {tile}×{tile} region",
-                                        rgba.len()
-                                    ),
+                                    Message::new(|| {
+                                        // Translators: why an analysis failed: the
+                                        // host (eov) gave {n} bytes of pixel data,
+                                        // the wrong size for a region of {tile} ×
+                                        // {tile} pixels.
+                                        tr!(
+                                            "the host returned {n} byte for a {tile}×{tile} region"
+                                                | "the host returned {n} bytes for a {tile}×{tile} region"
+                                                % bytes,
+                                            tile = tile
+                                        )
+                                    }),
                                 );
                                 return;
                             }
@@ -317,10 +330,15 @@ pub fn run_job(
                         if failed > max_failures {
                             control.fail(
                                 Severity::Read,
-                                format!(
-                                    "{failed} tiles could not be read (level {}); last error: {error}",
-                                    spec.grid.level
-                                ),
+                                Message::new(|| {
+                                    tr!(
+                                        "{n} tile could not be read (level {level}); last error: {error}"
+                                            | "{n} tiles could not be read (level {level}); last error: {error}"
+                                            % failed,
+                                        level = spec.grid.level,
+                                        error = &error
+                                    )
+                                }),
                             );
                             return;
                         }
@@ -415,7 +433,15 @@ pub fn run_job(
         JobOutcome::Cancelled(counts)
     } else if done < total {
         JobOutcome::Failed {
-            error: format!("only {done} of {total} tiles were processed"),
+            error: Message::new(|| {
+                // Translators: why an analysis failed: it ended before every
+                // tile was done ({done} of the {total} tiles were).
+                tr!(
+                    "it stopped before every tile was done ({done} of {total})",
+                    done = done,
+                    total = total
+                )
+            }),
             counts,
         }
     } else {
@@ -449,18 +475,27 @@ fn infer(
         Ok(output) => output,
         Err(EngineError::Stopped) => return,
         Err(EngineError::Failed(message)) => {
-            control.fail(Severity::Inference, format!("inference failed: {message}"));
+            control.fail(
+                Severity::Inference,
+                Message::new(|| tr!("inference failed: {}", message)),
+            );
             return;
         }
     };
     if output.recon.len() != tensor_batch * item_len {
         control.fail(
             Severity::Inference,
-            format!(
-                "the model returned {} values for a batch of {tensor_batch} tiles; expected {}",
-                output.recon.len(),
-                tensor_batch * item_len
-            ),
+            Message::new(|| {
+                tr!(
+                    // Translators: the model's output has the wrong size; {returned}
+                    // and {expected} are bare numbers of values.
+                    "the model returned the wrong number of values for a batch of {n} tile: {returned} instead of {expected}"
+                        | "the model returned the wrong number of values for a batch of {n} tiles: {returned} instead of {expected}"
+                        % tensor_batch,
+                    returned = output.recon.len(),
+                    expected = tensor_batch * item_len
+                )
+            }),
         );
         return;
     }
@@ -512,10 +547,13 @@ pub(crate) mod tests {
     }
 
     impl PixelSource for Slide {
-        fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String> {
+        fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, Message> {
             self.reads.fetch_add(1, Ordering::SeqCst);
             if self.failing.contains(&(request.x, request.y)) {
-                return Err(format!("corrupt tile at {},{}", request.x, request.y));
+                return Err(Message::plain(format!(
+                    "corrupt tile at {},{}",
+                    request.x, request.y
+                )));
             }
             let col = request.x / i64::from(request.width);
             let n = request.width as usize * request.height as usize;
@@ -583,7 +621,7 @@ pub(crate) mod tests {
     }
 
     impl PixelSource for Uniform {
-        fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, String> {
+        fn read(&self, request: &RegionRequest) -> Result<Vec<u8>, Message> {
             self.requests.lock().unwrap().push(*request);
             let n = request.width as usize * request.height as usize;
             Ok((0..n)
@@ -712,7 +750,10 @@ pub(crate) mod tests {
         );
         match outcome {
             JobOutcome::Failed { error, counts } => {
-                assert!(error.contains("wrong shape"), "{error}");
+                assert_eq!(
+                    error.english,
+                    "inference failed: model output has the wrong shape"
+                );
                 // The first batch's results are kept.
                 assert_eq!(counts.analysed, 2);
             }
@@ -745,7 +786,8 @@ pub(crate) mod tests {
         );
         match outcome {
             JobOutcome::Failed { error, .. } => {
-                assert!(error.contains("could not be read"), "{error}")
+                assert!(error.english.contains("could not be read"), "{error}");
+                assert!(error.english.contains("corrupt tile at"), "{error}");
             }
             other => panic!("{other:?}"),
         }
@@ -771,10 +813,10 @@ pub(crate) mod tests {
     #[test]
     fn errors_rank_by_severity() {
         let control = JobControl::default();
-        control.fail(Severity::Internal, "channel closed");
-        control.fail(Severity::Inference, "CUDA out of memory");
-        control.fail(Severity::Read, "bad tile");
-        assert_eq!(control.error().as_deref(), Some("CUDA out of memory"));
+        control.fail(Severity::Internal, Message::plain("channel closed"));
+        control.fail(Severity::Inference, Message::plain("CUDA out of memory"));
+        control.fail(Severity::Read, Message::plain("bad tile"));
+        assert_eq!(control.error(), Some(Message::plain("CUDA out of memory")));
         assert!(control.stopping());
         assert!(!control.is_cancelled());
     }

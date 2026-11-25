@@ -1,6 +1,6 @@
 [package]
 name = "eov-plugin-api"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "The plugin API and SDK for eov, the whole-slide image viewer"
 license = "MIT OR Apache-2.0 OR GPL-3.0-only"
@@ -17,3 +17,13 @@ serde_json = "1"
 toml = "0.8"
 semver = "1"
 thiserror = "2"
+# Localisation (see src/i18n.rs): gettext catalogs are read with rspolib,
+# the .po reader Slint uses for its own catalogs.
+rspolib = "0.1.2"
+
+[features]
+# Each thread has its own interface language and catalog (see i18n.rs):
+# for the tests of hosts and plugins, so that a test that switches
+# languages does not change the texts other tests compare. Not for
+# programs: eov makes texts on several threads.
+thread-local-language = []

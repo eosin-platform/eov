@@ -7,6 +7,7 @@
 //! to open, so the update is refused before anything is replaced.
 
 use anyhow::{Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use std::path::Path;
 
 /// `LSMinimumSystemVersion` from an XML property list.
@@ -110,8 +111,14 @@ pub fn ensure_runnable(bundle: &Path, target: &str, running: Option<&str>) -> Re
     };
     if version_cmp(running, &required).is_lt() {
         bail!(
-            "eov {target} needs macOS {required} or newer, but this Mac runs macOS {running}. \
-             Nothing was changed; update macOS first, or stay on this version of eov."
+            "{}",
+            // Translators: {target} is a version of eov; {required} and {running} are versions of macOS.
+            tr!(
+                "eov {target} needs macOS {required} or newer, but this Mac runs macOS {running}. Nothing was changed; update macOS first, or stay on this version of eov.",
+                target = isolate(target),
+                required = isolate(&required),
+                running = isolate(running)
+            )
         );
     }
     Ok(())

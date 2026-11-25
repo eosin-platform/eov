@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { SvgIconButton } from "tab-controls.slint";
 import { SeriesItemData } from "types.slint";
@@ -19,7 +20,7 @@ component SeriesCard inherits Rectangle {
     border-radius: 8px;
     background: touch.has-hover ? Theme.surface-hover : Theme.surface;
     accessible-role: list-item;
-    accessible-label: root.item.is-directory ? @tr("Folder {}", root.item.name) : root.item.name;
+    accessible-label: root.item.is-directory ? @tr("Folder {}", Locale.isolate(root.item.name)) : root.item.name;
     accessible-description: root.item.metadata-tooltip;
     accessible-item-selectable: !root.item.is-directory;
     accessible-item-selected: root.selected;
@@ -201,7 +202,7 @@ export component SeriesBar inherits Rectangle {
     in property <bool> can-go-up: false;
     /// Only entries containing this (name, stain, objective) are shown.
     in-out property <string> filter;
-    /// The current order ("A–Z", "Newest", "Stain").
+    // Translators: the name of the series bar's order: "A–Z" (by file name); the others are "Newest", "Stain" and "Case".
     in property <string> sort-label: @tr("A–Z");
     callback filter-edited(string);
     callback sort-cycled();
@@ -543,6 +544,7 @@ export component SeriesBar inherits Rectangle {
             color: Theme.tooltip-text;
             font-size: 11px;
             wrap: word-wrap;
+            horizontal-alignment: Locale.start;
         }
     }
 }

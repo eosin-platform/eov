@@ -9,6 +9,7 @@ use crate::stain_target::{self, StainTarget};
 use crate::state::PaneId;
 use eov_common::WsiFile;
 use eov_common::stain::{Level0Rect, StainEstimateOptions, StainFitMethod, estimate_region_stain};
+use eov_plugin_api::i18n::{isolate, tr};
 
 impl UiHost {
     /// The viewport menu's `stain-target-…` commands for the menu opened on
@@ -44,19 +45,19 @@ impl UiHost {
         match crate::color::slide_fit(file_id, &wsi, method) {
             SlideFit::Ready(estimate) if estimate.is_fallback() => self.notify(
                 NotifyLevel::Warning,
-                "This slide cannot be the stain target",
-                Some(&estimate.summary()),
+                &tr!("This slide cannot be the stain target"),
+                Some(&crate::processing_text::estimate_summary(&estimate)),
                 None,
             ),
             SlideFit::Ready(estimate) => {
                 self.use_stain_target(Some(StainTarget::new(name, (*estimate).clone())))
             }
-            SlideFit::Pending => {
-                self.status("The slide's stains are still being fitted; try again in a moment")
-            }
+            SlideFit::Pending => self.status(&tr!(
+                "The slide's stains are still being fitted; try again in a moment"
+            )),
             SlideFit::Failed(reason) => self.notify(
                 NotifyLevel::Warning,
-                "This slide cannot be the stain target",
+                &tr!("This slide cannot be the stain target"),
                 Some(&reason),
                 None,
             ),
@@ -73,10 +74,10 @@ impl UiHost {
             .get_file(file_id)
             .and_then(|file| file.roi)
         else {
-            self.status("Draw a region of interest first (R)");
+            self.status(&tr!("Draw a region of interest first (R)"));
             return;
         };
-        let job = self.start_host_job("Fitting the stains of the region", None);
+        let job = self.start_host_job(&tr!("Fitting the stains of the region"), None);
         let spawned = std::thread::Builder::new()
             .name("eov-stain-target".to_string())
             .spawn({
@@ -96,17 +97,19 @@ impl UiHost {
                             match result {
                                 Ok(estimate) if estimate.is_fallback() => host.notify(
                                     NotifyLevel::Warning,
-                                    "This region cannot be the stain target",
-                                    Some(&estimate.summary()),
+                                    &tr!("This region cannot be the stain target"),
+                                    Some(&crate::processing_text::estimate_summary(&estimate)),
                                     None,
                                 ),
                                 Ok(estimate) => host.use_stain_target(Some(StainTarget::new(
-                                    format!("{name} (region)"),
+                                    // Translators: the name of a stain target
+                                    // taken from a slide's region of interest.
+                                    tr!("{} (region)", name),
                                     estimate,
                                 ))),
                                 Err(error) => host.notify(
                                     NotifyLevel::Error,
-                                    "Could not fit the region's stains",
+                                    &tr!("Could not fit the region's stains"),
                                     Some(&error),
                                     None,
                                 ),
@@ -119,7 +122,7 @@ impl UiHost {
             self.finish_host_job(&job);
             self.notify(
                 NotifyLevel::Error,
-                "Could not fit the region's stains",
+                &tr!("Could not fit the region's stains"),
                 Some(&error.to_string()),
                 None,
             );
@@ -128,12 +131,14 @@ impl UiHost {
 
     fn save_stain_target(&self) {
         let Some(target) = stain_target::current() else {
-            self.status("The reference stain target is in use; there is nothing to save");
+            self.status(&tr!(
+                "The reference stain target is in use; there is nothing to save"
+            ));
             return;
         };
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Save the stain target")
-            .add_filter("Stain target", &["json"])
+            .set_title(tr!("Save the stain target"))
+            .add_filter(tr!("Stain target"), &["json"])
             .set_file_name(format!("{}.json", sanitize(&target.name)))
             .save_file()
         else {
@@ -142,13 +147,13 @@ impl UiHost {
         match target.save(&path) {
             Ok(()) => self.notify(
                 NotifyLevel::Success,
-                &format!("Saved the stain target \"{}\"", target.name),
+                &tr!("Saved the stain target \"{}\"", isolate(&target.name)),
                 None,
                 None,
             ),
             Err(error) => self.notify(
                 NotifyLevel::Error,
-                "Could not save the stain target",
+                &tr!("Could not save the stain target"),
                 Some(&error),
                 None,
             ),
@@ -157,8 +162,8 @@ impl UiHost {
 
     fn load_stain_target(&self) {
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Load a stain target")
-            .add_filter("Stain target", &["json"])
+            .set_title(tr!("Load a stain target"))
+            .add_filter(tr!("Stain target"), &["json"])
             .pick_file()
         else {
             return;
@@ -166,14 +171,14 @@ impl UiHost {
         match StainTarget::load(&path) {
             Ok(target) if target.estimate.is_fallback() => self.notify(
                 NotifyLevel::Warning,
-                "This file cannot be the stain target",
-                Some(&target.estimate.summary()),
+                &tr!("This file cannot be the stain target"),
+                Some(&crate::processing_text::estimate_summary(&target.estimate)),
                 None,
             ),
             Ok(target) => self.use_stain_target(Some(target)),
             Err(error) => self.notify(
                 NotifyLevel::Error,
-                "Could not load the stain target",
+                &tr!("Could not load the stain target"),
                 Some(&error),
                 None,
             ),
@@ -183,13 +188,13 @@ impl UiHost {
     /// Makes `target` the target in use and redraws every pane.
     fn use_stain_target(&self, target: Option<StainTarget>) {
         let title = match &target {
-            Some(target) => format!("Normalising to \"{}\"", target.name),
-            None => "Normalising to the reference H&E (Macenko)".to_string(),
+            Some(target) => tr!("Normalising to \"{}\"", isolate(&target.name)),
+            None => tr!("Normalising to the reference H&E (Macenko)"),
         };
         if let Err(error) = stain_target::set(target) {
             self.notify(
                 NotifyLevel::Error,
-                "Could not change the stain target",
+                &tr!("Could not change the stain target"),
                 Some(&error),
                 None,
             );
@@ -206,7 +211,12 @@ impl UiHost {
         self.notify(
             NotifyLevel::Info,
             &title,
-            Some("Every pane with stain normalisation on maps its slide onto this appearance; exports follow."),
+            // Translators: "exports follow" means that exported images with
+            // stain normalisation on are mapped onto this appearance too; it
+            // does not mean that a list of exports comes next.
+            Some(&tr!(
+                "Every pane with stain normalisation on maps its slide onto this appearance; exports follow."
+            )),
             None,
         );
     }

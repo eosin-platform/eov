@@ -7,8 +7,23 @@
 //! and executes, so the plan never leaves the thread that made it.
 
 use super::{NotifyLevel, UiHost, with_host};
+use crate::update::registry::shown_error;
 use crate::update::{PlanSummary, UpdateContext, UpdateOutcome, UpdateRequest};
+use eov_plugin_api::i18n::{isolate, tr};
 use std::sync::mpsc;
+
+/// What an update did to one plugin (`PluginOutcome::status`, an id), in
+/// the language of the interface.
+fn plugin_outcome_text(status: &str) -> String {
+    match status {
+        "updated" => tr!("Plugin update" => "updated"),
+        // Translators: the update helper installs it after eov exits.
+        "staged" => tr!("Plugin update" => "staged"),
+        "skipped" => tr!("Plugin update" => "skipped"),
+        "failed" => tr!("Plugin update" => "failed"),
+        other => other.to_string(),
+    }
+}
 
 /// An update check or update in progress.
 pub(super) struct AppUpdate {
@@ -22,7 +37,7 @@ impl UiHost {
         if self.app_update.borrow().is_some() {
             self.notify(
                 NotifyLevel::Info,
-                "An update check is already running",
+                &tr!("An update check is already running"),
                 None,
                 None,
             );
@@ -31,16 +46,18 @@ impl UiHost {
         if let Err(error) = crate::update::policy::current().ensure_network_allowed() {
             self.notify(
                 NotifyLevel::Warning,
-                "Checking for updates is turned off",
+                &tr!("Checking for updates is turned off"),
                 Some(&format!("{error:#}")),
                 None,
             );
             return;
         }
         self.confirm(
-            "Check for eov updates?",
-            "eov downloads the release information of the latest eov from GitHub (github.com/eosin-platform/eov) and compares it with this installation and its plugins. Nothing else is sent, and nothing is installed without asking.",
-            "Check",
+            &tr!("Check for eov updates?"),
+            &tr!(
+                "eov downloads the release information of the latest eov from GitHub (github.com/eosin-platform/eov) and compares it with this installation and its plugins. Nothing else is sent, and nothing is installed without asking."
+            ),
+            &tr!("Button" => "Check"),
             false,
             |agreed| {
                 if agreed {
@@ -54,7 +71,7 @@ impl UiHost {
         if self.app_update.borrow().is_some() {
             return;
         }
-        let job = self.start_host_job("Checking for eov updates", None);
+        let job = self.start_host_job(&tr!("Checking for eov updates"), None);
         let failed_job = job.clone();
         let (answer, answers) = mpsc::channel::<bool>();
         let plugin_dir = self.plugin_dir.clone();
@@ -72,8 +89,10 @@ impl UiHost {
                 let (mut ctx, planned) = match planned {
                     Ok(planned) => planned,
                     Err(error) => {
-                        let error = format!("{error:#}");
                         let _ = slint::invoke_from_event_loop(move || {
+                            // Worded in the interface's language of the
+                            // moment.
+                            let error = shown_error(&error);
                             with_host(|host| host.app_update_check_failed(&job, &error));
                         });
                         return;
@@ -88,9 +107,9 @@ impl UiHost {
                 if answers.recv() != Ok(true) {
                     return;
                 }
-                let result = crate::update::execute_update(&mut ctx, planned)
-                    .map_err(|error| format!("{error:#}"));
+                let result = crate::update::execute_update(&mut ctx, planned);
                 let _ = slint::invoke_from_event_loop(move || {
+                    let result = result.map_err(|error| shown_error(&error));
                     with_host(|host| host.app_update_finished(result));
                 });
             });
@@ -109,7 +128,7 @@ impl UiHost {
         self.app_update.borrow_mut().take();
         self.notify(
             NotifyLevel::Warning,
-            "Could not check for eov updates",
+            &tr!("Could not check for eov updates"),
             Some(error),
             None,
         );
@@ -122,10 +141,16 @@ impl UiHost {
             let (title, detail) = if summary.app_available {
                 // Newer, but this installation is updated another way (a
                 // package manager, a policy): the plan's notes say how.
-                (format!("eov {} is available", summary.target), summary.text)
+                (
+                    tr!("eov {} is available", isolate(&summary.target)),
+                    summary.text,
+                )
             } else {
                 (
-                    format!("eov {} and its plugins are up to date", summary.current),
+                    tr!(
+                        "eov {} and its plugins are up to date",
+                        isolate(&summary.current)
+                    ),
                     summary.text,
                 )
             };
@@ -133,29 +158,31 @@ impl UiHost {
             return;
         }
         let title = if summary.changes_app {
-            format!("Update eov to {}?", summary.target)
-        } else if summary.plugin_changes == 1 {
-            "Update a plugin?".to_string()
+            tr!("Update eov to {}?", isolate(&summary.target))
         } else {
-            format!("Update {} plugins?", summary.plugin_changes)
+            tr!("Update a plugin?" | "Update {n} plugins?" % summary.plugin_changes)
         };
-        let mut message = summary.text;
-        message.push_str(if summary.exits_for_helper {
-            "\n\neov closes, the update helper replaces the application, and eov starts again."
+        // What happens next, after the plan (one paragraph).
+        let next = if summary.exits_for_helper {
+            if crate::config::load_restore_session() {
+                tr!(
+                    "eov closes, the update helper replaces the application, and eov starts again. Open slides are reopened."
+                )
+            } else {
+                tr!("eov closes, the update helper replaces the application, and eov starts again.")
+            }
         } else if summary.changes_app {
-            "\n\nThe new version is used when eov restarts."
+            tr!("The new version is used when eov restarts.")
         } else {
-            "\n\nUpdated plugins are used when eov restarts."
-        });
-        if summary.exits_for_helper && crate::config::load_restore_session() {
-            message.push_str(" Open slides are reopened.");
-        }
-        let label = if summary.exits_for_helper {
-            "Update and Restart"
-        } else {
-            "Update"
+            tr!("Updated plugins are used when eov restarts.")
         };
-        self.confirm(&title, &message, label, false, |agreed| {
+        let message = format!("{}\n\n{next}", summary.text);
+        let label = if summary.exits_for_helper {
+            tr!("Update and Restart")
+        } else {
+            tr!("Button" => "Update")
+        };
+        self.confirm(&title, &message, &label, false, |agreed| {
             with_host(|host| host.answer_app_update(agreed));
         });
     }
@@ -170,7 +197,7 @@ impl UiHost {
             return;
         };
         if agreed && answer.send(true).is_ok() {
-            let job = self.start_host_job("Updating eov", None);
+            let job = self.start_host_job(&tr!("Updating eov"), None);
             self.app_update_job.replace(Some(job));
         } else {
             self.app_update.borrow_mut().take();
@@ -187,7 +214,7 @@ impl UiHost {
             Err(error) => {
                 self.notify(
                     NotifyLevel::Error,
-                    "Could not update eov",
+                    &tr!("Could not update eov"),
                     Some(&error),
                     None,
                 );
@@ -198,12 +225,24 @@ impl UiHost {
             .plugins
             .iter()
             .map(|plugin| {
-                let message = plugin
-                    .message
-                    .as_deref()
-                    .map(|message| format!(" ({message})"))
-                    .unwrap_or_default();
-                format!("{}: {}{message}", plugin.id, plugin.status)
+                let status = plugin_outcome_text(plugin.status);
+                match plugin.message.as_deref() {
+                    // Translators: one plugin of an update: its id, what
+                    // happened to it ("updated", "failed", …) and why.
+                    Some(message) => tr!(
+                        "{plugin}: {status} ({message})",
+                        plugin = isolate(&plugin.id),
+                        status = status,
+                        message = message
+                    ),
+                    // Translators: one plugin of an update: its id and what
+                    // happened to it ("updated", "failed", …).
+                    None => tr!(
+                        "{plugin}: {status}",
+                        plugin = isolate(&plugin.id),
+                        status = status
+                    ),
+                }
             })
             .collect();
         let failed = outcome
@@ -220,14 +259,14 @@ impl UiHost {
             NotifyLevel::Info
         };
         let title = match outcome.app {
-            "restart-pending" => "eov restarts to finish the update".to_string(),
-            "updated" => format!(
+            "restart-pending" => tr!("eov restarts to finish the update"),
+            "updated" => tr!(
                 "eov {} is installed; restart eov to use it",
-                outcome.installed_version.as_deref().unwrap_or("")
+                isolate(outcome.installed_version.as_deref().unwrap_or(""))
             ),
-            "downloaded" => "The eov update was downloaded".to_string(),
-            _ if failed => "Some plugins could not be updated".to_string(),
-            _ => "Plugins are updated; restart eov to use them".to_string(),
+            "downloaded" => tr!("The eov update was downloaded"),
+            _ if failed => tr!("Some plugins could not be updated"),
+            _ => tr!("Plugins are updated; restart eov to use them"),
         };
         self.notify(level, &title, detail, None);
         self.refresh_plugin_panel();

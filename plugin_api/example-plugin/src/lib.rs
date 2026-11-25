@@ -11,12 +11,19 @@
 //!   example_plugin:tissue-stats SLIDES --out DIR`),
 //! - a slide format: `.excheck` files, whose first line is
 //!   `eov-example-checker`, open as an 8192 × 6144 checkerboard slide with
-//!   three levels (`[[slide_formats]]` in `plugin.toml`, [`CheckerSlide`]).
+//!   three levels (`[[slide_formats]]` in `plugin.toml`, [`CheckerSlide`]),
+//! - translations: every text a user reads is written in English and
+//!   marked, with [`tr!`] in Rust and `@tr` in the sidebar, for the
+//!   catalogs in `translations/` (`[i18n]` in `plugin.toml`); what the
+//!   plugin hands to eov is handed over again when the language changes
+//!   ([`HostEvent::LanguageChanged`]).
 //!
 //! Build it with `cargo build --release -p eov-example-plugin` and package
-//! `plugin.toml`, `ui/` and the library into a tar archive named
-//! `example_plugin.eop` (see the README).
+//! `plugin.toml`, `ui/`, the catalogs (`translations/<tag>/LC_MESSAGES/*.po`)
+//! and the library into a tar archive named `example_plugin.eop` (see the
+//! README).
 
+use eov_plugin_api::i18n;
 use eov_plugin_api::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -34,6 +41,66 @@ fn layer_id(file_id: FileId) -> String {
 }
 
 const ICON: &str = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='8' fill='none' stroke='white' stroke-width='2'/></svg>";
+
+// What the plugin hands to eov, with its texts in the language of the
+// interface (`tr!`). Built in one place, so that `create` and a change of
+// language hand over the same.
+
+fn sidebar_button() -> ToolbarButtonSpec {
+    ToolbarButtonSpec {
+        button_id: SIDEBAR_BUTTON.into(),
+        tooltip: tr!("Example sidebar"),
+        icon_svg: ICON.into(),
+        ..Default::default()
+    }
+}
+
+fn marker_tool() -> ToolSpec {
+    ToolSpec::new(POINT_TOOL, tr!("Place marker"), ICON, ToolKind::Point)
+        .with_hotkey(Hotkey::key("k"))
+}
+
+fn invert_button() -> HudButtonSpec {
+    HudButtonSpec {
+        button_id: INVERT_BUTTON.into(),
+        tooltip: tr!("Invert colours"),
+        icon_svg: ICON.into(),
+        ..Default::default()
+    }
+}
+
+fn invert_filter(enabled: bool) -> FilterSpec {
+    FilterSpec {
+        filter_id: FILTER.into(),
+        name: tr!("Invert"),
+        priority: 0,
+        enabled,
+    }
+}
+
+fn tissue_stats_command() -> BatchCommandSpec {
+    BatchCommandSpec {
+        command_id: BATCH_COMMAND.into(),
+        description: tr!("Tissue fraction and mean tissue colour of each slide"),
+        params: vec![BatchParam {
+            name: "max_pixels".into(),
+            description: tr!("Read the finest level with at most this many pixels"),
+            default: json!(4_000_000),
+        }],
+    }
+}
+
+fn marker_layer(file_id: FileId) -> LayerSpec {
+    LayerSpec::new(layer_id(file_id), file_id)
+        .named(tr!("Markers"))
+        .interactive(true)
+        .editable(true)
+        .with_style(Style {
+            stroke: Rgba::rgb(0xFF, 0x9F, 0x1C),
+            point_radius: 6.0,
+            ..Style::default()
+        })
+}
 
 #[derive(Default)]
 struct State {
@@ -69,13 +136,14 @@ impl ExamplePlugin {
             .map_or(0, BTreeMap::len);
         let mut properties = Map::new();
         properties.insert("marker-count".into(), json!(count));
+        // Data only: the sidebar says "No slide" itself (`@tr`).
         properties.insert(
             "active-file".into(),
             json!(
                 state
                     .active_file
                     .as_ref()
-                    .map_or("No slide".to_string(), |f| f.filename.clone())
+                    .map_or(String::new(), |f| f.filename.clone())
             ),
         );
         properties.insert(
@@ -133,28 +201,22 @@ impl ExamplePlugin {
 
     fn ensure_layer(&self, file_id: FileId) -> Result<Layer, String> {
         self.host
-            .create_layer(
-                LayerSpec::new(layer_id(file_id), file_id)
-                    .named("Markers")
-                    .interactive(true)
-                    .editable(true)
-                    .with_style(Style {
-                        stroke: Rgba::rgb(0xFF, 0x9F, 0x1C),
-                        point_radius: 6.0,
-                        ..Style::default()
-                    }),
-            )
+            .create_layer(marker_layer(file_id))
             .map_err(String::from)
     }
 
     fn redraw_layer(&self, state: &State, file_id: FileId) -> Result<(), String> {
+        // `{}` takes the value. Values written left to right in every
+        // language (identifiers, file names) are isolated, so that they
+        // keep their order in right-to-left ones.
         let objects = state
             .markers
             .get(&file_id)
             .into_iter()
             .flatten()
             .map(|(id, shape)| {
-                OverlayObject::new(id.clone(), shape.clone()).with_tooltip(format!("Marker {id}"))
+                let tooltip = tr!("Marker {}", i18n::isolate(id));
+                OverlayObject::new(id.clone(), shape.clone()).with_tooltip(tooltip)
             })
             .collect();
         self.host
@@ -177,7 +239,7 @@ impl ExamplePlugin {
         self.redraw_layer(&state, file_id)?;
         self.refresh_sidebar(&state);
         self.host
-            .push_undo(entry_id, Some(file_id), "Add marker")
+            .push_undo(entry_id, Some(file_id), tr!("Add marker"))
             .map_err(String::from)
     }
 
@@ -201,15 +263,57 @@ impl ExamplePlugin {
     fn run_job(&self) -> Result<(), String> {
         let job = self
             .host
-            .start_job("Counting to ten", true)
+            .start_job(tr!("Counting to ten"), true)
             .map_err(String::from)?;
         std::thread::spawn(move || {
-            for step in 1..=10 {
+            let total = 10;
+            for step in 1..=total {
                 std::thread::sleep(Duration::from_millis(100));
-                job.update(Some(step as f32 / 10.0), Some(&format!("{step} of 10")));
+                // Translators: the progress of the background job, e.g. "3 of 10"
+                let message = tr!("{step} of {total}", step, total);
+                job.update(Some(step as f32 / total as f32), Some(&message));
             }
             job.finish(None);
         });
+        Ok(())
+    }
+
+    /// The user chose another language. `tr!` answers in it already, and
+    /// the sidebar's `@tr` texts have changed by themselves; what the
+    /// plugin handed to eov keeps its language until it is handed over
+    /// again.
+    fn language_changed(&self) -> Result<(), String> {
+        let host = &self.host;
+        host.update_toolbar_button(ButtonUpdate {
+            button_id: SIDEBAR_BUTTON.into(),
+            tooltip: Some(sidebar_button().tooltip),
+            ..Default::default()
+        })
+        .map_err(String::from)?;
+        host.update_hud_button(ButtonUpdate {
+            button_id: INVERT_BUTTON.into(),
+            tooltip: Some(invert_button().tooltip),
+            ..Default::default()
+        })
+        .map_err(String::from)?;
+        // Registered again under the same id, the tool, the filter (with
+        // its state) and the batch command are replaced.
+        host.register_tool(marker_tool()).map_err(String::from)?;
+        host.register_filter(invert_filter(self.invert.load(Ordering::Relaxed)))
+            .map_err(String::from)?;
+        host.register_batch_command(tissue_stats_command())
+            .map_err(String::from)?;
+        // The layers' names, and the markers' tooltips.
+        let state = self.state();
+        for &file_id in state.markers.keys() {
+            host.layer(layer_id(file_id))
+                .update(LayerUpdate {
+                    name: Some(marker_layer(file_id).name),
+                    ..Default::default()
+                })
+                .map_err(String::from)?;
+            self.redraw_layer(&state, file_id)?;
+        }
         Ok(())
     }
 }
@@ -335,7 +439,10 @@ impl SlideReader for CheckerSlide {
 }
 
 impl Plugin for ExamplePlugin {
-    /// Opens `.excheck` files that start with [`CHECKER_HEADER`].
+    /// Opens `.excheck` files that start with [`CHECKER_HEADER`]. Why a
+    /// file does not open is said in English, as eov's own readers say it:
+    /// eov writes it to its log, returns it to scripts, and shows it to the
+    /// user inside its own, translated message.
     fn open_slide(&self, request: &SlideOpenRequest) -> Result<Box<dyn SlideReader>, String> {
         use std::io::Read;
         let mut start = Vec::with_capacity(CHECKER_HEADER.len());
@@ -353,48 +460,22 @@ impl Plugin for ExamplePlugin {
         Ok(Box::new(CheckerSlide))
     }
 
+    /// eov has loaded the plugin's catalog for the language of the
+    /// interface before this: `tr!` answers in it from the start.
     fn create(host: Host, init: PluginInit) -> Result<Self, String> {
-        host.add_toolbar_button(ToolbarButtonSpec {
-            button_id: SIDEBAR_BUTTON.into(),
-            tooltip: "Example sidebar".into(),
-            icon_svg: ICON.into(),
-            ..Default::default()
-        })
-        .map_err(String::from)?;
-        host.register_tool(
-            ToolSpec::new(POINT_TOOL, "Place marker", ICON, ToolKind::Point)
-                .with_hotkey(Hotkey::key("k")),
-        )
-        .map_err(String::from)?;
-        host.add_hud_button(HudButtonSpec {
-            button_id: INVERT_BUTTON.into(),
-            tooltip: "Invert colours".into(),
-            icon_svg: ICON.into(),
-            ..Default::default()
-        })
-        .map_err(String::from)?;
+        host.add_toolbar_button(sidebar_button())
+            .map_err(String::from)?;
+        host.register_tool(marker_tool()).map_err(String::from)?;
+        host.add_hud_button(invert_button()).map_err(String::from)?;
         let invert = init
             .settings
             .get("invert")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        host.register_filter(FilterSpec {
-            filter_id: FILTER.into(),
-            name: "Invert".into(),
-            priority: 0,
-            enabled: invert,
-        })
-        .map_err(String::from)?;
-        host.register_batch_command(BatchCommandSpec {
-            command_id: BATCH_COMMAND.into(),
-            description: "Tissue fraction and mean tissue colour of each slide".into(),
-            params: vec![BatchParam {
-                name: "max_pixels".into(),
-                description: "Read the finest level with at most this many pixels".into(),
-                default: json!(4_000_000),
-            }],
-        })
-        .map_err(String::from)?;
+        host.register_filter(invert_filter(invert))
+            .map_err(String::from)?;
+        host.register_batch_command(tissue_stats_command())
+            .map_err(String::from)?;
         Ok(Self {
             host,
             state: Mutex::new(State::default()),
@@ -412,7 +493,8 @@ impl Plugin for ExamplePlugin {
             }
             HostEvent::FileOpened { file } => {
                 self.ensure_layer(file.file_id)?;
-                let state = self.state();
+                let mut state = self.state();
+                state.markers.entry(file.file_id).or_default();
                 self.redraw_layer(&state, file.file_id)?;
             }
             HostEvent::FileClosed { file_id } => {
@@ -477,6 +559,7 @@ impl Plugin for ExamplePlugin {
                     let _ = self.host.set_toolbar_button_active(SIDEBAR_BUTTON, false);
                 }
             }
+            HostEvent::LanguageChanged { .. } => self.language_changed()?,
             HostEvent::BatchRun {
                 run_id,
                 command_id,
@@ -485,7 +568,8 @@ impl Plugin for ExamplePlugin {
                 params,
             } if command_id == BATCH_COMMAND => {
                 // The analysis runs on a thread of its own; the host waits
-                // for `finish_batch`.
+                // for `finish_batch`. Its messages go to the terminal and
+                // into `batch.json`, which stay in English.
                 let host = self.host.clone();
                 std::thread::spawn(move || {
                     let max_pixels = params
@@ -529,7 +613,7 @@ impl Plugin for ExamplePlugin {
     fn context_menu(&self, _context: &MenuContext) -> Vec<MenuItem> {
         vec![MenuItem {
             item_id: "add_marker".into(),
-            label: "Add marker here".into(),
+            label: tr!("Add marker here"),
             ..Default::default()
         }]
     }
@@ -556,11 +640,13 @@ impl Plugin for ExamplePlugin {
                 Ok(Value::Null)
             }
             "describe" => {
+                // A text with a number: `{n}` is the count, and each
+                // language has its own forms (English: one, many).
                 let state = self.state();
                 let total: usize = state.markers.values().map(BTreeMap::len).sum();
-                Ok(json!(format!(
-                    "{total} marker(s) across {} slide(s)",
-                    state.markers.len()
+                // Translators: the answer to the sidebar's Describe button
+                Ok(json!(tr!(
+                    "{n} marker on the open slides" | "{n} markers on the open slides" % total
                 )))
             }
             _ => Ok(Value::Null),
@@ -588,10 +674,20 @@ pub fn module() -> eov_plugin_api::abi::PluginModuleRef {
     eov_plugin_api::sdk::root_module::<ExamplePlugin>()
 }
 
+/// `tr!` speaks one language in the whole library, and creating a plugin
+/// sets it (from `PluginInit::language`): tests that create plugins take
+/// turns with the one that checks the translations.
+#[cfg(test)]
+fn language_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LANGUAGE: Mutex<()> = Mutex::new(());
+    LANGUAGE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use eov_plugin_api::testing::{MockHost, TestHarness, test_init};
+    use std::path::Path;
 
     fn harness() -> TestHarness<ExamplePlugin> {
         let host = MockHost::new();
@@ -600,6 +696,7 @@ mod tests {
             filename: "slide.svs".into(),
             ..Default::default()
         });
+        let _language = language_lock();
         TestHarness::with_host(host, test_init("example_plugin")).unwrap()
     }
 
@@ -658,7 +755,7 @@ mod tests {
         let surface_id = h.state().surfaces.keys().next().unwrap().clone();
         assert!(h.state().surfaces[&surface_id].open);
         let reply = h.ui_callback(&surface_id, "describe", vec![]).unwrap();
-        assert_eq!(reply, json!("0 marker(s) across 0 slide(s)"));
+        assert_eq!(reply, json!("0 markers on the open slides"));
         h.ui_callback(&surface_id, "toggle-invert", vec![json!(true)])
             .unwrap();
         assert!(h.state().filters[FILTER].enabled);
@@ -672,6 +769,47 @@ mod tests {
         h.apply_filter(FILTER, &mut pixels, 1, 1, FilterView::default())
             .unwrap();
         assert_eq!(pixels, vec![255, 245, 0, 255]);
+    }
+
+    /// The plugin's texts are in the language of the interface from the
+    /// start, and in the new one after a change. A copy of the plugin gets
+    /// a German catalog that translates one text; the others stay English.
+    #[test]
+    fn texts_follow_the_language_of_the_interface() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin.toml"),
+            root.path().join("plugin.toml"),
+        )
+        .unwrap();
+        let german = i18n::by_tag("de").unwrap();
+        let catalog =
+            i18n::catalog_path(&root.path().join("translations"), "example_plugin", german);
+        std::fs::create_dir_all(catalog.parent().unwrap()).unwrap();
+        std::fs::write(
+            &catalog,
+            i18n::empty_catalog(german, "example_plugin")
+                + "\nmsgid \"Example sidebar\"\nmsgstr \"Beispiel-Seitenleiste\"\n",
+        )
+        .unwrap();
+        let init = PluginInit {
+            plugin_root: root.path().to_string_lossy().into_owned(),
+            language: Some("de".into()),
+            ..test_init("example_plugin")
+        };
+        let _language = language_lock();
+        let h = TestHarness::<ExamplePlugin>::with_init(init).unwrap();
+        let tooltip = || h.state().toolbar_buttons[SIDEBAR_BUTTON].tooltip.clone();
+        assert_eq!(tooltip(), "Beispiel-Seitenleiste");
+        assert_eq!(h.state().tools[POINT_TOOL].label, "Place marker");
+
+        // eov switched the plugin's `tr!` to English before the event: the
+        // plugin hands its texts over again.
+        h.send(HostEvent::LanguageChanged {
+            language: "en".into(),
+        })
+        .unwrap();
+        assert_eq!(tooltip(), "Example sidebar");
     }
 }
 
@@ -693,7 +831,10 @@ mod slide_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("board.excheck");
         std::fs::write(&path, format!("{CHECKER_HEADER}\n")).unwrap();
-        let harness = TestHarness::<ExamplePlugin>::new().unwrap();
+        let harness = {
+            let _language = language_lock();
+            TestHarness::<ExamplePlugin>::new().unwrap()
+        };
         let slide = harness.open_slide(&request(&path)).unwrap();
         let info = slide.info().unwrap();
         assert_eq!(info.levels.len(), 3);
@@ -723,10 +864,17 @@ mod slide_tests {
         assert_eq!(&coarse[..4], CheckerSlide::DARK);
         assert_eq!(&coarse[4..8], CheckerSlide::LIGHT);
 
-        // Other files are refused with the reason.
+        // Other files are refused with the reason, in English as eov's own
+        // readers give it (eov logs it and returns it to scripts).
         let other = dir.path().join("other.excheck");
         std::fs::write(&other, "something else").unwrap();
         let error = harness.open_slide(&request(&other)).err().unwrap();
-        assert!(error.message.contains(CHECKER_HEADER), "{}", error.message);
+        assert!(
+            error.message.ends_with(&format!(
+                "not an example checkerboard (it must start with {CHECKER_HEADER})"
+            )),
+            "{}",
+            error.message
+        );
     }
 }

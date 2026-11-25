@@ -7,6 +7,7 @@ use eov_common::{
     FilteringMode, MeasurementUnit, RenderBackend, SlideBounds, StainNormalization, TileManager,
     ViewportState, WsiFile,
 };
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::Rect;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -140,15 +141,76 @@ pub struct MinimapThumbnail {
 #[derive(Debug, Clone, Default)]
 pub struct SeriesEntry {
     pub path: PathBuf,
+    /// The file's (or folder's) name, as data: what the series bar sorts
+    /// by, groups into cases and filters on, whatever the interface's
+    /// language.
+    pub file_name: String,
+    /// The name shown: `file_name`, or for a DICOM series of several files
+    /// its name and how many files it has, in the interface's language
+    /// ([`crate::file_ops::series_entry_name`]).
     pub filename: String,
     pub is_directory: bool,
     /// When the file was last changed, for the Newest order.
     pub modified: Option<std::time::SystemTime>,
+    /// The tooltip shown, made from `details`
+    /// ([`crate::file_ops::series_tooltip`]).
     pub metadata_tooltip: String,
+    /// What the tooltip tells, kept to write it again in another language.
+    pub details: SeriesDetails,
+    /// The files of a DICOM series listed as this one entry (0 or 1 for
+    /// other entries).
+    pub instances: usize,
+    /// The objective power shown on the card, made from `details`.
     pub objective_label: Option<String>,
+    /// The stain the slide records (data, as it is).
     pub stain_label: Option<String>,
     pub thumbnail: Option<SeriesThumbnail>,
     pub thumbnail_loading: bool,
+}
+
+impl SeriesEntry {
+    /// Makes the texts shown for the entry (its name, tooltip and
+    /// objective) in the interface's language, on the UI thread: entries and
+    /// their details are read on worker threads, which may finish after the
+    /// language changed.
+    pub fn make_texts(&mut self) {
+        self.filename = crate::file_ops::series_entry_name(&self.path, self.instances);
+        self.metadata_tooltip = crate::file_ops::series_tooltip(&self.path, &self.details);
+        let (objective, stain) = match &self.details {
+            SeriesDetails::Slide(facts) => (
+                facts.objective_power.map(crate::file_ops::objective_text),
+                facts.stain.clone(),
+            ),
+            _ => (None, None),
+        };
+        self.objective_label = objective;
+        self.stain_label = stain;
+    }
+}
+
+/// What a series entry's tooltip tells about it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum SeriesDetails {
+    /// The slide was not read yet.
+    #[default]
+    Loading,
+    Folder,
+    /// The slide could not be read.
+    Unreadable,
+    Slide(SeriesSlideFacts),
+}
+
+/// What a slide in the series bar records about itself.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SeriesSlideFacts {
+    pub width: u64,
+    pub height: u64,
+    pub levels: usize,
+    pub vendor: Option<String>,
+    pub objective_power: Option<f64>,
+    /// Micrometres per pixel, horizontally and vertically.
+    pub mpp: Option<(f64, f64)>,
+    pub stain: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,46 +262,57 @@ impl SeriesSort {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    /// The name of the order, on the series bar's sort button.
+    pub fn label(self) -> String {
         match self {
-            Self::Name => "A–Z",
-            Self::Newest => "Newest",
-            Self::Stain => "Stain",
-            Self::Case => "Case",
+            // Translators: the order of the series bar by file name, in
+            // alphabetical order of the names as they are written (usually Latin
+            // letters, so "A–Z" may stay as it is).
+            Self::Name => tr!("Series order" => "A–Z"),
+            // Translators: the order of the series bar: the most recently
+            // changed slides first.
+            Self::Newest => tr!("Series order" => "Newest"),
+            // Translators: the order of the series bar by stain (H&E, Ki-67…).
+            Self::Stain => tr!("Series order" => "Stain"),
+            // Translators: the order of the series bar by case (the patient's
+            // accession number the slides belong to).
+            Self::Case => tr!("Series order" => "Case"),
         }
     }
 }
 
 impl OpenedSeries {
-    /// Puts `entries` in the chosen order.
+    /// Puts `entries` in the chosen order: by their file names (data), so
+    /// that the order does not depend on the interface's language.
     pub fn apply_sort(&mut self) {
         let sort = self.sort;
+        let by_name = |a: &SeriesEntry, b: &SeriesEntry| {
+            natord::compare_ignore_case(&a.file_name, &b.file_name)
+        };
         self.entries.sort_by(|a, b| {
             b.is_directory
                 .cmp(&a.is_directory)
                 .then_with(|| match sort {
-                    SeriesSort::Name => natord::compare_ignore_case(&a.filename, &b.filename),
-                    SeriesSort::Newest => b
-                        .modified
-                        .cmp(&a.modified)
-                        .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename)),
+                    SeriesSort::Name => by_name(a, b),
+                    SeriesSort::Newest => b.modified.cmp(&a.modified).then_with(|| by_name(a, b)),
                     SeriesSort::Stain => {
                         let stain = |e: &SeriesEntry| e.stain_label.clone().unwrap_or_default();
                         // Unlabelled slides last.
                         (stain(a).is_empty(), stain(a).to_lowercase())
                             .cmp(&(stain(b).is_empty(), stain(b).to_lowercase()))
-                            .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename))
+                            .then_with(|| by_name(a, b))
                     }
                     SeriesSort::Case => natord::compare_ignore_case(
-                        &crate::series_case::case_of(&a.filename),
-                        &crate::series_case::case_of(&b.filename),
+                        &crate::series_case::case_of(&a.file_name),
+                        &crate::series_case::case_of(&b.file_name),
                     )
-                    .then_with(|| natord::compare_ignore_case(&a.filename, &b.filename)),
+                    .then_with(|| by_name(a, b)),
                 })
         });
     }
 
-    /// The entries the series bar shows: those matching the filter.
+    /// The entries the series bar shows: those matching the filter (in
+    /// their file names, or in what their cards say).
     pub fn visible_entries(&self) -> Vec<&SeriesEntry> {
         let filter = self.filter.trim().to_lowercase();
         if filter.is_empty() {
@@ -249,6 +322,7 @@ impl OpenedSeries {
             .iter()
             .filter(|entry| {
                 [
+                    Some(entry.file_name.as_str()),
                     Some(entry.filename.as_str()),
                     entry.stain_label.as_deref(),
                     entry.objective_label.as_deref(),
@@ -484,8 +558,15 @@ pub const MAX_PANES: usize = 8;
 /// app-window.slint must match.
 pub const PANE_GAP: f64 = 6.0;
 
-/// The message for a pane that could not be added.
+/// The message for a pane that could not be added, for logs and scripts;
+/// [`max_panes_message`] is the one shown in the window.
 pub const MAX_PANES_MESSAGE: &str = "eov shows at most 8 panes side by side";
+
+/// [`MAX_PANES_MESSAGE`] in the interface's language.
+pub fn max_panes_message() -> String {
+    tr!("eov shows at most {n} pane side by side"
+        | "eov shows at most {n} panes side by side" % MAX_PANES)
+}
 
 /// Pane identifier (0-based pane index)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1619,13 +1700,13 @@ impl AppState {
         self.series_revision
     }
 
+    /// Installs what a worker read about the slide at `path` (UI thread:
+    /// its texts are made here, in the interface's language of the moment).
     pub fn update_series_entry_thumbnail(
         &mut self,
         revision: u64,
         path: &std::path::Path,
-        metadata_tooltip: String,
-        objective_label: Option<String>,
-        stain_label: Option<String>,
+        details: SeriesDetails,
         thumbnail: Option<SeriesThumbnail>,
     ) -> bool {
         if self.series_revision != revision {
@@ -1640,9 +1721,8 @@ impl AppState {
             return false;
         };
 
-        entry.metadata_tooltip = metadata_tooltip;
-        entry.objective_label = objective_label;
-        entry.stain_label = stain_label;
+        entry.details = details;
+        entry.make_texts();
         entry.thumbnail = thumbnail;
         entry.thumbnail_loading = false;
         if series.sort == SeriesSort::Stain {
@@ -1653,11 +1733,13 @@ impl AppState {
         true
     }
 
+    /// Installs the entries a worker listed (UI thread: their texts are made
+    /// again here, in the interface's language of the moment).
     pub fn replace_opened_series_entries(
         &mut self,
         revision: u64,
         folder_path: &std::path::Path,
-        entries: Vec<SeriesEntry>,
+        mut entries: Vec<SeriesEntry>,
     ) -> bool {
         if self.series_revision != revision {
             return false;
@@ -1671,6 +1753,9 @@ impl AppState {
             return false;
         }
 
+        for entry in &mut entries {
+            entry.make_texts();
+        }
         series.entries = entries;
         series.apply_sort();
         series.thumbnails_requested = false;
@@ -1678,6 +1763,20 @@ impl AppState {
         self.series_content_revision = self.series_content_revision.wrapping_add(1);
         self.needs_render = true;
         true
+    }
+
+    /// Writes the series entries' names and tooltips again, in the language
+    /// of the interface (after it changed). The order stays: it is by file
+    /// names, which no language changes.
+    pub fn retranslate_series(&mut self) {
+        let Some(series) = self.opened_series.as_mut() else {
+            return;
+        };
+        for entry in &mut series.entries {
+            entry.make_texts();
+        }
+        self.series_content_revision = self.series_content_revision.wrapping_add(1);
+        self.needs_render = true;
     }
 
     /// Shows only the series entries matching `filter`.
@@ -1997,6 +2096,7 @@ mod tests {
     fn entry(name: &str, stain: Option<&str>, age_s: u64, dir: bool) -> super::SeriesEntry {
         super::SeriesEntry {
             path: std::path::PathBuf::from(format!("/series/{name}")),
+            file_name: name.to_string(),
             filename: name.to_string(),
             is_directory: dir,
             modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1000 - age_s)),
@@ -2036,6 +2136,57 @@ mod tests {
         assert_eq!(names(&series), ["S10.svs"]);
         series.filter = "s1".into();
         assert_eq!(names(&series), ["S10.svs", "S1.svs"]);
+    }
+
+    /// The series bar sorts and groups by file names: a DICOM series, whose
+    /// name is shown in the interface's language (isolated in right-to-left
+    /// ones), stays with its case's other slides in every language.
+    #[test]
+    fn series_order_does_not_depend_on_the_language() {
+        use super::{OpenedSeries, SeriesSort};
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        i18n::set_catalog(i18n::by_tag("ar").unwrap(), None);
+        let mut dicom = entry("S21-12345-B1.dcm", None, 0, false);
+        dicom.instances = 3;
+        dicom.make_texts();
+        assert!(dicom.filename.starts_with('\u{2068}'), "{}", dicom.filename);
+        let mut series = OpenedSeries {
+            entries: vec![
+                entry("S99-00001-A1.svs", None, 0, false),
+                dicom,
+                entry("S21-12346-A1.svs", None, 0, false),
+                entry("S21-12345-A1.svs", None, 0, false),
+            ],
+            ..OpenedSeries::default()
+        };
+        let names = |series: &OpenedSeries| -> Vec<String> {
+            series
+                .visible_entries()
+                .iter()
+                .map(|e| e.file_name.clone())
+                .collect()
+        };
+        let expected = [
+            "S21-12345-A1.svs",
+            "S21-12345-B1.dcm",
+            "S21-12346-A1.svs",
+            "S99-00001-A1.svs",
+        ];
+        series.apply_sort();
+        assert_eq!(names(&series), expected);
+        series.sort = SeriesSort::Case;
+        series.apply_sort();
+        assert_eq!(names(&series), expected);
+        // The shown name is found too.
+        series.filter = "dicom series".into();
+        assert_eq!(names(&series), ["S21-12345-B1.dcm"]);
     }
 
     #[test]

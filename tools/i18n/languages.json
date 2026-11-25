@@ -1,0 +1,250 @@
+[
+  {
+    "decimal_separator": ".",
+    "english_name": "English",
+    "native_name": "English",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "en"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Arabic",
+    "native_name": "العربية",
+    "plural_forms": "nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);",
+    "rtl": true,
+    "tag": "ar"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Czech",
+    "native_name": "Čeština",
+    "plural_forms": "nplurals=3; plural=(n==1 ? 0 : n>=2 && n<=4 ? 1 : 2);",
+    "rtl": false,
+    "tag": "cs"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Danish",
+    "native_name": "Dansk",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "da"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "German",
+    "native_name": "Deutsch",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "de"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Greek",
+    "native_name": "Ελληνικά",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "el"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Spanish",
+    "native_name": "Español",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "es"
+  },
+  {
+    "decimal_separator": "٫",
+    "english_name": "Persian",
+    "native_name": "فارسی",
+    "plural_forms": "nplurals=2; plural=(n > 1);",
+    "rtl": true,
+    "tag": "fa"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Finnish",
+    "native_name": "Suomi",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "fi"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "French",
+    "native_name": "Français",
+    "plural_forms": "nplurals=2; plural=(n > 1);",
+    "rtl": false,
+    "tag": "fr"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Hebrew",
+    "native_name": "עברית",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": true,
+    "tag": "he"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Hindi",
+    "native_name": "हिन्दी",
+    "plural_forms": "nplurals=2; plural=(n > 1);",
+    "rtl": false,
+    "tag": "hi"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Hungarian",
+    "native_name": "Magyar",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "hu"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Indonesian",
+    "native_name": "Bahasa Indonesia",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "id"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Italian",
+    "native_name": "Italiano",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "it"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Japanese",
+    "native_name": "日本語",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "ja"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Korean",
+    "native_name": "한국어",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "ko"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Norwegian Bokmål",
+    "native_name": "Norsk bokmål",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "nb"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Dutch",
+    "native_name": "Nederlands",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "nl"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Polish",
+    "native_name": "Polski",
+    "plural_forms": "nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+    "rtl": false,
+    "tag": "pl"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Portuguese (Brazil)",
+    "native_name": "Português (Brasil)",
+    "plural_forms": "nplurals=2; plural=(n > 1);",
+    "rtl": false,
+    "tag": "pt-BR"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Romanian",
+    "native_name": "Română",
+    "plural_forms": "nplurals=3; plural=(n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < 20)) ? 1 : 2);",
+    "rtl": false,
+    "tag": "ro"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Russian",
+    "native_name": "Русский",
+    "plural_forms": "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+    "rtl": false,
+    "tag": "ru"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Slovenian",
+    "native_name": "Slovenščina",
+    "plural_forms": "nplurals=4; plural=(n%100==1 ? 0 : n%100==2 ? 1 : n%100==3 || n%100==4 ? 2 : 3);",
+    "rtl": false,
+    "tag": "sl"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Swedish",
+    "native_name": "Svenska",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "sv"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Thai",
+    "native_name": "ไทย",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "th"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Turkish",
+    "native_name": "Türkçe",
+    "plural_forms": "nplurals=2; plural=(n != 1);",
+    "rtl": false,
+    "tag": "tr"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Ukrainian",
+    "native_name": "Українська",
+    "plural_forms": "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+    "rtl": false,
+    "tag": "uk"
+  },
+  {
+    "decimal_separator": ",",
+    "english_name": "Vietnamese",
+    "native_name": "Tiếng Việt",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "vi"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Chinese (Simplified)",
+    "native_name": "简体中文",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "zh-Hans"
+  },
+  {
+    "decimal_separator": ".",
+    "english_name": "Chinese (Traditional)",
+    "native_name": "繁體中文",
+    "plural_forms": "nplurals=1; plural=0;",
+    "rtl": false,
+    "tag": "zh-Hant"
+  }
+]

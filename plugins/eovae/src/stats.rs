@@ -98,9 +98,10 @@ pub fn decimals_for(step: f64) -> usize {
     ((-step.log10()).ceil() as i64 + 1).clamp(2, 6) as usize
 }
 
-/// Formats an error value with `decimals` decimals.
+/// Formats an error value with `decimals` decimals, for the sidebar (with
+/// the decimal separator of the interface's language).
 pub fn format_error(value: f64, decimals: usize) -> String {
-    format!("{value:.decimals$}")
+    eov_plugin_api::i18n::format_decimal(value, decimals)
 }
 
 #[derive(PartialEq)]

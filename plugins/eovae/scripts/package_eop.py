@@ -7,6 +7,9 @@ An .eop is a tar archive, plain or compressed with zstd (``--zstd``); eov
     plugin.toml
     libeovae.so | libeovae.dylib | eovae.dll
     ui/...                          sidebar and icons
+    translations/<tag>/LC_MESSAGES/*.po
+                                    the catalogs ([i18n] in plugin.toml),
+                                    not the template (.pot); none is fine
     onnxruntime/...                 optional ONNX Runtime (see below)
 
 ONNX Runtime policy
@@ -122,6 +125,43 @@ def plugin_id() -> str:
         if not match:
             raise SystemExit("plugin.toml has no id")
         return match.group(1)
+
+
+def catalogs_dir() -> pathlib.Path | None:
+    """The folder of the plugin's translations (``[i18n]`` in plugin.toml,
+    ``translations`` by default); ``None`` when the plugin declares none."""
+    text = (PLUGIN_ROOT / "plugin.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+
+        i18n = tomllib.loads(text).get("i18n")
+        if i18n is None:
+            return None
+        folder = i18n.get("catalogs", "translations")
+    except ModuleNotFoundError:  # Python < 3.11
+        section = re.search(r"^\[i18n\][ \t]*$(.*?)(?=^\[|\Z)", text, re.MULTILINE | re.DOTALL)
+        if section is None:
+            return None
+        match = re.search(r'^catalogs\s*=\s*"([^"]+)"', section.group(1), re.MULTILINE)
+        folder = match.group(1) if match else "translations"
+    path = (PLUGIN_ROOT / folder).resolve()
+    if path != PLUGIN_ROOT and PLUGIN_ROOT not in path.parents:
+        raise SystemExit(f"[i18n] catalogs must stay inside the plugin, got {folder}")
+    return path
+
+
+def catalog_files() -> dict[str, pathlib.Path]:
+    """The catalogs to package (``<catalogs>/<tag>/LC_MESSAGES/*.po``), by
+    their path in the package. The template (``.pot``) stays behind; a
+    plugin without catalogs yet packages none."""
+    folder = catalogs_dir()
+    if folder is None or not folder.is_dir():
+        return {}
+    return {
+        path.relative_to(PLUGIN_ROOT).as_posix(): path
+        for path in sorted(folder.glob("*/LC_MESSAGES/*.po"))
+        if path.is_file()
+    }
 
 
 def library_name(plugin: str, target: str) -> str:
@@ -322,6 +362,7 @@ def main() -> int:
     for path in sorted((PLUGIN_ROOT / "ui").rglob("*")):
         if path.is_file() and path.suffix in (".slint", ".svg", ".png"):
             entries[path.relative_to(PLUGIN_ROOT).as_posix()] = path
+    entries.update(catalog_files())
 
     with tempfile.TemporaryDirectory() as scratch:
         runtime_root = None

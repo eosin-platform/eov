@@ -1,16 +1,61 @@
 //! The Plugins panel (§14.4, PLG-14): what is installed, where it came
 //! from, whether it runs, and why not.
 
-use super::UiHost;
+use super::{UiHost, plugin_text};
 use crate::PluginRowData;
 use crate::plugin_runtime::PluginStatus;
+use crate::update::registry::shown_error;
+use eov_plugin_api::i18n::{isolate, join_sentences, tr};
 use eov_plugin_api::protocol::NotifyLevel;
 use slint::{Model, ModelRc, VecModel};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Where a package came from, as the Plugins panel shows it (the audit log,
+/// JSON and the command line keep `Provenance::describe`).
+fn origin_label(provenance: &crate::update::plugins::Provenance) -> String {
+    use crate::update::registry::{SOURCE_GITHUB, SOURCE_LOCAL, SOURCE_OFFICIAL};
+    match (provenance.kind.as_str(), &provenance.repository) {
+        // Translators: a plugin installed from eov's official catalog.
+        (SOURCE_OFFICIAL, _) => tr!("Plugin origin" => "official"),
+        // Translators: a plugin installed from a GitHub repository; {} is the
+        // repository (owner/name).
+        (SOURCE_GITHUB, Some(repository)) => tr!(
+            "Plugin origin" => "GitHub ({})",
+            isolate(repository.trim_start_matches("https://github.com/"))
+        ),
+        // Translators: a plugin installed from a file on this computer.
+        (SOURCE_LOCAL, _) => tr!("Plugin origin" => "local"),
+        // Translators: a plugin copied into the plugin folder by hand.
+        ("unmanaged", _) => tr!("Plugin origin" => "unmanaged"),
+        // Translators: a plugin the administrator installed for everyone.
+        ("system", _) => tr!("Plugin origin" => "system"),
+        _ => provenance.describe(),
+    }
+}
+
 /// How often the open Plugins panel shows the plugins' resource use again.
 const USAGE_REFRESH: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// What the last Check for Updates found, for the note under the list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum UpdateCheck {
+    /// Newer versions of this many plugins.
+    Found(usize),
+    Failed,
+}
+
+impl UpdateCheck {
+    fn note(self) -> String {
+        match self {
+            UpdateCheck::Found(0) => tr!("All plugins are up to date."),
+            UpdateCheck::Found(n) => {
+                tr!("An update is available." | "{n} updates are available." % n)
+            }
+            UpdateCheck::Failed => tr!("The check failed (see Messages)."),
+        }
+    }
+}
 
 impl UiHost {
     /// Keeps the Plugins panel's resource use current while it is open.
@@ -77,19 +122,27 @@ impl UiHost {
                 let mut detail = Vec::new();
                 if let Some(package) = package {
                     if package.modified {
-                        detail.push(
-                            "The package changed after it was installed; eov cannot tell whether it is the one that was installed.",
-                        );
+                        detail.push(tr!(
+                            "The package changed after it was installed; eov cannot tell whether it is the one that was installed."
+                        ));
                     }
                     if package.system {
-                        detail.push("Installed by your administrator.");
+                        detail.push(tr!("Installed by your administrator."));
                     }
                 }
                 PluginRowData {
                     id: slot.info.id.clone().into(),
-                    name: slot.info.name.clone().into(),
+                    // In the interface's language when the plugin is
+                    // translated (its catalog's `plugin.toml` entries).
+                    name: plugin_text(&slot.info, &slot.info.name).into(),
                     version: slot.info.version.clone().into(),
-                    description: slot.info.description.clone().unwrap_or_default().into(),
+                    description: slot
+                        .info
+                        .description
+                        .as_deref()
+                        .map(|text| plugin_text(&slot.info, text))
+                        .unwrap_or_default()
+                        .into(),
                     status: slot.status.label().into(),
                     status_level: level,
                     api_version: slot.api_version.clone().unwrap_or_default().into(),
@@ -100,10 +153,10 @@ impl UiHost {
                         .unwrap_or_else(|| slot.info.root.display().to_string())
                         .into(),
                     origin: package
-                        .map(|package| package.provenance.describe())
+                        .map(|package| origin_label(&package.provenance))
                         .unwrap_or_default()
                         .into(),
-                    detail: detail.join(" ").into(),
+                    detail: join_sentences(detail).into(),
                     update: updates.get(&slot.info.id).cloned().unwrap_or_default().into(),
                     usage: runtime
                         .usage_summary(&slot.info.id)
@@ -126,10 +179,10 @@ impl UiHost {
                 rows.push(PluginRowData {
                     id: file.clone().into(),
                     name: file.into(),
-                    status: "Not a usable plugin package".into(),
+                    status: tr!("Not a usable plugin package").into(),
                     status_level: 2,
                     source: broken.package_path.display().to_string().into(),
-                    detail: broken.error.clone().into(),
+                    detail: broken.localized_error.clone().into(),
                     can_remove: true,
                     ..Default::default()
                 });
@@ -151,10 +204,18 @@ impl UiHost {
         ui.set_plugin_problems(problems);
         ui.set_plugin_dir_text(self.plugin_dir.display().to_string().into());
         ui.set_plugins_panel_note(if self.safe_mode {
-            "Safe mode: plugins are not loaded in this session.".into()
+            tr!("Safe mode: plugins are not loaded in this session.").into()
         } else {
             "".into()
         });
+    }
+
+    /// Shows the note of the last Check for Updates again (after the
+    /// language changed).
+    pub(super) fn refresh_plugin_update_note(&self) {
+        if let (Some(ui), Some(check)) = (self.ui(), self.plugin_update_check.get()) {
+            ui.set_plugins_update_note(check.note().into());
+        }
     }
 
     /// Check for Updates: compares the installed plugins with the official
@@ -163,16 +224,18 @@ impl UiHost {
         if let Err(error) = crate::update::policy::current().ensure_network_allowed() {
             self.notify(
                 NotifyLevel::Warning,
-                "Checking for plugin updates is turned off",
+                &tr!("Checking for plugin updates is turned off"),
                 Some(&format!("{error:#}")),
                 None,
             );
             return;
         }
         self.confirm(
-            "Check for plugin updates?",
-            "eov downloads the plugin catalog of this release from GitHub (github.com/eosin-platform/eov) and compares it with the installed plugins. Nothing else is sent, and nothing is installed without asking.",
-            "Check",
+            &tr!("Check for plugin updates?"),
+            &tr!(
+                "eov downloads the plugin catalog of this release from GitHub (github.com/eosin-platform/eov) and compares it with the installed plugins. Nothing else is sent, and nothing is installed without asking."
+            ),
+            &tr!("Button" => "Check"),
             false,
             |agreed| {
                 if agreed {
@@ -183,20 +246,22 @@ impl UiHost {
     }
 
     fn start_plugin_update_check(&self) {
+        self.plugin_update_check.set(None);
         if let Some(ui) = self.ui() {
             ui.set_plugins_checking(true);
             ui.set_plugins_update_note("".into());
         }
-        let job = self.start_host_job("Checking for plugin updates", None);
+        let job = self.start_host_job(&tr!("Checking for plugin updates"), None);
         let failed_job = job.clone();
         let plugin_dir = self.plugin_dir.clone();
         let spawned = std::thread::Builder::new()
             .name("eov-plugin-updates".to_string())
             .spawn(move || {
                 let result = crate::update::plugins::PluginContext::for_panel(&plugin_dir)
-                    .and_then(|mut ctx| crate::update::plugins::check_for_updates(&mut ctx))
-                    .map_err(|error| format!("{error:#}"));
+                    .and_then(|mut ctx| crate::update::plugins::check_for_updates(&mut ctx));
                 let _ = slint::invoke_from_event_loop(move || {
+                    // Worded in the interface's language of the moment.
+                    let result = result.map_err(|error| shown_error(&error));
                     super::with_host(|host| host.plugin_update_check_done(&job, result));
                 });
             });
@@ -215,32 +280,29 @@ impl UiHost {
             return;
         };
         ui.set_plugins_checking(false);
-        let note = match result {
+        let check = match result {
             Ok(listings) => {
                 let found: HashMap<String, String> = listings
                     .into_iter()
                     .filter(|row| row.status == "update available")
                     .filter_map(|row| Some((row.id, row.available?)))
                     .collect();
-                let note = match found.len() {
-                    0 => "All plugins are up to date.".to_string(),
-                    1 => "An update is available.".to_string(),
-                    n => format!("{n} updates are available."),
-                };
+                let check = UpdateCheck::Found(found.len());
                 *self.plugin_updates.borrow_mut() = found;
-                note
+                check
             }
             Err(error) => {
                 self.notify(
                     NotifyLevel::Warning,
-                    "Could not check for plugin updates",
+                    &tr!("Could not check for plugin updates"),
                     Some(&error),
                     None,
                 );
-                "The check failed (see Messages).".to_string()
+                UpdateCheck::Failed
             }
         };
-        ui.set_plugins_update_note(note.into());
+        self.plugin_update_check.set(Some(check));
+        ui.set_plugins_update_note(check.note().into());
         self.refresh_plugin_panel();
     }
 
@@ -253,9 +315,15 @@ impl UiHost {
         };
         let plugin_id = plugin_id.to_string();
         self.confirm(
-            &format!("Update {name} to {version}?"),
-            "eov downloads the package from where the plugin was installed from, checks it and installs it. The new version is used when eov restarts.",
-            "Update",
+            &tr!(
+                "Update {name} to {version}?",
+                name = isolate(&name),
+                version = isolate(&version)
+            ),
+            &tr!(
+                "eov downloads the package from where the plugin was installed from, checks it and installs it. The new version is used when eov restarts."
+            ),
+            &tr!("Button" => "Update"),
             false,
             move |agreed| {
                 if agreed {
@@ -266,7 +334,7 @@ impl UiHost {
     }
 
     fn start_plugin_update(&self, plugin_id: String, name: String, version: String) {
-        let job = self.start_host_job(&format!("Updating {name}"), None);
+        let job = self.start_host_job(&tr!("Updating {}", isolate(&name)), None);
         let failed_job = job.clone();
         let plugin_dir = self.plugin_dir.clone();
         let spawned = std::thread::Builder::new()
@@ -275,9 +343,9 @@ impl UiHost {
                 let result = crate::update::plugins::PluginContext::for_panel(&plugin_dir)
                     .and_then(|mut ctx| {
                         crate::update::plugins::update_from_panel(&mut ctx, &plugin_id)
-                    })
-                    .map_err(|error| format!("{error:#}"));
+                    });
                 let _ = slint::invoke_from_event_loop(move || {
+                    let result = result.map_err(|error| shown_error(&error));
                     super::with_host(|host| {
                         host.finish_host_job(&job);
                         match result {
@@ -285,14 +353,18 @@ impl UiHost {
                                 host.plugin_updates.borrow_mut().remove(&plugin_id);
                                 host.notify(
                                     NotifyLevel::Info,
-                                    &format!("{name} {version} is installed"),
-                                    Some("Restart eov to use it."),
+                                    &tr!(
+                                        "{name} {version} is installed",
+                                        name = isolate(&name),
+                                        version = isolate(&version)
+                                    ),
+                                    Some(&tr!("Restart eov to use it.")),
                                     None,
                                 );
                             }
                             Err(error) => host.notify(
                                 NotifyLevel::Error,
-                                &format!("Could not update {name}"),
+                                &tr!("Could not update {}", isolate(&name)),
                                 Some(&error),
                                 None,
                             ),
@@ -305,7 +377,7 @@ impl UiHost {
             self.finish_host_job(&failed_job);
             self.notify(
                 NotifyLevel::Error,
-                "Could not update the plugin",
+                &tr!("Could not update the plugin"),
                 Some(&error.to_string()),
                 None,
             );
@@ -322,8 +394,8 @@ impl UiHost {
                 Err(error) => {
                     self.notify(
                         NotifyLevel::Error,
-                        "Cannot remove the plugin",
-                        Some(&format!("{error:#}")),
+                        &tr!("Cannot remove the plugin"),
+                        Some(&shown_error(&error)),
                         None,
                     );
                     return;
@@ -341,11 +413,12 @@ impl UiHost {
             .collect::<Vec<_>>()
             .join("\n");
         self.confirm(
-            &format!("Remove {name}?"),
-            &format!(
-                "This deletes:\n{files}\n\nData the plugin saved (annotations, results, settings) is kept."
+            &tr!("Remove {}?", isolate(&name)),
+            &tr!(
+                "This deletes:\n{files}\n\nData the plugin saved (annotations, results, settings) is kept.",
+                files = files
             ),
-            "Remove",
+            &tr!("Button" => "Remove"),
             true,
             move |agreed| {
                 if agreed {
@@ -362,11 +435,16 @@ impl UiHost {
             self.on_plugin_stopped(id);
         }
         match crate::update::plugins::apply_removal(&self.plugin_dir, &removal) {
-            Ok(()) => self.notify(NotifyLevel::Info, &format!("Removed {name}"), None, None),
+            Ok(()) => self.notify(
+                NotifyLevel::Info,
+                &tr!("Removed {}", isolate(&name)),
+                None,
+                None,
+            ),
             Err(error) => self.notify(
                 NotifyLevel::Error,
-                &format!("Could not remove {name}"),
-                Some(&format!("{error:#}")),
+                &tr!("Could not remove {}", isolate(&name)),
+                Some(&shown_error(&error)),
                 None,
             ),
         }
@@ -394,25 +472,25 @@ impl UiHost {
             .name("eov-plugin-registry".to_string())
             .spawn(move || {
                 let result =
-                    crate::update::plugins::set_plugin_enabled(&plugin_dir, &plugin_id, enabled)
-                        .map_err(|error| format!("{error:#}"));
+                    crate::update::plugins::set_plugin_enabled(&plugin_dir, &plugin_id, enabled);
                 let _ = slint::invoke_from_event_loop(move || {
+                    let result = result.map_err(|error| shown_error(&error));
                     super::with_host(|host| match result {
                         Ok(_) if enabled => host.notify(
                             NotifyLevel::Info,
-                            &format!("{name} will be enabled when eov restarts"),
+                            &tr!("{} will be enabled when eov restarts", isolate(&name)),
                             None,
                             None,
                         ),
                         Ok(_) => host.notify(
                             NotifyLevel::Info,
-                            &format!("{name} was disabled"),
+                            &tr!("{} was disabled", isolate(&name)),
                             None,
                             None,
                         ),
                         Err(error) => host.notify(
                             NotifyLevel::Error,
-                            "Could not save plugin settings",
+                            &tr!("Could not save plugin settings"),
                             Some(&error),
                             None,
                         ),
@@ -422,7 +500,7 @@ impl UiHost {
         if let Err(error) = spawned {
             self.notify(
                 NotifyLevel::Error,
-                "Could not save plugin settings",
+                &tr!("Could not save plugin settings"),
                 Some(&error.to_string()),
                 None,
             );
@@ -431,6 +509,9 @@ impl UiHost {
 
     pub(crate) fn open_plugin_folder(&self) {
         let _ = std::fs::create_dir_all(&self.plugin_dir);
-        crate::desktop::open_folder(self.plugin_dir.clone(), "Could not open the plugin folder");
+        crate::desktop::open_folder(
+            self.plugin_dir.clone(),
+            &tr!("Could not open the plugin folder"),
+        );
     }
 }

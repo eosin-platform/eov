@@ -10,6 +10,7 @@ use crate::contract::ContractOverride;
 use crate::engine::DevicePreference;
 use crate::model::ModelInfo;
 use crate::tiling::Resolution;
+use eov_plugin_api::i18n::{self, tr};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -103,20 +104,15 @@ pub fn max_threads() -> usize {
 }
 
 impl Config {
-    /// Reads the stored settings; problems fall back to defaults and are
-    /// returned as a message.
+    /// Reads the stored settings. Settings that cannot be read fall back to
+    /// the defaults, with the reason (serde's text, in English).
     pub fn from_settings(settings: &Map<String, Value>) -> (Self, Option<String>) {
         let Some(value) = settings.get(SETTINGS_KEY) else {
             return (Self::default(), None);
         };
         match serde_json::from_value::<Config>(value.clone()) {
             Ok(config) => (config.sanitized(), None),
-            Err(error) => (
-                Self::default(),
-                Some(format!(
-                    "eovae settings were unreadable and were reset ({error})"
-                )),
-            ),
+            Err(error) => (Self::default(), Some(error.to_string())),
         }
     }
 
@@ -157,8 +153,11 @@ impl Config {
         if eov_plugin_api::protocol::is_sha256_hex(text) {
             Ok(Some(text.to_ascii_lowercase()))
         } else {
-            Err(format!(
-                "'{text}' is not a SHA-256 (64 hex digits); the reference model is downloaded"
+            Err(tr!(
+                // Translators: {} is what was typed into the SHA-256 field; it is
+                // ignored and the field keeps its previous value.
+                "'{}' is not a SHA-256 (64 hex digits) and was not saved.",
+                i18n::isolate(text)
             ))
         }
     }
@@ -197,25 +196,34 @@ impl Config {
         contract
     }
 
-    /// Parses a typed thread count; empty or invalid text keeps `current`
-    /// (clearing the field used to persist 1, VAE-17).
+    /// Parses a typed thread count (0 or "auto": as many as the CPU has);
+    /// empty or invalid text keeps `current` (clearing the field used to
+    /// persist 1, VAE-17).
     pub fn parse_threads(text: &str, current: usize) -> usize {
         match text.trim() {
             "" => current,
-            "auto" | "Auto" | "0" => 0,
-            other => other
-                .parse::<usize>()
+            "auto" | "Auto" => 0,
+            other => typed_count(other)
                 .map(|n| n.min(max_threads()))
                 .unwrap_or(current),
         }
     }
 
+    /// Parses a typed batch size; invalid text keeps `current`.
     pub fn parse_batch(text: &str, current: usize) -> usize {
-        text.trim()
-            .parse::<usize>()
+        typed_count(text)
             .map(|n| n.clamp(1, 256))
             .unwrap_or(current)
     }
+}
+
+/// A whole number a user typed, in Western, Arabic-Indic or Persian digits
+/// (as their keyboards type them, see [`i18n::parse_decimal`]); `None` for
+/// anything else, such as a fraction or a negative number.
+fn typed_count(text: &str) -> Option<usize> {
+    let value = i18n::parse_decimal(text)?;
+    // Too large a number saturates; the callers clamp it.
+    (value >= 0.0 && value.fract() == 0.0).then_some(value as usize)
 }
 
 #[cfg(test)]
@@ -232,7 +240,7 @@ mod tests {
         settings.insert(SETTINGS_KEY.into(), json!({"device": "warp-drive"}));
         let (config, warning) = Config::from_settings(&settings);
         assert_eq!(config, Config::default());
-        assert!(warning.unwrap().contains("reset"));
+        assert!(warning.unwrap().contains("warp-drive"), "says why");
     }
 
     #[test]
@@ -261,9 +269,20 @@ mod tests {
         assert_eq!(Config::parse_threads("", 6), 6, "clearing keeps the value");
         assert_eq!(Config::parse_threads("abc", 6), 6);
         assert_eq!(Config::parse_threads("auto", 6), 0);
+        assert_eq!(Config::parse_threads("0", 6), 0);
         assert_eq!(Config::parse_threads("2", 6), 2.min(max_threads()));
+        assert_eq!(Config::parse_threads("2.5", 6), 6);
+        assert_eq!(Config::parse_threads("-2", 6), 6);
+        assert_eq!(Config::parse_threads("100000", 6), max_threads());
         assert_eq!(Config::parse_batch("0", 16), 1);
         assert_eq!(Config::parse_batch("x", 16), 16);
+        assert_eq!(Config::parse_batch(" 64 ", 16), 64);
+        assert_eq!(Config::parse_batch("100000", 16), 256);
+        // Persian and Arabic-Indic digits, as their keyboards type them.
+        assert_eq!(Config::parse_threads("۲", 6), 2.min(max_threads()));
+        assert_eq!(Config::parse_threads("۰", 6), 0);
+        assert_eq!(Config::parse_batch("۶۴", 16), 64);
+        assert_eq!(Config::parse_batch("٣٢", 16), 32);
     }
 
     #[test]

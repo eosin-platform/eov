@@ -17,11 +17,13 @@
 use crate::host_ui::UiHost;
 use crate::state::PaneId;
 use crate::tile_loader::TileLoader;
+use crate::ui_update::localized_number;
 use crate::{AppWindow, ChannelRow};
 use eov_common::channels::{
     ChannelDisplay, ChannelSet, ChannelSettings, ChannelStats, GAMMA_RANGE, Palette, SampleType,
 };
 use eov_common::{TileCoord, TileManager, WsiFile};
+use eov_plugin_api::i18n::{format_decimal, isolate, parse_decimal, tr};
 use rayon::prelude::*;
 use slint::{Color, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer, VecModel};
 use std::cell::RefCell;
@@ -111,17 +113,16 @@ pub(crate) enum Edit {
     Palette(Palette),
 }
 
+/// A value typed into the panel (with `.`, `,` or the language's decimal
+/// separator).
 fn parse_number(text: &str) -> Option<f64> {
-    text.trim()
-        .replace(',', ".")
-        .parse::<f64>()
-        .ok()
-        .filter(|v| v.is_finite())
+    parse_decimal(text)
 }
 
+/// A window end as the panel shows it, in the interface's language.
 fn format_value(value: f64, sample_type: SampleType) -> String {
     if sample_type.is_float() {
-        eov_common::format_significant(value, 4)
+        localized_number(&eov_common::format_significant(value, 4))
     } else {
         format!("{}", value.round() as i64)
     }
@@ -325,7 +326,7 @@ impl PanelState {
                     solo: self.solo.as_ref().is_some_and(|(solo, _)| *solo == index),
                     min_text: format_value(settings.min, sample_type),
                     max_text: format_value(settings.max, sample_type),
-                    gamma_text: format!("{:.2}", settings.gamma),
+                    gamma_text: format_decimal(settings.gamma, 2),
                     low: self.position(index, settings.min),
                     high: self.position(index, settings.max),
                     gamma_position: gamma_position(settings.gamma),
@@ -337,27 +338,54 @@ impl PanelState {
     /// One line about the channels: how many are shown, the sample type,
     /// and which focal plane and time point are shown.
     pub(crate) fn summary(&self, planes: PlanePosition) -> String {
-        let mut parts = vec![format!(
-            "{} of {} channels shown",
-            self.display.visible_count(),
-            self.len()
+        let mut parts = vec![tr!(
+            // Translators: how many of the slide's channels are shown, of all its
+            // channels (both bare numbers).
+            "Channels shown: {shown} of {total}",
+            shown = self.display.visible_count(),
+            total = self.len()
         )];
         parts.push(self.set.sample_type.name().to_string());
         if let Some(bits) = self.set.significant_bits {
-            parts.push(format!("{bits} significant bits"));
+            parts.push(tr!("{n} significant bit" | "{n} significant bits" % bits));
         }
-        for ((shown, count), declared, what) in [
-            (planes.focal, self.set.size_z, "focal plane"),
-            (planes.time, self.set.size_t, "time point"),
+        for ((shown, count), declared, focal) in [
+            (planes.focal, self.set.size_z, true),
+            (planes.time, self.set.size_t, false),
         ] {
             let count = count.max(1);
             if count > 1 || declared > 1 {
-                let mut part = format!("{what} {} of {count}", shown.min(count - 1) + 1);
-                if declared > u64::from(count) {
-                    // The reader stops at planes it cannot show.
-                    part.push_str(&format!(" ({declared} in the file)"));
-                }
-                parts.push(part);
+                let current = shown.min(count - 1) + 1;
+                // The reader stops at planes it cannot show.
+                let cut = declared > u64::from(count);
+                parts.push(match (focal, cut) {
+                    (true, false) => tr!(
+                        "focal plane {current} of {count}",
+                        current = current,
+                        count = count
+                    ),
+                    // Translators: the slide has more focal planes than eov
+                    // can show; {declared} is how many its file declares.
+                    (true, true) => tr!(
+                        "focal plane {current} of {count} ({declared} in the file)",
+                        current = current,
+                        count = count,
+                        declared = declared
+                    ),
+                    (false, false) => tr!(
+                        "time point {current} of {count}",
+                        current = current,
+                        count = count
+                    ),
+                    // Translators: the slide has more time points than eov
+                    // can show; {declared} is how many its file declares.
+                    (false, true) => tr!(
+                        "time point {current} of {count} ({declared} in the file)",
+                        current = current,
+                        count = count,
+                        declared = declared
+                    ),
+                });
             }
         }
         parts.join(" · ")
@@ -525,7 +553,7 @@ pub(crate) fn open_for_focused_pane(host: &UiHost) {
     };
     match file_id {
         Some(file_id) => open(host, file_id),
-        None => host.status("Open a slide to adjust its channels"),
+        None => host.status(&tr!("Open a slide to adjust its channels")),
     }
 }
 
@@ -546,9 +574,9 @@ pub(crate) fn open(host: &UiHost, file_id: i32) {
         wsi.channel_display(),
         wsi.default_channel_display(),
     ) else {
-        host.status(
-            "This slide has no channels to adjust: it is shown as its colours were scanned",
-        );
+        host.status(&tr!(
+            "This slide has no channels to adjust: it is shown as its colours were scanned"
+        ));
         return;
     };
     let state = PanelState::new(set, defaults, display);
@@ -559,7 +587,7 @@ pub(crate) fn open(host: &UiHost, file_id: i32) {
         .map(|(index, row)| slint_row(index, row, histogram_image(&state.histogram_pixels(index))))
         .collect();
     let rows = Rc::new(VecModel::from(rows));
-    ui.set_channels_title(format!("Channels · {file_name}").into());
+    ui.set_channels_title(channels_title(&file_name).into());
     ui.set_channels_summary(state.summary(PlanePosition::of(&wsi)).into());
     ui.set_channel_rows(ModelRc::from(Rc::clone(&rows)));
     let chips: Vec<Color> = chip_colors().into_iter().map(slint_color).collect();
@@ -630,11 +658,36 @@ pub(crate) fn edit(host: &UiHost, edit: Edit) {
     };
     refresh_summary(&ui);
     if let Err(error) = wsi.set_channel_display(display) {
-        host.status(&format!("Could not change the channels: {error}"));
+        host.status(&tr!("Could not change the channels: {}", error));
         return;
     }
     rebuild_slide(host, file_id, &wsi);
     schedule_save();
+}
+
+/// The panel's title for slide `file_name`.
+fn channels_title(file_name: &str) -> String {
+    tr!("Channels · {}", isolate(file_name))
+}
+
+/// Writes the open panel's title, summary and values again, in the language
+/// of the interface (after it changed).
+pub(crate) fn refresh_texts(ui: &AppWindow) {
+    let title = PANEL.with(|panel| {
+        let panel = panel.borrow();
+        let open = panel.as_ref()?;
+        let rows = open.state.rows();
+        for (index, row) in rows.iter().enumerate() {
+            let histogram = histogram_image(&open.state.histogram_pixels(index));
+            open.rows
+                .set_row_data(index, slint_row(index, row, histogram));
+        }
+        Some(channels_title(&open.file_name))
+    });
+    if let Some(title) = title {
+        ui.set_channels_title(title.into());
+        refresh_summary(ui);
+    }
 }
 
 /// Shows the open panel's summary again (after an edit, or another focal
@@ -938,11 +991,11 @@ mod tests {
         };
         assert_eq!(
             state.summary(at(0, 0)),
-            "3 of 3 channels shown · uint16 · focal plane 1 of 3"
+            "Channels shown: 3 of 3 · uint16 · focal plane 1 of 3"
         );
         assert_eq!(
             state.summary(at(2, 0)),
-            "3 of 3 channels shown · uint16 · focal plane 3 of 3"
+            "Channels shown: 3 of 3 · uint16 · focal plane 3 of 3"
         );
         // A stack the reader cut short says how deep the file is.
         let cut = PlanePosition {
@@ -951,7 +1004,7 @@ mod tests {
         };
         assert_eq!(
             state.summary(cut),
-            "3 of 3 channels shown · uint16 · focal plane 1 of 1 (3 in the file)"
+            "Channels shown: 3 of 3 · uint16 · focal plane 1 of 1 (3 in the file)"
         );
     }
 
@@ -1023,7 +1076,7 @@ mod tests {
                     focal: (0, 3),
                     time: (0, 1)
                 })
-                .starts_with("3 of 3")
+                .starts_with("Channels shown: 3 of 3")
         );
     }
 
@@ -1083,7 +1136,10 @@ mod tests {
                 .collect();
             assert_eq!(visible, [false, true, false]);
             assert!(ui.get_channel_rows().row_data(1).unwrap().solo);
-            assert!(ui.get_channels_summary().starts_with("1 of 3"));
+            assert!(
+                ui.get_channels_summary()
+                    .starts_with("Channels shown: 1 of 3")
+            );
             ui.invoke_channels_color_chosen(1, Color::from_rgb_u8(255, 0, 255));
             assert_eq!(
                 wsi.channel_display().unwrap().channels[1].color,

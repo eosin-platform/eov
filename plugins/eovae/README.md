@@ -315,8 +315,9 @@ python3 plugins/eovae/scripts/package_eop.py \
 debug build with `--ort-dir "$EOVAE_ORT_DIR"` when that is set, else with
 `--no-ort`.
 
-An `.eop` is a tar of `plugin.toml`, the library, `ui/` and an optional
-`onnxruntime/` folder; `--zstd` compresses it (eov 1.0 reads plain and
+An `.eop` is a tar of `plugin.toml`, the library, `ui/`, the translations
+(`translations/<tag>/LC_MESSAGES/eovae.po`, when there are any) and an
+optional `onnxruntime/` folder; `--zstd` compresses it (eov 1.0 reads plain and
 zstd-compressed packages; the script uses Python 3.14's zstd module, the
 `zstandard` module or the `zstd` command). `--fetch-ort` downloads the
 pinned ONNX Runtime 1.28.3 for `--platform` (`linux-x64`, `linux-aarch64`,
@@ -329,6 +330,22 @@ ThirdPartyNotices; CUDA and cuDNN are never included. Archives are
 reproducible (`SOURCE_DATE_EPOCH`, default 0; compressed ones for a given
 zstd implementation). A Linux CPU package is about 30 MB, or about 9 MB
 with `--zstd`.
+
+## Translations
+
+eovae follows the language of eov's interface. Its texts are written in
+English and marked for translation (`tr!` in the Rust code, `@tr` in
+`ui/eovae-sidebar.slint`); the catalogs are
+`translations/<tag>/LC_MESSAGES/eovae.po` (`de`, `pt-BR`, `zh-Hant`, …),
+next to the template `translations/eovae.pot`, as `[i18n]` in
+`plugin.toml` declares. They are extracted and updated with
+`tools/i18n/i18n.py` in this repository (`python3 tools/i18n/i18n.py update
+eovae`; see [Translating eov](../../docs/translating.md)). Corrections are
+welcome: improve the catalog of your language and open a pull request.
+
+Batch results (`summary.json`, `tiles.csv`, `heatmap.png`), CSV exports
+with their manifests, and log messages are written in English, whatever
+the language.
 
 ## Module map
 

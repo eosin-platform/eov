@@ -14,7 +14,69 @@ use crate::plugin_runtime::EventTarget;
 use crate::plugin_runtime::undo::{HostChange, UndoAction, UndoEntry, UndoStep};
 use crate::state::PaneId;
 use eov_common::MeasurementUnit;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{FileId, HostEvent, LayerSpec, OverlayObject, Rect, Style};
+
+/// What a measurement mode measures, as menus, tooltips and the
+/// Measurements panel name it, in the language of the interface.
+pub(crate) fn measure_mode_label(mode: MeasureMode) -> String {
+    match mode {
+        MeasureMode::Line => tr!("Measure mode" => "Distance"),
+        MeasureMode::Polyline => tr!("Measure mode" => "Path length"),
+        MeasureMode::Polygon => tr!("Measure mode" => "Polygon area"),
+        MeasureMode::Rectangle => tr!("Measure mode" => "Rectangle area"),
+        MeasureMode::Ellipse => tr!("Measure mode" => "Ellipse area"),
+        MeasureMode::Angle => tr!("Measure mode" => "Angle"),
+    }
+}
+
+/// The undo label of one of the host's own edits, in the language of the
+/// interface. The undo history keeps these labels in English, so that they
+/// follow a change of language; other labels (plugins') are shown as given.
+pub(super) fn undo_label(label: &str) -> String {
+    match label {
+        // Translators: an undo step, shown as "Undo {}" and "Redo {}": word it
+        // as your language names an edit there (a noun phrase is fine).
+        "Set region of interest" => tr!("Set region of interest"),
+        // Translators: an undo step, shown as "Undo {}" and "Redo {}".
+        "Clear region of interest" => tr!("Clear region of interest"),
+        // Translators: an undo step, shown as "Undo {}" and "Redo {}".
+        "Add measurement" => tr!("Add measurement"),
+        // Translators: an undo step, shown as "Undo {}" and "Redo {}".
+        "Edit measurement" => tr!("Edit measurement"),
+        // Translators: an undo step (one measurement), shown as "Undo {}".
+        "Delete measurement" => tr!("Delete measurement"),
+        // Translators: an undo step (several measurements), shown as "Undo {}".
+        "Delete measurements" => tr!("Delete measurements"),
+        // Translators: an undo step (every measurement), shown as "Undo {}".
+        "Clear measurements" => tr!("Clear measurements"),
+        other => other.to_string(),
+    }
+}
+
+/// A measurement as the host's measurement layer draws it: labelled in the
+/// interface's language, with its tooltip, and with the label images get
+/// (`.` decimals and English units, as the export dialog writes its own
+/// measurements), both in `unit`. A copy of the view so burns in the unit
+/// the screen shows, whichever pane is copied.
+pub(crate) fn measurement_object(
+    m: &HostMeasurement,
+    calibration: &Calibration,
+    unit: MeasurementUnit,
+) -> OverlayObject {
+    let value = measure::measure(m.mode, &m.shape, calibration);
+    let label = measure::display_label(m.mode, &value, unit);
+    // Translators: a measurement's tooltip, e.g. "Distance: 1.2 mm".
+    let tooltip = tr!(
+        "{mode}: {value}",
+        mode = measure_mode_label(m.mode),
+        value = eov_plugin_api::i18n::isolate(&label)
+    );
+    OverlayObject::new(m.id.clone(), m.shape.clone())
+        .with_label(label)
+        .with_export_label(measure::label(m.mode, &value, unit))
+        .with_tooltip(tooltip)
+}
 
 /// A change to the host annotations requested by input.
 #[derive(Clone, Debug, PartialEq)]
@@ -70,7 +132,7 @@ impl UiHost {
         let _ = self.store.clear_layer(&Owner::Host, &roi_layer);
         if let Some(rect) = roi {
             let object = OverlayObject::new(ROI_OBJECT, measure::roi_shape(&rect))
-                .with_tooltip("Region of interest");
+                .with_tooltip(tr!("Region of interest"));
             if let Err(error) = self.store.upsert_decorated(
                 &roi_layer,
                 object,
@@ -84,13 +146,7 @@ impl UiHost {
         }
         let objects = measurements
             .iter()
-            .map(|m| {
-                let value = measure::measure(m.mode, &m.shape, calibration);
-                let label = measure::label(m.mode, &value, unit);
-                OverlayObject::new(m.id.clone(), m.shape.clone())
-                    .with_label(label.clone())
-                    .with_tooltip(format!("{}: {label}", m.mode.label()))
-            })
+            .map(|m| measurement_object(m, calibration, unit))
             .collect();
         if let Err(error) = self.store.upsert(
             &Owner::Host,
@@ -139,6 +195,8 @@ impl UiHost {
             let Some(file) = state.get_file_mut(file_id as i32) else {
                 return;
             };
+            // Undo labels stay in English here; `undo_label` translates them
+            // when they are shown.
             let change = match edit {
                 HostEdit::SetRoi(rect) => {
                     let rect = rect.filter(|r| r.width > 0.0 && r.height > 0.0);
@@ -352,7 +410,7 @@ impl UiHost {
                 };
                 self.post(EventTarget::Plugin(plugin_id), event);
             }
-            None => self.status("Nothing to undo"),
+            None => self.status(&tr!("Nothing to undo")),
         }
         self.refresh_undo_ui();
     }
@@ -381,8 +439,18 @@ impl UiHost {
         let undo = self.undo.borrow();
         ui.set_undo_enabled(undo.can_undo(file_id));
         ui.set_redo_enabled(undo.can_redo(file_id));
-        ui.set_undo_label(undo.undo_label(file_id).unwrap_or_default().into());
-        ui.set_redo_label(undo.redo_label(file_id).unwrap_or_default().into());
+        ui.set_undo_label(
+            undo.undo_label(file_id)
+                .map(undo_label)
+                .unwrap_or_default()
+                .into(),
+        );
+        ui.set_redo_label(
+            undo.redo_label(file_id)
+                .map(undo_label)
+                .unwrap_or_default()
+                .into(),
+        );
     }
 
     pub(super) fn refresh_undo_ui_deferred(&self) {

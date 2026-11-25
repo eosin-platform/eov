@@ -1,0 +1,1537 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: eovae\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "EOV VAE"
+msgstr "EOV VAE"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Reconstruction-error analysis with ONNX VAE models, showing how unlike the "
+"training data the tissue looks: heat maps, reconstructions, error statistics "
+"and highest-error regions. Research use only; not for diagnosis."
+msgstr ""
+"Análisis del error de reconstrucción con modelos VAE ONNX, que muestra en "
+"qué medida el tejido difiere de los datos de entrenamiento: mapas de calor, "
+"reconstrucciones, estadísticas de error y regiones de mayor error. Solo para "
+"uso en investigación; no debe usarse para el diagnóstico."
+
+#: src/batch.rs:89
+msgid ""
+"VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and "
+"summary.json per slide"
+msgstr ""
+"Error de reconstrucción VAE de cada tesela de tejido: tiles.csv, heatmap.png "
+"y summary.json por preparación"
+
+#: src/batch.rs:94
+msgid "the ONNX model (default: the one chosen in eov's VAE sidebar)"
+msgstr ""
+"el modelo ONNX (predeterminado: el elegido en la barra lateral VAE de eov)"
+
+#. Translators: a batch parameter: keep auto, cpu and cuda, the values typed
+#: src/batch.rs:104
+msgid "auto (CUDA, else the CPU), cpu or cuda"
+msgstr "auto (CUDA o, si no, la CPU), cpu o cuda"
+
+#: src/batch.rs:109
+msgid "tiles per inference batch, for models without a fixed batch"
+msgstr "teselas por lote de inferencia, para modelos sin lote fijo"
+
+#: src/batch.rs:114
+msgid "CPU inference threads (0: every core)"
+msgstr "hilos de inferencia de la CPU (0: todos los núcleos)"
+
+#: src/batch.rs:119
+msgid "allow TF32 on CUDA (faster, slightly different results)"
+msgstr "permitir TF32 en CUDA (más rápido, resultados ligeramente distintos)"
+
+#. Translators: a batch parameter: keep auto, the value typed
+#: src/batch.rs:126
+msgid ""
+"auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that "
+"level's own pixels)"
+msgstr ""
+"auto (teselas remuestreadas a los µm/px del modelo) o un factor de "
+"reducción, p. ej., 4 (los píxeles propios de ese nivel)"
+
+#: src/batch.rs:132
+msgid "skip glass tiles"
+msgstr "omitir las teselas de vidrio"
+
+#. Translators: a batch parameter: keep auto and lo,hi, the values typed;
+#. p05–p95 is the 5th to 95th percentile
+#: src/batch.rs:140
+msgid ""
+"error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute "
+"error; the same scale for every slide)"
+msgstr ""
+"colores del mapa de error: auto (p05–p95 de cada preparación) o lo,hi (error "
+"absoluto medio; la misma escala para todas las preparaciones)"
+
+#. Translators: a batch parameter: keep off, store and reuse, the values typed
+#: src/batch.rs:148
+msgid ""
+"off; store (keep the results for eov's viewer); or reuse (also take tiles "
+"analysed before with the same model and settings)"
+msgstr ""
+"off; store (guardar los resultados para el visor de eov); o reuse "
+"(aprovechar también las teselas analizadas antes con el mismo modelo y la "
+"misma configuración)"
+
+#. Translators: {} is what was typed into the SHA-256 field; it is
+#. ignored and the field keeps its previous value.
+#: src/config.rs:159
+msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
+msgstr "“{}” no es un SHA-256 (64 dígitos hexadecimales) y no se guardó."
+
+#: src/contract.rs:162
+msgid "HistoVAE defaults"
+msgstr "valores predeterminados de HistoVAE"
+
+#: src/contract.rs:163
+msgid "built-in model card"
+msgstr "ficha del modelo integrada"
+
+#: src/contract.rs:164
+msgid "model metadata"
+msgstr "metadatos del modelo"
+
+#: src/contract.rs:165
+msgid "sidecar file"
+msgstr "archivo auxiliar"
+
+#. Translators: a value a model declares that eovae does not use
+#: src/contract.rs:196
+msgid "ignored {key} = '{value}'"
+msgstr "se ignoró {key} = '{value}'"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:201
+msgid "ignored mean/std with a non-positive std"
+msgstr "se ignoraron mean/std: la desviación estándar (std) no es positiva"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:203
+msgid "mean and std must be declared together"
+msgstr "mean y std (media y desviación estándar) deben declararse juntas"
+
+#: src/db.rs:526
+msgid "result cache: {}"
+msgstr "caché de resultados: {}"
+
+#. Translators: two errors: opening the cache, then a new one
+#: src/db.rs:559
+msgid "{error}; then {again}"
+msgstr "{error}; después, {again}"
+
+#: src/db.rs:567
+msgid ""
+"the result cache was created by a newer eovae; results are kept in memory "
+"only"
+msgstr ""
+"la caché de resultados la creó una versión más reciente de eovae; los "
+"resultados solo se conservan en memoria"
+
+#: src/db.rs:573
+msgid "the result cache is unavailable ({}); results are kept in memory only"
+msgstr ""
+"la caché de resultados no está disponible ({}); los resultados solo se "
+"conservan en memoria"
+
+#: src/db.rs:679
+msgid "the result cache is disabled"
+msgstr "la caché de resultados está desactivada"
+
+#: src/db.rs:683 src/db.rs:684
+msgid "the result cache stopped"
+msgstr "la caché de resultados se detuvo"
+
+#: src/engine.rs:107
+msgid "CPU · {n} thread"
+msgid_plural "CPU · {n} threads"
+msgstr[0] "CPU · {n} hilo"
+msgstr[1] "CPU · {n} hilos"
+
+#: src/engine.rs:121
+msgid ""
+"this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
+msgstr ""
+"este ONNX Runtime no admite CUDA (use la compilación para GPU; consulte el "
+"README)"
+
+#: src/lib.rs:91
+msgid ""
+"this eovae build has no ONNX Runtime support (built without the `onnx` "
+"feature)"
+msgstr ""
+"esta compilación de eovae no admite ONNX Runtime (se compiló sin la "
+"característica `onnx`)"
+
+#: src/lib.rs:96
+msgid "no inference runtime in this build"
+msgstr "esta compilación no incluye ningún entorno de ejecución de inferencia"
+
+#. Translators: an error: the operation was cancelled
+#: src/message.rs:57
+msgid "cancelled"
+msgstr "operación cancelada"
+
+#: src/model.rs:160
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles as the model "
+"declares."
+msgstr ""
+"El tamaño de entrada es dinámico; se analizan teselas de {size}×{size}, como "
+"declara el modelo."
+
+#: src/model.rs:167
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles (declare eovae."
+"tile_size to change)."
+msgstr ""
+"El tamaño de entrada es dinámico; se analizan teselas de {size}×{size} "
+"(declare eovae.tile_size para cambiarlo)."
+
+#: src/model.rs:171
+msgid ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgid_plural ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgstr[0] ""
+"El modelo tiene un lote fijo de {n}: las teselas se analizan de {n} en {n} y "
+"el último lote de cada ejecución se rellena. Exporte con un eje de lote "
+"dinámico para ejecuciones pequeñas sobre el área visible."
+msgstr[1] ""
+"El modelo tiene un lote fijo de {n}: las teselas se analizan de {n} en {n} y "
+"el último lote de cada ejecución se rellena. Exporte con un eje de lote "
+"dinámico para ejecuciones pequeñas sobre el área visible."
+
+#: src/model.rs:175
+msgid "Float16 model: inputs are converted from float32."
+msgstr "Modelo Float16: las entradas se convierten desde float32."
+
+#. Translators: "Model" is the sidebar's Model section
+#: src/model.rs:178
+msgid "{n} image output; using '{name}' (change it in the Model section)."
+msgid_plural ""
+"{n} image outputs; using '{name}' (change it in the Model section)."
+msgstr[0] ""
+"{n} salida de imagen; se usa “{name}” (puede cambiarse en la sección Modelo)."
+msgstr[1] ""
+"{n} salidas de imagen; se usa “{name}” (puede cambiarse en la sección "
+"Modelo)."
+
+#: src/model.rs:183
+msgid "Model metadata: {}."
+msgstr "Metadatos del modelo: {}."
+
+#. Translators: the sidecar is a model's <model>.eovae.json file
+#: src/model.rs:185
+msgid "Sidecar: {}."
+msgstr "Archivo auxiliar: {}."
+
+#: src/model.rs:187
+msgid "Ignored {}: the sidecar must be a JSON object."
+msgstr "Se ignoró {}: el archivo auxiliar debe ser un objeto JSON."
+
+#: src/model.rs:191
+msgid "Ignored {file}: {error}."
+msgstr "Se ignoró {file}: {error}."
+
+#: src/model.rs:196
+msgid ""
+"The model does not declare the resolution it was trained at (eovae.mpp); "
+"errors depend on the level you choose."
+msgstr ""
+"El modelo no declara la resolución con la que se entrenó (eovae.mpp); los "
+"errores dependen del nivel que elija."
+
+#. Translators: "Preprocessing" is the sidebar's section of that name
+#: src/model.rs:200
+msgid ""
+"No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check "
+"it in Preprocessing."
+msgstr ""
+"No se declaró ningún preprocesamiento: se usa el de HistoVAE ([-1, 1], alfa "
+"sobre blanco). Revíselo en Preprocesamiento."
+
+#. Translators: about the model's input tensor; the words in
+#. parentheses name its four axes in order and may be translated.
+#: src/model.rs:304
+msgid ""
+"it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
+msgid_plural ""
+"it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
+msgstr[0] ""
+"tiene {n} dimensión; un tensor de imagen tiene 4 (lote, canales, alto, ancho)"
+msgstr[1] ""
+"tiene {n} dimensiones; un tensor de imagen tiene 4 (lote, canales, alto, "
+"ancho)"
+
+#: src/model.rs:326
+msgid "it has {n} channel; eovae feeds RGB (3 channels)"
+msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
+msgstr[0] "tiene {n} canal; eovae suministra RGB (3 canales)"
+msgstr[1] "tiene {n} canales; eovae suministra RGB (3 canales)"
+
+#: src/model.rs:329
+msgid "its channel dimension is not 3 (RGB)"
+msgstr "su dimensión de canales no es 3 (RGB)"
+
+#: src/model.rs:372
+msgid "the model has no inputs"
+msgstr "el modelo no tiene entradas"
+
+#: src/model.rs:381
+msgid ""
+"the model needs {n} input ({names}); eovae feeds exactly one image input"
+msgid_plural ""
+"the model needs {n} inputs ({names}); eovae feeds exactly one image input"
+msgstr[0] ""
+"el modelo necesita {n} entrada ({names}); eovae suministra exactamente una "
+"entrada de imagen"
+msgstr[1] ""
+"el modelo necesita {n} entradas ({names}); eovae suministra exactamente una "
+"entrada de imagen"
+
+#: src/model.rs:394
+msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
+msgstr "la entrada “{name}” es {kind}; eovae suministra float32 o float16"
+
+#: src/model.rs:403
+msgid "input '{}' does not declare its shape"
+msgstr "la entrada “{}” no declara su forma"
+
+#: src/model.rs:407
+msgid "input '{name}' is not an image: {error}"
+msgstr "la entrada “{name}” no es una imagen: {error}"
+
+#: src/model.rs:418
+msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
+msgstr ""
+"la entrada “{name}” es de {height}×{width}; eovae analiza teselas cuadradas"
+
+#: src/model.rs:437
+msgid "tiles of {} px are not supported (16–2048)"
+msgstr "no se admiten teselas de {} px (16–2048)"
+
+#. Translators: an output of the model (its name) that declares no shape
+#: src/model.rs:465
+msgid "{} (no shape)"
+msgstr "{} (sin forma)"
+
+#: src/model.rs:499
+msgid ""
+"the model only encodes (outputs mu and logvar); export the reconstruction "
+"model (HistoVAE: create_onnx --mode reconstruct)"
+msgstr ""
+"el modelo solo codifica (produce mu y logvar); exporte el modelo de "
+"reconstrucción (HistoVAE: create_onnx --mode reconstruct)"
+
+#: src/model.rs:510
+msgid ""
+"no output is an RGB image matching the input {shape} (outputs: {outputs})"
+msgstr ""
+"ninguna salida es una imagen RGB que coincida con la entrada {shape} "
+"(salidas: {outputs})"
+
+#: src/model.rs:666
+msgid "only .onnx models are supported"
+msgstr "solo se admiten modelos .onnx"
+
+#: src/model.rs:670
+msgid "{} does not exist"
+msgstr "{} no existe"
+
+#. The detail is technical, and English like a library's.
+#: src/model.rs:676
+msgid "not a valid ONNX model: {}"
+msgstr "no es un modelo ONNX válido: {}"
+
+#: src/model.rs:688
+msgid "the model's weights point outside its folder ('{}')"
+msgstr "los pesos del modelo apuntan fuera de su carpeta (“{}”)"
+
+#: src/model.rs:697
+msgid ""
+"the model's weights file '{}' is missing; keep it next to the .onnx file"
+msgstr ""
+"falta el archivo de pesos del modelo “{}”; manténgalo junto al archivo .onnx"
+
+#: src/ort_backend.rs:153
+msgid "it could not be opened: {}"
+msgstr "no se pudo abrir: {}"
+
+#: src/ort_backend.rs:157
+msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
+msgstr "no es ONNX Runtime (no tiene OrtGetApiBase)"
+
+#: src/ort_backend.rs:162
+msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
+msgstr "no es ONNX Runtime (OrtGetApiBase no devolvió nada)"
+
+#: src/ort_backend.rs:177
+msgid "it is ONNX Runtime {version}, older than {oldest}"
+msgstr "es ONNX Runtime {version}, anterior a {oldest}"
+
+#: src/ort_backend.rs:292
+msgid "{path}: opening it crashed ({error})"
+msgstr "{path}: se produjo un fallo al abrirla ({error})"
+
+#: src/ort_backend.rs:318
+msgid "loading it crashed ({})"
+msgstr "se produjo un fallo al cargarla ({})"
+
+#: src/ort_backend.rs:323
+msgid ""
+"ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
+"again."
+msgstr ""
+"No se pudo cargar ONNX Runtime desde {path}: {error}. Reinicie eov para "
+"volver a intentarlo."
+
+#. Translators: {variable} is an environment variable; "Model →
+#. Runtime" is the Runtime… button in the sidebar's Model section
+#: src/ort_backend.rs:342
+msgid ""
+"ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
+"the library, or choose it under Model → Runtime. Tried: {tried}"
+msgstr ""
+"No se encontró ONNX Runtime (1.22 o posterior). Instálelo, defina {variable} "
+"con la ruta de la biblioteca o elíjalo en Modelo → ONNX Runtime. Bibliotecas "
+"probadas: {tried}"
+
+#. Translators: a library that was loaded, as a note after an error
+#: src/ort_backend.rs:381
+msgid "loaded {}"
+msgstr "se cargó {}"
+
+#: src/ort_backend.rs:453
+msgid "building the session took longer than {} s"
+msgstr "la creación de la sesión tardó más de {} s"
+
+#: src/ort_backend.rs:472
+msgid "Building CPU session…"
+msgstr "Creando la sesión de CPU…"
+
+#: src/ort_backend.rs:473
+msgid "Building CUDA session…"
+msgstr "Creando la sesión de CUDA…"
+
+#: src/ort_backend.rs:483
+msgid "ONNX Runtime does not see input '{}'"
+msgstr "ONNX Runtime no ve la entrada “{}”"
+
+#: src/ort_backend.rs:491
+msgid "unknown output '{}'"
+msgstr "salida desconocida: “{}”"
+
+#: src/ort_backend.rs:497
+msgid "ONNX Runtime does not see output '{}'"
+msgstr "ONNX Runtime no ve la salida “{}”"
+
+#: src/ort_backend.rs:553
+msgid "Checking the model…"
+msgstr "Comprobando el modelo…"
+
+#: src/ort_backend.rs:554
+msgid "Warming up CUDA…"
+msgstr "Preparando CUDA…"
+
+#: src/ort_backend.rs:560
+msgid "test run failed: {}"
+msgstr "la ejecución de prueba falló: {}"
+
+#. Translators: the model's output has the wrong size;
+#. {returned} and {expected} are bare numbers of values.
+#: src/ort_backend.rs:569
+msgid ""
+"the model returned the wrong number of values for {n} tile: {returned} "
+"instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for {n} tiles: {returned} "
+"instead of {expected}"
+msgstr[0] ""
+"el modelo devolvió un número incorrecto de valores para {n} tesela: "
+"{returned} en lugar de {expected}"
+msgstr[1] ""
+"el modelo devolvió un número incorrecto de valores para {n} teselas: "
+"{returned} en lugar de {expected}"
+
+#: src/ort_backend.rs:598
+msgid "Loading ONNX Runtime…"
+msgstr "Cargando ONNX Runtime…"
+
+#: src/ort_backend.rs:638
+msgid "CUDA is unavailable: {}"
+msgstr "CUDA no está disponible: {}"
+
+#: src/ort_backend.rs:660
+msgid "ONNX Runtime: {}"
+msgstr "ONNX Runtime: {}"
+
+#: src/ort_backend.rs:661
+msgid "ONNX Runtime is loaded with the first model."
+msgstr "ONNX Runtime se carga con el primer modelo."
+
+#: src/ort_backend.rs:821
+msgid "the model produced no '{}'"
+msgstr "el modelo no produjo “{}”"
+
+#. Translators: why an analysis failed: the
+#. host (eov) gave {n} bytes of pixel data,
+#. the wrong size for a region of {tile} ×
+#. {tile} pixels.
+#: src/pipeline.rs:317
+msgid "the host returned {n} byte for a {tile}×{tile} region"
+msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
+msgstr[0] "eov devolvió {n} byte para una región de {tile}×{tile}"
+msgstr[1] "eov devolvió {n} bytes para una región de {tile}×{tile}"
+
+#: src/pipeline.rs:335
+msgid "{n} tile could not be read (level {level}); last error: {error}"
+msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
+msgstr[0] "No se pudo leer {n} tesela (nivel {level}); último error: {error}"
+msgstr[1] ""
+"No se pudieron leer {n} teselas (nivel {level}); último error: {error}"
+
+#. Translators: why an analysis failed: it ended before every
+#. tile was done ({done} of the {total} tiles were).
+#: src/pipeline.rs:440
+msgid "it stopped before every tile was done ({done} of {total})"
+msgstr "se detuvo antes de completar todas las teselas ({done} de {total})"
+
+#: src/pipeline.rs:480
+msgid "inference failed: {}"
+msgstr "la inferencia falló: {}"
+
+#. Translators: the model's output has the wrong size; {returned}
+#. and {expected} are bare numbers of values.
+#: src/pipeline.rs:492
+msgid ""
+"the model returned the wrong number of values for a batch of {n} tile: "
+"{returned} instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for a batch of {n} tiles: "
+"{returned} instead of {expected}"
+msgstr[0] ""
+"el modelo devolvió un número incorrecto de valores para un lote de {n} "
+"tesela: {returned} en lugar de {expected}"
+msgstr[1] ""
+"el modelo devolvió un número incorrecto de valores para un lote de {n} "
+"teselas: {returned} en lugar de {expected}"
+
+#: src/plugin.rs:57
+msgid "VAE reconstruction analysis"
+msgstr "Análisis de reconstrucción VAE"
+
+#: src/plugin.rs:61 src/presenter.rs:794
+msgid "VAE tile grid"
+msgstr "Cuadrícula de teselas VAE"
+
+#: src/plugin.rs:65 src/presenter.rs:790
+msgid "VAE overlay"
+msgstr "Superposición VAE"
+
+#: src/plugin.rs:227 src/plugin.rs:239
+msgid "Whole slide"
+msgstr "Preparación completa"
+
+#: src/plugin.rs:228 src/plugin.rs:240
+msgid "Viewport"
+msgstr "Área visible"
+
+#: src/plugin.rs:229 src/plugin.rs:241
+msgid "Region of interest"
+msgstr "Región de interés"
+
+#: src/plugin.rs:230
+msgid "Visible tiles"
+msgstr "Teselas visibles"
+
+#: src/plugin.rs:242
+msgid "Automatic analysis"
+msgstr "Análisis automático"
+
+#: src/plugin.rs:516
+msgid "Load an ONNX model first."
+msgstr "Cargue primero un modelo ONNX."
+
+#: src/plugin.rs:517
+msgid "The model is still loading."
+msgstr "El modelo aún se está cargando."
+
+#: src/plugin.rs:518
+msgid "The model could not be loaded: {}"
+msgstr "No se pudo cargar el modelo: {}"
+
+#: src/plugin.rs:519
+msgid "Preparing the inference engine…"
+msgstr "Preparando el motor de inferencia…"
+
+#. Translators: eovae is working out which slide file this is (its
+#. content fingerprint), to find its stored results; it does not
+#. identify a patient.
+#: src/plugin.rs:524
+msgid "Identifying the slide…"
+msgstr "Identificando la preparación…"
+
+#: src/plugin.rs:525
+msgid "The slide reports no pyramid levels."
+msgstr "La preparación no indica ningún nivel de la pirámide."
+
+#: src/plugin.rs:526
+msgid "The slide is not open."
+msgstr "La preparación no está abierta."
+
+#. Translators: eovae is this plugin's name; {} says why, in English
+#: src/plugin.rs:753
+msgid "eovae settings were unreadable and were reset ({})"
+msgstr "La configuración de eovae era ilegible y se restableció ({})"
+
+#. Translators: the title of an error notification; eovae is
+#. this plugin's name
+#: src/plugin.rs:804
+msgid "An eovae worker thread failed unexpectedly"
+msgstr "Un hilo de trabajo de eovae falló de forma inesperada"
+
+#: src/plugin.rs:1120
+msgid ""
+"This eov cannot show layers in some panes only: every pane of a slide shows "
+"the same VAE overlay."
+msgstr ""
+"Este eov no puede mostrar capas solo en algunos paneles: todos los paneles "
+"de una preparación muestran la misma superposición VAE."
+
+#: src/plugin.rs:1260
+msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
+msgstr ""
+"Cargue un modelo ONNX en la barra lateral VAE para analizar esta preparación."
+
+#: src/plugin.rs:1305
+msgid "VAE analysis"
+msgstr "Análisis VAE"
+
+#: src/plugin.rs:1351
+msgid ""
+"The ONNX Runtime library is used from the next start of eov if a runtime is "
+"already loaded."
+msgstr ""
+"Si ya hay un entorno de ejecución cargado, la biblioteca de ONNX Runtime se "
+"usará a partir del próximo inicio de eov."
+
+#: src/plugin.rs:1378
+msgid "The VAE result cache was cleared."
+msgstr "Se borró la caché de resultados VAE."
+
+#: src/plugin.rs:1382
+msgid "Could not clear the VAE result cache"
+msgstr "No se pudo borrar la caché de resultados VAE"
+
+#: src/plugin.rs:1411
+msgid "the model file could not be read"
+msgstr "no se pudo leer el archivo del modelo"
+
+#: src/plugin.rs:1440
+msgid "The VAE model could not be loaded"
+msgstr "No se pudo cargar el modelo VAE"
+
+#. Translators: "Load ONNX…" is the sidebar's button of that name
+#: src/plugin.rs:1496
+msgid "This eov cannot download models: load the model file with Load ONNX…"
+msgstr ""
+"Esta versión de eov no puede descargar modelos: cargue el archivo del modelo "
+"con Cargar ONNX…"
+
+#: src/plugin.rs:1620
+msgid "the inference engine failed unexpectedly"
+msgstr "el motor de inferencia falló de forma inesperada"
+
+#: src/plugin.rs:1666
+msgid "VAE inference runs on the CPU: {}"
+msgstr "La inferencia VAE se ejecuta en la CPU: {}"
+
+#: src/plugin.rs:1673
+msgid "The VAE model cannot run"
+msgstr "El modelo VAE no se puede ejecutar"
+
+#: src/plugin.rs:1754
+msgid "Starting…"
+msgstr "Iniciando…"
+
+#: src/plugin.rs:1810
+msgid "Preparing the model…"
+msgstr "Preparando el modelo…"
+
+#: src/plugin.rs:1865
+msgid "Draw a region of interest on the slide first."
+msgstr "Dibuje primero una región de interés en la preparación."
+
+#: src/plugin.rs:1884
+msgid "The slide is not shown in a pane."
+msgstr "La preparación no se muestra en ningún panel."
+
+#: src/plugin.rs:1939
+msgid "VAE: whole slide"
+msgstr "VAE: preparación completa"
+
+#: src/plugin.rs:1940
+msgid "VAE: region of interest"
+msgstr "VAE: región de interés"
+
+#: src/plugin.rs:1941
+msgid "VAE: viewport"
+msgstr "VAE: área visible"
+
+#: src/plugin.rs:1951
+msgid "Analysing on {}"
+msgstr "Analizando en {}"
+
+#: src/plugin.rs:1983
+msgid "internal error while analysing tiles"
+msgstr "error interno al analizar las teselas"
+
+#: src/plugin.rs:2031
+msgid "internal error: {}"
+msgstr "error interno: {}"
+
+#: src/plugin.rs:2069
+msgid "VAE analysis failed"
+msgstr "El análisis VAE falló"
+
+#: src/plugin.rs:2097
+msgid "Nothing to export"
+msgstr "Nada que exportar"
+
+#: src/plugin.rs:2156
+msgid "Exported {n} tile to {file}"
+msgid_plural "Exported {n} tiles to {file}"
+msgstr[0] "Se exportó {n} tesela a {file}"
+msgstr[1] "Se exportaron {n} teselas a {file}"
+
+#: src/plugin.rs:2162
+msgid "The export failed"
+msgstr "La exportación falló"
+
+#. Translators: eovae is this plugin's name; {} is eov's reason, in English
+#: src/plugin.rs:2180
+msgid "eovae settings could not be saved: {}"
+msgstr "No se pudo guardar la configuración de eovae: {}"
+
+#. Translators: a duration in seconds
+#: src/plugin.rs:2232
+msgid "{} s"
+msgstr "{} s"
+
+#. Translators: a duration in minutes and seconds, e.g. "3m 05s"
+#: src/plugin.rs:2235
+msgid "{minutes}m {seconds}s"
+msgstr "{minutes} min {seconds} s"
+
+#. Translators: a duration in hours and minutes, e.g. "1h 02m"
+#: src/plugin.rs:2241
+msgid "{hours}h {minutes}m"
+msgstr "{hours} h {minutes} min"
+
+#: src/plugin.rs:2252
+msgid "about {} left"
+msgstr "tiempo restante: aprox. {}"
+
+#: src/plugin.rs:2260
+msgid "{analysed} analysed"
+msgstr "teselas analizadas: {analysed}"
+
+#: src/plugin.rs:2262
+msgid "{analysed} analysed, {background} background"
+msgstr "teselas analizadas: {analysed}; de fondo: {background}"
+
+#: src/plugin.rs:2267
+msgid "{analysed} analysed, {unreadable} unreadable"
+msgstr "teselas analizadas: {analysed}; ilegibles: {unreadable}"
+
+#: src/plugin.rs:2272
+msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
+msgstr ""
+"teselas analizadas: {analysed}; de fondo: {background}; ilegibles: "
+"{unreadable}"
+
+#. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
+#: src/plugin.rs:2301
+msgid "{what}: everything was already analysed."
+msgstr "{what}: ya estaba todo analizado."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2305
+msgid "Whole slide finished in {duration}: {counts}."
+msgstr ""
+"El análisis de la preparación completa terminó en {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2311
+msgid "Viewport finished in {duration}: {counts}."
+msgstr "El análisis del área visible terminó en {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2317
+msgid "Region of interest finished in {duration}: {counts}."
+msgstr "El análisis de la región de interés terminó en {duration} ({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2323
+msgid "Automatic analysis finished in {duration}: {counts}."
+msgstr "El análisis automático terminó en {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2329
+msgid "Whole slide cancelled after {duration}: {counts}."
+msgstr ""
+"El análisis de la preparación completa se canceló tras {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2335
+msgid "Viewport cancelled after {duration}: {counts}."
+msgstr "El análisis del área visible se canceló tras {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2341
+msgid "Region of interest cancelled after {duration}: {counts}."
+msgstr ""
+"El análisis de la región de interés se canceló tras {duration} ({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2347
+msgid "Automatic analysis cancelled after {duration}: {counts}."
+msgstr "El análisis automático se canceló tras {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2353
+msgid "Whole slide failed ({counts}): {error}"
+msgstr "El análisis de la preparación completa falló ({counts}): {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2357
+msgid "Viewport failed ({counts}): {error}"
+msgstr "El análisis del área visible falló ({counts}): {error}"
+
+#. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2362
+msgid "Region of interest failed ({counts}): {error}"
+msgstr "El análisis de la región de interés falló ({counts}): {error}"
+
+#. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2370
+msgid "Automatic analysis failed ({counts}): {error}"
+msgstr "El análisis automático falló ({counts}): {error}"
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
+#: src/plugin.rs:2377
+msgid "Whole slide failed: {error}"
+msgstr "El análisis de la preparación completa falló: {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
+#: src/plugin.rs:2381
+msgid "Viewport failed: {error}"
+msgstr "El análisis del área visible falló: {error}"
+
+#. Translators: the analysis of the region of interest failed; {error}: why
+#: src/plugin.rs:2385
+msgid "Region of interest failed: {error}"
+msgstr "El análisis de la región de interés falló: {error}"
+
+#. Translators: {error}: why
+#: src/plugin.rs:2389
+msgid "Automatic analysis failed: {error}"
+msgstr "El análisis automático falló: {error}"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave an image of another size than asked for, in
+#. pixels.
+#: src/plugin.rs:2417
+msgid ""
+"the host returned {width}×{height} for a {asked_width}×{asked_height} region"
+msgstr ""
+"eov devolvió {width}×{height} para una región de {asked_width}×{asked_height}"
+
+#. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
+#: src/plugin.rs:2493
+msgid "{done} of {n} tile"
+msgid_plural "{done} of {n} tiles"
+msgstr[0] "{done} de {n} tesela"
+msgstr[1] "{done} de {n} teselas"
+
+#. Translators: {eta} is the time left, e.g. "about 2m 05s left"
+#: src/plugin.rs:2499
+msgid "{done} of {n} tile, {eta}"
+msgid_plural "{done} of {n} tiles, {eta}"
+msgstr[0] "{done} de {n} tesela, {eta}"
+msgstr[1] "{done} de {n} teselas, {eta}"
+
+#. Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
+#: src/presenter.rs:381
+msgid "VAE {done} / {n} tile"
+msgid_plural "VAE {done} / {n} tiles"
+msgstr[0] "VAE {done} / {n} tesela"
+msgstr[1] "VAE {done} / {n} teselas"
+
+#. Translators: the status bar: how the inference engine is being prepared
+#: src/presenter.rs:385 src/presenter.rs:387
+msgid "VAE: {}"
+msgstr "VAE: {}"
+
+#: src/presenter.rs:781
+msgid "VAE error map"
+msgstr "Mapa de error VAE"
+
+#. Translators: the outline of the region under the pointer
+#: src/presenter.rs:786
+msgid "VAE highlight"
+msgstr "Resaltado VAE"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for
+#. rows of a region of {width} × {height} pixels.
+#: src/resample.rs:129
+msgid "the host returned {n} byte for rows of a {width}×{height} region"
+msgid_plural ""
+"the host returned {n} bytes for rows of a {width}×{height} region"
+msgstr[0] ""
+"eov devolvió {n} byte para las filas de una región de {width}×{height}"
+msgstr[1] ""
+"eov devolvió {n} bytes para las filas de una región de {width}×{height}"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for a
+#. region of {width} × {height} pixels.
+#: src/resample.rs:216
+msgid "the host returned {n} byte for a {width}×{height} region"
+msgid_plural "the host returned {n} bytes for a {width}×{height} region"
+msgstr[0] "eov devolvió {n} byte para una región de {width}×{height}"
+msgstr[1] "eov devolvió {n} bytes para una región de {width}×{height}"
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu)
+#: src/sidebar.rs:35
+msgid ""
+"This eov does not report its display adjustments: reconstructions are shown "
+"without them, so reset gamma, contrast and stain normalisation before "
+"comparing Original and Reconstruction."
+msgstr ""
+"Esta versión de eov no comunica sus ajustes de visualización: las "
+"reconstrucciones se muestran sin ellos, así que restablezca la gamma, el "
+"contraste y la normalización de la tinción antes de comparar Original y "
+"Reconstrucción."
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu); {} names the stain processing
+#: src/sidebar.rs:43
+msgid ""
+"Reconstructions get this pane's gamma, brightness, contrast and sharpening, "
+"but not its stain processing ({}): turn that off before comparing Original "
+"and Reconstruction."
+msgstr ""
+"Las reconstrucciones reciben la gamma, el brillo, el contraste y la nitidez "
+"de este panel, pero no su procesamiento de la tinción ({}): desactívelo "
+"antes de comparar Original y Reconstrucción."
+
+#: src/sidebar.rs:50
+msgid ""
+"Reconstructions are shown with this pane's display adjustments, like the "
+"slide."
+msgstr ""
+"Las reconstrucciones se muestran con los ajustes de visualización de este "
+"panel, igual que la preparación."
+
+#: src/sidebar.rs:58
+msgid ""
+"Errors are measured on the slide's own pixels; display adjustments do not "
+"change them."
+msgstr ""
+"Los errores se miden sobre los píxeles propios de la preparación; los "
+"ajustes de visualización no los modifican."
+
+#. Translators: {} is the method's name: Macenko or Vahadane
+#: src/sidebar.rs:90
+msgid "{} normalisation"
+msgstr "normalización de {}"
+
+#: src/sidebar.rs:163
+msgid "Download the reference model"
+msgstr "Descargar modelo de referencia"
+
+#: src/sidebar.rs:164
+msgid "Use the reference model"
+msgstr "Usar modelo de referencia"
+
+#: src/sidebar.rs:165
+msgid "Download your site's model"
+msgstr "Descargar modelo de su centro"
+
+#: src/sidebar.rs:166
+msgid "Use your site's model"
+msgstr "Usar modelo de su centro"
+
+#. Translators: {} is the start of the model's SHA-256 checksum
+#: src/sidebar.rs:171
+msgid "Your site's model (SHA-256 {}…)"
+msgstr "Modelo de su centro (SHA-256 {}…)"
+
+#. Translators: eov first asks the user whether to download the model
+#. (nothing is downloaded without that answer), then downloads it.
+#: src/sidebar.rs:182
+msgid ""
+"eov is asking you whether to download the model, or downloading it (see the "
+"status bar)…"
+msgstr ""
+"eov le está preguntando si desea descargar el modelo, o lo está descargando "
+"(vea la barra de estado)…"
+
+#. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
+#: src/sidebar.rs:188
+msgid "{} is in eov's model store."
+msgstr "{} está en el almacén de modelos de eov."
+
+#. Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
+#: src/sidebar.rs:193
+msgid "{what}, from {server}."
+msgstr "{what}, desde {server}."
+
+#. Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
+#: src/sidebar.rs:202
+msgid ""
+"{}: from your site's copy. Set its address (Address…), unless your "
+"administrator has given it to eov."
+msgstr ""
+"{}: desde la copia de su centro. Indique su dirección (Dirección…), a menos "
+"que su administrador ya se la haya proporcionado a eov."
+
+#. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
+#: src/sidebar.rs:260
+msgid "Changed by you (model declares: {})"
+msgstr "Modificado por usted (el modelo declara: {})"
+
+#: src/sidebar.rs:263
+msgid "From HistoVAE defaults"
+msgstr "De los valores predeterminados de HistoVAE"
+
+#: src/sidebar.rs:264
+msgid "From built-in model card"
+msgstr "De la ficha del modelo integrada"
+
+#: src/sidebar.rs:265
+msgid "From model metadata"
+msgstr "De los metadatos del modelo"
+
+#. Translators: the sidecar is the model's <model>.eovae.json file
+#: src/sidebar.rs:267
+msgid "From sidecar file"
+msgstr "Del archivo auxiliar"
+
+#: src/sidebar.rs:289
+msgid "No model loaded."
+msgstr "No hay ningún modelo cargado."
+
+#: src/sidebar.rs:295
+msgid "Reading and hashing the model…"
+msgstr "Leyendo el modelo y calculando su hash…"
+
+#: src/sidebar.rs:348
+msgid "CUDA unavailable: {}"
+msgstr "CUDA no disponible: {}"
+
+#. Translators: the model's fixed batch size (tiles per inference run)
+#: src/sidebar.rs:374
+msgid "batch {}"
+msgstr "lote de {}"
+
+#. Translators: the model takes any number of tiles per inference run
+#: src/sidebar.rs:376
+msgid "dynamic batch"
+msgstr "lote dinámico"
+
+#: src/sidebar.rs:423
+msgid "Embeddings from '{name}' ({n} value) are stored with results."
+msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
+msgstr[0] ""
+"Los embeddings de “{name}” ({n} valor) se guardan con los resultados."
+msgstr[1] ""
+"Los embeddings de “{name}” ({n} valores) se guardan con los resultados."
+
+#. Translators: the Threads field's hint: keep "auto", the word typed there
+#: src/sidebar.rs:503
+msgid "1–{}, or auto"
+msgstr "1–{} o auto"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:527
+msgid "Auto: the model's {mpp}, resampled from level {level}"
+msgstr "Auto: {mpp} del modelo, remuestreado desde el nivel {level}"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:533
+msgid "Auto: the model's {mpp} = level {level}"
+msgstr "Auto: {mpp} del modelo = nivel {level}"
+
+#. Translators: a resolution choice
+#: src/sidebar.rs:538
+msgid "Auto (level 0)"
+msgstr "Auto (nivel 0)"
+
+#. Translators: a level of the slide's pyramid, in the resolution choices
+#: src/sidebar.rs:548
+msgid "Level {}"
+msgstr "Nivel {}"
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:574
+msgid ""
+"The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
+"are interpolated and errors will be inflated."
+msgstr ""
+"El nivel de mayor resolución de la preparación es de {mpp}, menos detallado "
+"que los {model} del modelo: las teselas se interpolan y los errores estarán "
+"sobrestimados."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:583
+msgid ""
+"Level {level} is {mpp} but the model was trained at {model}; errors will be "
+"inflated."
+msgstr ""
+"El nivel {level} es de {mpp}, pero el modelo se entrenó a {model}; los "
+"errores estarán sobrestimados."
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:593
+msgid ""
+"Tiles are read from level {level} ({mpp}) and resampled to the model's "
+"{model}."
+msgstr ""
+"Las teselas se leen del nivel {level} ({mpp}) y se remuestrean a los {model} "
+"del modelo."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:604
+msgid "Level {level} at {mpp} (model {model})."
+msgstr "Nivel {level} a {mpp} (modelo: {model})."
+
+#. Translators: {mpp} is a resolution like "0.23 µm/px"
+#: src/sidebar.rs:611
+msgid "Level {level} at {mpp}."
+msgstr "Nivel {level} a {mpp}."
+
+#: src/sidebar.rs:616
+msgid "Level {} (the slide is not calibrated)."
+msgstr "Nivel {} (la preparación no está calibrada)."
+
+#: src/sidebar.rs:629 src/sidebar.rs:886
+msgid "Open a slide."
+msgstr "Abra una preparación."
+
+#: src/sidebar.rs:651
+msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
+msgid_plural ""
+"{done} of {n} tiles · {background} background · {unreadable} unreadable"
+msgstr[0] ""
+"{done} de {n} tesela · de fondo: {background} · ilegibles: {unreadable}"
+msgstr[1] ""
+"{done} de {n} teselas · de fondo: {background} · ilegibles: {unreadable}"
+
+#. Translators: Viewport and Whole slide are the buttons of the same names
+#: src/sidebar.rs:699
+msgid ""
+"Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
+"Whole slide."
+msgid_plural ""
+"Zoom in to analyse automatically ({n} tiles visible), or run Viewport or "
+"Whole slide."
+msgstr[0] ""
+"Acerque la vista para analizar automáticamente ({n} tesela visible) o pulse "
+"Área visible o Preparación."
+msgstr[1] ""
+"Acerque la vista para analizar automáticamente ({n} teselas visibles) o "
+"pulse Área visible o Preparación."
+
+#: src/sidebar.rs:748
+msgid ""
+"{n} tissue tile scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgid_plural ""
+"{n} tissue tiles scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgstr[0] ""
+"{n} tesela de tejido evaluada; de fondo: {background}; ilegibles: "
+"{unreadable} — {percent} % de las {total} teselas del nivel {level}."
+msgstr[1] ""
+"{n} teselas de tejido evaluadas; de fondo: {background}; ilegibles: "
+"{unreadable} — {percent} % de las {total} teselas del nivel {level}."
+
+#. Translators: MAE is the mean absolute error; p95 the 95th percentile
+#: src/sidebar.rs:768
+msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
+msgstr ""
+"MAE por tesela: media {mean} · mediana {median} · p95 {p95} · máx. {max}"
+
+#. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
+#: src/sidebar.rs:788
+msgid "{lo}–{hi}: {n} tile"
+msgid_plural "{lo}–{hi}: {n} tiles"
+msgstr[0] "{lo}–{hi}: {n} tesela"
+msgstr[1] "{lo}–{hi}: {n} teselas"
+
+#. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
+#: src/sidebar.rs:845
+msgid "MAE {mae} · max {max}"
+msgstr "MAE {mae} · máx. {max}"
+
+#. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
+#: src/sidebar.rs:859
+msgid "Tile MAE (p05–p95)"
+msgstr "MAE por tesela (p05–p95)"
+
+#: src/sidebar.rs:866
+msgid "Pixel error"
+msgstr "Error por píxel"
+
+#: src/sidebar.rs:885
+msgid "Nothing analysed on this slide with these settings yet."
+msgstr ""
+"Aún no se ha analizado nada en esta preparación con esta configuración."
+
+#. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
+#: src/sidebar.rs:913
+msgid "{used} of {budget} on disk · {n} run"
+msgid_plural "{used} of {budget} on disk · {n} runs"
+msgstr[0] "{used} de {budget} en disco · {n} ejecución"
+msgstr[1] "{used} de {budget} en disco · {n} ejecuciones"
+
+#: src/sidebar.rs:919
+msgid "Disk cache disabled"
+msgstr "Caché en disco desactivada"
+
+#: src/sidebar.rs:927
+msgid "Tile pixels in memory: {used} of {limit}"
+msgstr "Píxeles de teselas en memoria: {used} de {limit}"
+
+#: src/sidebar.rs:995
+msgid "Open an ONNX model"
+msgstr "Abrir un modelo ONNX"
+
+#: src/sidebar.rs:997
+msgid "ONNX models"
+msgstr "Modelos ONNX"
+
+#: src/sidebar.rs:1024
+msgid "Choose the ONNX Runtime library"
+msgstr "Elegir la biblioteca de ONNX Runtime"
+
+#: src/sidebar.rs:1272
+msgid "Open a slide first."
+msgstr "Abra primero una preparación."
+
+#: src/sidebar.rs:1366
+msgid "Export tile scores"
+msgstr "Exportar las puntuaciones de las teselas"
+
+#: src/sidebar.rs:1383
+msgid "Clear the VAE result cache?"
+msgstr "¿Borrar la caché de resultados VAE?"
+
+#. Translators: {} is a size, e.g. "120 MB"
+#: src/sidebar.rs:1386
+msgid ""
+"This deletes {} of stored results for every slide. Results are recomputed "
+"when needed."
+msgstr ""
+"Esto elimina {} de resultados guardados de todas las preparaciones. Los "
+"resultados se vuelven a calcular cuando se necesitan."
+
+#: src/sidebar.rs:1389
+msgid "Clear"
+msgstr "Borrar"
+
+#: src/sidebar.rs:1390
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: ui/eovae-sidebar.slint:201
+msgctxt "EovaeSidebar"
+msgid "No model loaded."
+msgstr "No hay ningún modelo cargado."
+
+#: ui/eovae-sidebar.slint:221
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "Media/desv. estándar de ImageNet"
+
+#. Translators: inference device: CUDA when it works, else the CPU
+#: ui/eovae-sidebar.slint:230
+msgctxt "Device"
+msgid "Auto"
+msgstr "Auto"
+
+#: ui/eovae-sidebar.slint:232
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "Auto"
+
+#: ui/eovae-sidebar.slint:258
+msgctxt "Overlay"
+msgid "Original"
+msgstr "Original"
+
+#: ui/eovae-sidebar.slint:259
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "Reconstrucción"
+
+#: ui/eovae-sidebar.slint:260
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "Mapa de error"
+
+#: ui/eovae-sidebar.slint:261
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "Diferencia"
+
+#. Translators: the sidebar's section about the ONNX model
+#: ui/eovae-sidebar.slint:333
+msgctxt "EovaeSidebar"
+msgid "Model"
+msgstr "Modelo"
+
+#: ui/eovae-sidebar.slint:347
+msgctxt "EovaeSidebar"
+msgid "No model"
+msgstr "Sin modelo"
+
+#. Translators: {} is the inference device, e.g. CPU · 8 threads
+#: ui/eovae-sidebar.slint:362
+msgctxt "EovaeSidebar"
+msgid "Running on {}"
+msgstr "Ejecutándose en {}"
+
+#: ui/eovae-sidebar.slint:369
+msgctxt "EovaeSidebar"
+msgid "Load ONNX…"
+msgstr "Cargar ONNX…"
+
+#. Translators: unloads the model
+#: ui/eovae-sidebar.slint:378
+msgctxt "EovaeSidebar"
+msgid "Clear"
+msgstr "Quitar"
+
+#. Translators: chooses the ONNX Runtime library
+#: ui/eovae-sidebar.slint:385
+msgctxt "EovaeSidebar"
+msgid "Runtime…"
+msgstr "ONNX Runtime…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Address…"
+msgstr "Dirección…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Hide address"
+msgstr "Ocultar dirección"
+
+#: ui/eovae-sidebar.slint:423
+msgctxt "EovaeSidebar"
+msgid ""
+"Your site's copy of the model (the .onnx file; the reference model's .onnx."
+"data comes from the same folder):"
+msgstr ""
+"La copia del modelo de su centro (el archivo .onnx; el .onnx.data del modelo "
+"de referencia se obtiene de la misma carpeta):"
+
+#: ui/eovae-sidebar.slint:438
+msgctxt "EovaeSidebar"
+msgid ""
+"SHA-256 of your own model at that address (empty: the reference model, "
+"checked against the SHA-256 eovae knows):"
+msgstr ""
+"SHA-256 de su propio modelo en esa dirección (vacío: el modelo de "
+"referencia, comprobado con el SHA-256 que conoce eovae):"
+
+#: ui/eovae-sidebar.slint:443
+msgctxt "EovaeSidebar"
+msgid "64 hex digits"
+msgstr "64 dígitos hexadecimales"
+
+#. Translators: {} is the model's input: name · type · shape
+#: ui/eovae-sidebar.slint:458
+msgctxt "EovaeSidebar"
+msgid "Input: {}"
+msgstr "Entrada: {}"
+
+#. Translators: the model's output the sidebar reads
+#: ui/eovae-sidebar.slint:462
+msgctxt "EovaeSidebar"
+msgid "Output"
+msgstr "Salida"
+
+#: ui/eovae-sidebar.slint:484
+msgctxt "EovaeSidebar"
+msgid "Preprocessing"
+msgstr "Preprocesamiento"
+
+#: ui/eovae-sidebar.slint:494
+msgctxt "EovaeSidebar"
+msgid "Input range"
+msgstr "Rango de entrada"
+
+#: ui/eovae-sidebar.slint:506
+msgctxt "EovaeSidebar"
+msgid "Output range"
+msgstr "Rango de salida"
+
+#: ui/eovae-sidebar.slint:518
+msgctxt "EovaeSidebar"
+msgid "Composite transparency onto white"
+msgstr "Componer la transparencia sobre blanco"
+
+#: ui/eovae-sidebar.slint:524
+msgctxt "EovaeSidebar"
+msgid "Turn near-black pixels white"
+msgstr "Convertir en blancos los píxeles casi negros"
+
+#: ui/eovae-sidebar.slint:532
+msgctxt "EovaeSidebar"
+msgid "Use the model's preprocessing"
+msgstr "Usar el preprocesamiento del modelo"
+
+#: ui/eovae-sidebar.slint:544
+msgctxt "EovaeSidebar"
+msgid "Analysis"
+msgstr "Análisis"
+
+#. Translators: the inference device (CPU or CUDA)
+#: ui/eovae-sidebar.slint:559
+msgctxt "EovaeSidebar"
+msgid "Device"
+msgstr "Dispositivo"
+
+#. Translators: the pyramid level tiles are read from
+#: ui/eovae-sidebar.slint:572
+msgctxt "EovaeSidebar"
+msgid "Resolution"
+msgstr "Resolución"
+
+#. Translators: CPU inference threads
+#: ui/eovae-sidebar.slint:590
+msgctxt "EovaeSidebar"
+msgid "Threads"
+msgstr "Hilos"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch"
+msgstr "Lote"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch (model)"
+msgstr "Lote (modelo)"
+
+#. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
+#. (CUDA); the computed errors change slightly.
+#: ui/eovae-sidebar.slint:622
+msgctxt "EovaeSidebar"
+msgid "Allow TF32 on CUDA (faster, less precise)"
+msgstr "Permitir TF32 en CUDA (más rápido, menos preciso)"
+
+#: ui/eovae-sidebar.slint:628
+msgctxt "EovaeSidebar"
+msgid "Skip background tiles"
+msgstr "Omitir las teselas de fondo"
+
+#: ui/eovae-sidebar.slint:634
+msgctxt "EovaeSidebar"
+msgid "Analyse visible tiles automatically"
+msgstr "Analizar automáticamente las teselas visibles"
+
+#. Translators: analyses the visible part of the slide
+#: ui/eovae-sidebar.slint:645
+msgctxt "EovaeSidebar"
+msgid "Viewport"
+msgstr "Área visible"
+
+#. Translators: analyses the region of interest drawn on the slide
+#: ui/eovae-sidebar.slint:655
+msgctxt "EovaeSidebar"
+msgid "ROI"
+msgstr "ROI"
+
+#: ui/eovae-sidebar.slint:664
+msgctxt "EovaeSidebar"
+msgid "Whole slide"
+msgstr "Preparación"
+
+#. Translators: stops the running analysis
+#: ui/eovae-sidebar.slint:674
+msgctxt "EovaeSidebar"
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: ui/eovae-sidebar.slint:722
+msgctxt "EovaeSidebar"
+msgid "Results"
+msgstr "Resultados"
+
+#. Translators: what the overlay shows: Original, Reconstruction, …
+#: ui/eovae-sidebar.slint:737
+msgctxt "EovaeSidebar"
+msgid "Overlay"
+msgstr "Superposición"
+
+#: ui/eovae-sidebar.slint:824
+msgctxt "EovaeSidebar"
+msgid "Highest-error regions"
+msgstr "Regiones con mayor error"
+
+#: ui/eovae-sidebar.slint:840
+msgctxt "EovaeSidebar"
+msgid "Export CSV…"
+msgstr "Exportar CSV…"
+
+#. Translators: the intended use: keep its meaning exactly
+#: ui/eovae-sidebar.slint:848
+msgctxt "EovaeSidebar"
+msgid "Research use only; not for diagnosis."
+msgstr "Solo para uso en investigación; no para uso diagnóstico."
+
+#. Translators: the section about eovae's stored results
+#: ui/eovae-sidebar.slint:856
+msgctxt "EovaeSidebar"
+msgid "Cache"
+msgstr "Caché"
+
+#: ui/eovae-sidebar.slint:874
+msgctxt "EovaeSidebar"
+msgid "Keep reconstructions on disk (large)"
+msgstr "Guardar las reconstrucciones en disco (ocupan mucho)"
+
+#: ui/eovae-sidebar.slint:883
+msgctxt "EovaeSidebar"
+msgid "Clear cache…"
+msgstr "Borrar caché…"

@@ -1,0 +1,315 @@
+term	translation	note
+you (register)	Anda	Polite form, always capitalised. Prefer impersonal or passive constructions (“Preparat dibuka”, “Tidak dapat menyimpan …”).
+button / menu item style	Buka, Simpan, Tutup	Imperative base verb, no prefix. Sentence case for buttons, menu items, titles and tabs: no English Title Case. Proper names keep their capitals.
+… (ellipsis)	…	Keep the ellipsis at the end of menu items that open a dialog.
+percent ({} %)	{}%	No space before % (PUEBI). Decimal comma is handled by eov.
+quotation marks	“…”	Curly double quotes in prose; keep straight quotes and '…' in configuration examples, commands and technical error messages.
+For research and education. Not a medical device; not for primary diagnosis.	Untuk penelitian dan pendidikan. Bukan alat kesehatan; tidak untuk diagnosis primer.	Safety text: translate completely, never shorten or soften.
+medical device	alat kesehatan	Indonesian regulatory term (alkes); not “perangkat medis”.
+primary diagnosis	diagnosis primer	Regulatory term: the first, final diagnosis of a case.
+research use only (RUO)	hanya untuk penelitian (RUO)	Keep RUO. Results must not be used for clinical decisions.
+intended use	tujuan penggunaan	
+synthetic (image, channel, stain)	sintetis	Computed by an algorithm. Never “palsu” or “tiruan”; “simulasi” only for real simulations.
+predicted	hasil prediksi	Also “diprediksi” as a verb form.
+generated	dihasilkan (oleh model)	
+slide	preparat	The glass microscope slide and its scan (histopathology term, as in “preparat H&E”). Never “slide”/“slaid” (presentation slide).
+glass slide	kaca preparat	The physical glass, when it must be distinguished from the scan.
+whole-slide image (WSI)	citra preparat utuh (WSI)	Keep the abbreviation WSI. “Berkas WSI” for WSI files.
+image (general UI)	gambar	“Ekspor gambar”, “Salin gambar”, “gambar label”. “citra” only in the term WSI.
+slide viewer, viewer	penampil preparat, penampil	
+tab	tab	“Tab baru”, “Tutup tab”.
+pane	panel	One of the side-by-side viewing areas (“panel kiri”, “panel aktif”).
+panel	panel	A tool panel (Plugins, Measurements, Channels); context tells it from a pane.
+focused pane	panel aktif	
+split (the view)	bagi	“Bagi ke kanan”.
+view	tampilan	Position, magnification and rotation shown in a pane.
+viewport	area tampilan	The area of a pane where the slide is drawn.
+minimap	peta mini	
+scale bar	bilah skala	
+HUD	panel melayang	The small panels over the slide; “metadata HUD” → “panel metadata”.
+toolbar	bilah alat	
+sidebar	bilah sisi	
+status bar	bilah status	
+series bar	bilah seri	The strip of slides of the current folder.
+series	seri	
+case (accession)	kasus	
+Home screen	layar Beranda	The Home tab is “Beranda”.
+zoom	zoom	Screen scale (100% = 1 piksel gambar per piksel layar). Distinct from magnification.
+zoom in / zoom out	perbesar / perkecil	Buttons and menu items.
+magnification	perbesaran	Objective-equivalent optical magnification; “20×” stays “20×”.
+objective	objektif	The microscope objective (“objektif 40×”).
+objective power	perbesaran objektif	
+optical-equivalent zoom	zoom setara optik	
+digital zoom	zoom digital	
+pixel size	ukuran piksel	
+MPP (µm per pixel)	MPP (µm per piksel)	MPP stays MPP; unit µm/px stays.
+calibration	kalibrasi	
+level, pyramid level	level, level piramida	“L0” is full resolution.
+pyramid	piramida	“TIFF piramidal” for pyramidal TIFF.
+tile	petak	A square piece of the image; also a dataset patch.
+patch (dataset)	petak	Same word as tile, as the glossary defines it.
+cache	cache	
+region of interest (ROI)	area minat (ROI)	Keep ROI as the abbreviation; “area minat” in running text.
+region (in general)	area	“area yang dipindai” (scanned region); “area minat” when the ROI is meant. A measured area is “luas”.
+measurement	pengukuran	
+measure (tool)	Ukur	Tool name; “alat Ukur” in running text.
+distance	jarak	
+path length	panjang lintasan	
+area (measured)	luas	“Luas poligon”, “luas persegi panjang”, “luas elips”.
+angle	sudut	
+annotation	anotasi	A drawn mark with a meaning, not a free-text comment.
+comment	komentar	
+class (annotation class)	kelas	
+cell count, counting	hitung sel, penghitungan	
+high-power field (HPF)	lapang pandang besar (HPF)	Indonesian lab term “lapang pandang besar”; keep the abbreviation HPF.
+landmark (alignment)	titik acuan	“titik acuan penyejajaran”.
+align, alignment	sejajarkan, penyejajaran	
+link / unlink (panes)	tautkan / lepas tautan	“Panel tertaut” for linked panes.
+rotation	rotasi	Verb: “putar”.
+flip horizontally	balik horizontal	
+mirror	cerminkan	
+pan	geser	
+fit (to the pane)	paskan	“Paskan preparat ke panel”.
+H&E	H&E	Hematoksilin-eosin; keep H&E.
+hematoxylin	hematoksilin	One-letter abbreviation stays H.
+eosin	eosin	One-letter abbreviation stays E.
+IHC	IHC	Imunohistokimia; keep the abbreviation IHC (not IHK).
+immunohistochemistry	imunohistokimia	
+DAB	DAB	Brown chromogen; keep.
+chromogen	kromogen	
+stain (a dye: hematoxylin, eosin, DAB)	pewarna	“pewarna terisolasi”, “konsentrasi pewarna”, “vektor pewarna”.
+stain, staining (method; a slide's stain)	pewarnaan	“Pewarnaan: H&E”, “pewarnaan Giemsa”.
+stain normalization	normalisasi pewarnaan	Macenko and Vahadane are method names.
+colour normalisation	normalisasi warna	
+stain target	target pewarnaan	The appearance slides are normalised to.
+stain model	model pewarna	A set of stain vectors (H&E, H-DAB…).
+stain vectors	vektor pewarna	
+stain fit, fit (v.)	pencocokan pewarna, mencocokkan	
+reference (stain vectors)	referensi	“vektor pewarna referensi”.
+colour deconvolution	dekonvolusi warna	Ruifrok–Johnston.
+isolated stain / channel	pewarna terisolasi / kanal terisolasi	
+intensity	intensitas	
+optical density	densitas optik	
+concentration	konsentrasi	
+quantify (stain)	kuantifikasi	Button “Kuantifikasi”.
+H-score	H-score	Keep.
+weak / moderate / strong (1+/2+/3+)	lemah / sedang / kuat	
+threshold	ambang	
+channel	kanal	Fluorescence or computed image channel; channel names are never translated.
+multiplex immunofluorescence (mIF)	imunofluoresensi multipleks (mIF)	
+marker	penanda	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	bidang fokus (Z)	
+Z-stack	tumpukan Z	
+time point (T)	titik waktu (T)	
+time series	deret waktu	
+heat map	peta panas	
+overlay	overlay	Graphics drawn over the slide (loanword used in Indonesian imaging literature).
+layer	lapisan	A layer groups overlay graphics or annotations.
+opacity	opasitas	0–100%.
+colour profile (ICC)	profil warna (ICC)	
+colour management, colour-managed	manajemen warna, dengan manajemen warna	
+as scanned	sesuai hasil pindai	“Warna sesuai hasil pindai”.
+scan, scanner	memindai / hasil pindai, pemindai	
+tissue	jaringan	
+tissue QC	QC jaringan	Kontrol kualitas jaringan.
+pen marks	coretan pena	
+folds	lipatan	
+blur, out of focus	buram, tidak fokus	
+tissue detection, tissue mask	deteksi jaringan, masker jaringan	
+dataset	dataset	
+patch extraction	ekstraksi petak	
+stride	langkah	The step between patches.
+export	ekspor	Verb: mengekspor; button “Ekspor”.
+save a copy	simpan salinan	
+convert	konversi, mengonversi	
+de-identify, de-identified	de-identifikasi, tanpa data identitas pasien	Removing data that could identify a patient (label image, metadata).
+label image	gambar label	
+macro image	gambar makro	
+thumbnail	gambar mini	
+overview	ikhtisar	
+metadata	metadata	
+property (of a slide)	properti	
+vendor	vendor	
+bookmark	markah	Verb: “tandai”/“tambah markah”.
+session	sesi	
+plugin	plugin	
+package (.eop)	paket (.eop)	
+model, model store	model, penyimpanan model	
+inference	inferensi	
+render, renderer	merender, perender	“perender GPU”, “perender CPU”; CPU and GPU stay.
+backend	backend	
+filtering (bilinear, trilinear, Lanczos)	pemfilteran (bilinear, trilinear, Lanczos)	Lanczos is a name.
+sharpness, sharpened	ketajaman, dipertajam	
+gamma	gamma	
+brightness	kecerahan	
+contrast	kontras	
+adjustment	penyesuaian	
+theme	tema	
+dark / light / high contrast	Gelap / Terang / Kontras tinggi	Theme names.
+colour palette	palet warna	
+colour-blind safe	aman untuk buta warna	
+Check for Updates…	Periksa pembaruan…	Asks before going online; never imply automatic background updates.
+update (n.) / update (v.)	pembaruan / perbarui	“eov diperbarui”.
+up to date	mutakhir	
+release	rilis	“catatan rilis”, “manifes rilis”, “prarilis”.
+install, installed	instal, terinstal	
+installation	instalasi	
+download	unduh	
+update helper	program bantu pembaruan	eov-update-helper is a program name: keep it.
+staged (installed after eov exits)	disiapkan	
+roll back	kembalikan (ke versi sebelumnya)	
+signature, signed, verified	tanda tangan, ditandatangani, terverifikasi	
+administrator policy	kebijakan administrator	
+file	berkas	“nama berkas”, “pengelola berkas”.
+folder, directory	folder, direktori	
+path	jalur	
+file manager	pengelola berkas	
+clipboard	papan klip	
+log folder	folder log	
+keyboard shortcut	pintasan keyboard	
+key (keyboard)	tombol	Key names (Ctrl, Shift, Esc) stay as written.
+right-click	klik kanan	
+drag and drop	seret dan lepas	
+message (notification)	pesan	
+error / warning / information	kesalahan / peringatan / informasi	
+network connection	koneksi jaringan	
+operating system	sistem operasi	
+thread	thread	
+Open	Buka	
+Open File / Open Folder…	Buka berkas / Buka folder…	
+Close	Tutup	
+Cancel	Batal	
+OK	OK	
+Save, Save…	Simpan, Simpan…	
+Export…	Ekspor…	
+Import	Impor	
+Delete	Hapus	
+Remove	Hapus	Also for plugins and list entries.
+Clear	Bersihkan / Hapus	“Bersihkan” for lists (messages, recent files); “Hapus” for drawn regions, landmarks, measurements.
+Settings	Pengaturan	
+Apply	Terapkan	
+Reset	Atur ulang	
+Reset to Defaults	Kembalikan ke default	
+Show / Hide	Tampilkan / Sembunyikan	Toggle buttons: “Tampilkan/sembunyikan …”.
+Copy	Salin	“Disalin” in confirmations.
+Paste	Tempel	
+Undo / Redo	Urungkan / Ulangi	“Urungkan: {}” with an action name.
+Rotate	Putar	“Putar ke kiri 90°”.
+Add	Tambah	
+Edit	Edit	Group name: “Pengeditan”.
+Enable / Disable	Aktifkan / Nonaktifkan	States: aktif / nonaktif.
+Update (button)	Perbarui	
+Check (button)	Periksa	
+Confirm	Konfirmasi	
+Done	Selesai	
+Back / Forward / Up	Kembali / Maju / Naik	
+Next / Previous	berikutnya / sebelumnya	
+Filter	Filter	
+Order (sort)	Urutan	
+Preview	Pratinjau	
+Loading…	Memuat…	
+Ready	Siap	
+Language	Bahasa	
+Full screen	Layar penuh	
+Quit	Keluar	
+Window	Jendela	
+Tools	Alat	
+Navigate, navigation	Navigasi	
+Change	Ubah	
+Set (a value)	Atur	
+Unknown	Tidak diketahui	
+None	Tidak ada	
+Could not … / Cannot …	Tidak dapat …	
+… failed	… gagal	
+Format	Format	
+Quality	Kualitas	
+Resolution	Resolusi	
+Compression	Kompresi	
+lossless	lossless	Technical term, as in Indonesian imaging literature.
+Colour	Warna	
+Units	Satuan	
+language names (Language name context)	Bahasa Inggris, Bahasa Jerman, …	With “Bahasa”: Indonesian's own entry then equals its native name “Bahasa Indonesia”.
+time units (1h 02m, 4m 05s, 12s)	1 j 02 mnt, 4 mnt 05 dtk, 12 dtk	jam, menit, detik; “sisa {}” for “{} left”.
+crash, crashed	crash, mengalami crash	“Laporan crash”.
+hotkey	tombol pintas	
+event (programming)	peristiwa	
+window (display range of a channel)	rentang tampilan (window)	Not “jendela”, which is the application window.
+N/A (not recorded)	Tidak tersedia	
+Go (to a measurement)	Lihat	
+Solo (show one channel alone)	Solo	Tooltip: “Tampilkan {} saja”.
+figure (export dialog section)	elemen gambar	Scale bar and processing note added to an exported image.
+downsample	faktor downsample	
+label (slide label)	label	“gambar label”; the label can identify the patient.
+micrometres, millimetres	mikrometer, milimeter	Units µm, mm stay.
+outline (of a region annotation)	garis tepi	As eov's “Tampilkan garis tepi”. “Garis tepi memotong dirinya sendiri” (outline crosses itself); “Perbaiki garis tepi” (Repair outline).
+region (annotation kind)	area	“Tambah area”, “Potong dari area”; a measured area stays “luas”.
+shape	bentuk	
+point / line / arrow / text (annotation kinds)	titik / garis / panah / teks	“Anotasi titik”, “Label teks” (text label).
+polygon / rectangle / ellipse	poligon / persegi panjang / elips	
+freehand outline	garis tepi bebas	
+vertex, corner (of a polygon)	titik sudut	
+hole (in a polygon)	lubang	
+handle (to edit a shape)	pegangan	“seret pegangan untuk mengedit”.
+brush, brush stroke	kuas, sapuan kuas	“Ukuran kuas”, “KUAS (S)”.
+eraser, erase (brush)	penghapus, sapuan penghapus	Undo label “Erase” → “Sapuan penghapus”.
+lock / unlock / locked	kunci / buka kunci / terkunci	
+Unclassified	Tanpa kelas	
+Unnamed / Untitled	Tanpa nama / Tanpa judul	
+count (n.), count points	hitungan, titik hitungan	“Hapus hitungan” (Clear counts); tab and tool name “Hitung” (“alat Hitung (C)”).
+HPF field (a placed high-power field)	lapang pandang HPF	Heading “LAPANG PANDANG BESAR (HPF)”; “{} /10 HPF” stays.
+field number (FN)	nomor lapang pandang (FN)	Label “FN (mm)” stays.
+density (cells per mm²)	densitas	
+combined positive score (CPS)	skor positif gabungan (CPS)	PD-L1; “sel imun PD-L1-positif”.
+tumour cells, immune cells	sel tumor, sel imun	
+second reader	pembaca kedua	Section “PEMBACA KEDUA”.
+blinded copy	salinan tersamar	As in “uji tersamar ganda” (double-blind).
+attach (annotations of another slide)	kaitkan	Moves another slide record's layers to the open slide; not “lampirkan”.
+database	basis data	“Basis data anotasi”.
+back up, backup	cadangkan, cadangan	
+merge (a database)	gabungkan	
+read-only	hanya-baca	State label “Hanya-baca”.
+draft / verified / rejected (review status)	draf / terverifikasi / ditolak	“Status tinjauan” (review status); “Tandai sebagai …” (Mark …).
+property (of an annotation)	properti	Section “PROPERTI”; UPPERCASE English section headings stay uppercase.
+even-odd rule	aturan genap-ganjil	
+DICOM bulk annotations	anotasi massal DICOM	IOD name “Microscopy Bulk Simple Annotations” stays in English.
+Bring them in (old annotations)	Masukkan	“Masukkan anotasinya ke basis data saat ini?”
+Not now	Nanti saja	
+Retry	Coba lagi	
+readout, region readout (Cellaris)	pembacaan, pembacaan area	Tool “Pembacaan area Cellaris”; section “PEMBACAAN AREA”; “hasil pembacaan” for the result.
+cell (Cellaris: square of the slide predicted at once)	kotak kisi	Not “sel”, which would read as a biological cell; same word as eov's “kotak kisi jaringan”.
+window (model input square)	jendela (prediksi)	“jendela prediksi” in user-facing sentences, “jendela” in technical/model-card texts. Display window stays “rentang tampilan”.
+tissue block (5 µm square, Cellaris)	blok jaringan	As the English; the translator note defines it.
+mean / spread (readout columns)	rerata / sebaran	
+reconstruction error	galat rekonstruksi	Statistical “galat”; error map → “peta galat”; mean absolute error (MAE) → “rerata galat absolut (MAE)”.
+bright-field	medan terang	“H&E medan terang”.
+near-black	hampir hitam	
+model card	kartu model	
+library (shared library)	pustaka	“pustaka ONNX Runtime”; ONNX Runtime and runtime stay.
+input / output (of a model)	masukan / keluaran	Also input devices → “perangkat masukan”.
+upsampled / resampled	diperbesar / disampel ulang	
+your site's copy (of a model)	salinan situs Anda	As eov's “salinan situs”.
+weights (model)	bobot	
+preprocessing	prapemrosesan	
+background (glass tiles)	latar belakang	“petak latar belakang”; glass tiles → “petak kaca”.
+result cache	cache hasil	“Bersihkan cache…” (Clear cache…).
+sidecar file	berkas pendamping (sidecar)	
+Original / Reconstruction / Difference (overlays)	Asli / Rekonstruksi / Selisih	
+highest-error regions	area dengan galat tertinggi	
+device (inference: CPU, CUDA)	perangkat	“Auto” → “Otomatis”; typed values auto/cpu/cuda stay.
+about {n} s / min / h (prose)	sekitar {n} detik / menit / jam	Full words in prose; compact forms “dtk / mnt / j” as above.
+gamepad, game controller	gamepad, pengendali game	Plugin name “Gamepad” is the usual Indonesian word.
+stick / trigger / shoulder button / D-Pad	stik / pemicu / tombol bahu / D-Pad	“Stik kiri X”, “Pemicu kiri”, “Klik stik kiri”.
+South / East / North / West Button	Tombol selatan / timur / utara / barat	Face buttons named by position, as the English.
+dead zone / response curve	zona mati / kurva respons	
+mapping (gamepad)	pemetaan	Action names quoted in prose: “Gerakkan penunjuk”.
+profile (gamepad)	profil	
+pointer (mouse)	penunjuk	“penunjuk sistem” (system pointer).
+On / Off (small switch)	Nyala / Mati	Chip is 32 px wide; elsewhere states are “Aktif / Nonaktif”.
+pause / resume	jeda / lanjutkan	“Dijeda”, “dilanjutkan”.
+marker (example plugin: placed point)	penanda	
+background job	tugas latar belakang	
+whole-slide image (file type name)	Citra preparat utuh …	File-type names: “Citra preparat utuh Aperio”, “Citra preparat utuh Hamamatsu NDPI”; vendor and format names stay; “BigTIFF image” → “Gambar BigTIFF”.
+possible folds / possible blur (tissue QC flags)	kemungkinan lipatan / area buram	Flags for review, not certainties: keep “kemungkinan” (“coretan pena, kemungkinan lipatan atau area buram”).
+worker thread	thread pekerja	“Tidak dapat memulai thread pekerja”.
+fallback (stain vectors)	pengganti	“vektor pewarna pengganti”; not “cadangan”, which is a backup.
+host (eov, in plugin messages)	host	“host mengembalikan {n} byte …”.

@@ -395,6 +395,12 @@ fn dialog_controls_act_on_their_actions() {
         // As typed into its value field.
         sharpness.set_accessible_value("0.25");
         assert!((ui.get_export_settings().sharpness - 0.25).abs() < 1e-4);
+        // A decimal comma is read in every language; what is not a number
+        // leaves the value as it is.
+        sharpness.set_accessible_value("0,5");
+        assert!((ui.get_export_settings().sharpness - 0.5).abs() < 1e-4);
+        sharpness.set_accessible_value("abc");
+        assert!((ui.get_export_settings().sharpness - 0.5).abs() < 1e-4);
 
         // Offered for slides with a colour profile.
         let mut settings = ui.get_export_settings();
@@ -433,6 +439,112 @@ fn dialog_controls_act_on_their_actions() {
         tissue.invoke_accessible_default_action();
         assert_eq!(ui.get_dataset_export_settings().tissue_only, !before);
         assert_eq!(tissue.accessible_checked(), Some(!before));
+        ui.hide().unwrap();
+    });
+}
+
+/// Types `text` into the field `element`, replacing what it holds, one key
+/// at a time as a keyboard does: each character goes through the field's
+/// input filter (an `InputType.number` field drops all but ASCII digits).
+fn type_into(ui: &AppWindow, element: &ElementHandle, text: &str) {
+    use slint::platform::{Key, WindowEvent};
+    element.mock_single_click(slint::platform::PointerEventButton::Left);
+    settle(ui);
+    ui.window().dispatch_event(WindowEvent::KeyPressed {
+        text: Key::Control.into(),
+    });
+    key(ui, "a");
+    ui.window().dispatch_event(WindowEvent::KeyReleased {
+        text: Key::Control.into(),
+    });
+    for character in text.chars() {
+        key(ui, character.to_string());
+    }
+}
+
+/// The dialogs' number fields take the digits Persian and Arabic keyboards
+/// type, and what is not a number changes nothing (Enter shows the number
+/// in use again); whole numbers stay whole.
+#[test]
+fn number_fields_take_the_digits_every_keyboard_types() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+
+        ui.set_dataset_export_settings(crate::DatasetExportSettings {
+            tile_size: 256,
+            stride: 256,
+            threads: 4,
+            ..Default::default()
+        });
+        ui.set_dataset_export_dialog_visible(true);
+        settle(&ui);
+        let tile_size = find(&ui, AccessibleRole::TextInput, "Patch size");
+        // Persian digits, read as they are typed.
+        type_into(&ui, &tile_size, "۵۱۲");
+        assert_eq!(ui.get_dataset_export_settings().tile_size, 512);
+        // Not a number: the tile size stays, and Enter shows it again.
+        type_into(&ui, &tile_size, "x");
+        assert_eq!(ui.get_dataset_export_settings().tile_size, 512);
+        assert_eq!(tile_size.accessible_value().as_deref(), Some("x"));
+        key(&ui, Key::Return);
+        assert_eq!(tile_size.accessible_value().as_deref(), Some("512"));
+        // Arabic-Indic digits and a decimal: a whole number of pixels.
+        let stride = find(&ui, AccessibleRole::TextInput, "Stride");
+        type_into(&ui, &stride, "١٢٨٫٦");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_dataset_export_settings().stride, 129);
+        assert_eq!(stride.accessible_value().as_deref(), Some("129"));
+        let threads = find(&ui, AccessibleRole::TextInput, "Threads");
+        type_into(&ui, &threads, "inf");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_dataset_export_settings().threads, 4);
+        let white = find(&ui, AccessibleRole::TextInput, "White threshold (%)");
+        type_into(&ui, &white, "۴۰");
+        assert!((ui.get_dataset_export_settings().white_threshold - 0.4).abs() < 1e-6);
+        ui.set_dataset_export_dialog_visible(false);
+
+        let mut settings = ui.get_export_settings();
+        settings.has_measurement = true;
+        settings.show_measurement = true;
+        settings.measurement_color = slint::Color::from_rgb_u8(10, 20, 30);
+        settings.measurement_opacity = 80.0;
+        settings.measurement_stroke_style = crate::StrokeStyle::Dashed;
+        settings.measurement_dash_length = 8.0;
+        ui.set_export_settings(settings);
+        ui.set_export_dialog_visible(true);
+        settle(&ui);
+        // An empty field is not 0 %.
+        let opacity = find(&ui, AccessibleRole::TextInput, "Opacity (%)");
+        type_into(&ui, &opacity, "");
+        key(&ui, Key::Backspace);
+        assert_eq!(opacity.accessible_value().as_deref(), Some(""));
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_opacity, 80.0);
+        assert_eq!(opacity.accessible_value().as_deref(), Some("80"));
+        type_into(&ui, &opacity, "۵۰");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_opacity, 50.0);
+        // A dash length of 0 would leave no dashes.
+        let dash = find(&ui, AccessibleRole::TextInput, "Dash length");
+        type_into(&ui, &dash, "0");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_dash_length, 8.0);
+        type_into(&ui, &dash, "۱۲");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_dash_length, 12.0);
+        // The colour's red, green and blue (in the colour menu).
+        find(&ui, AccessibleRole::Button, "Colour").invoke_accessible_default_action();
+        settle(&ui);
+        let red = find(&ui, AccessibleRole::TextInput, "Red (0–255)");
+        type_into(&ui, &red, "۲۰۰");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_color.red(), 200);
+        type_into(&ui, &red, "abc");
+        key(&ui, Key::Return);
+        assert_eq!(ui.get_export_settings().measurement_color.red(), 200);
+        assert_eq!(red.accessible_value().as_deref(), Some("200"));
+        ui.set_export_dialog_visible(false);
         ui.hide().unwrap();
     });
 }

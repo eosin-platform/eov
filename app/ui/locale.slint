@@ -1,0 +1,77 @@
+// The language of the interface, as the window needs it beyond its texts
+// (`@tr` translates those): the writing direction and how numbers are
+// written. eov sets it whenever the language changes (app/src/i18n.rs).
+//
+// Arabic, Persian and Hebrew are written from right to left. Slint shapes
+// and orders their text itself; what is left to the window is to align
+// text at the start of the line, which is the right edge in those
+// languages: use `Locale.start` (and `Locale.end`) where text would
+// otherwise be aligned left (right). Slides, the minimap, scale bars,
+// arrows and other things whose direction is physical are not mirrored.
+
+export global Locale {
+    /// The language's BCP 47 tag (`en`, `pt-BR`, `zh-Hant`).
+    in-out property <string> tag: "en";
+    /// The interface is written from right to left.
+    in-out property <bool> rtl: false;
+    /// The decimal separator of the language, with which Slint writes
+    /// numbers in the interface (`1,5` in German).
+    in-out property <string> decimal-separator: ".";
+
+    /// Where a line of text starts and ends.
+    out property <TextHorizontalAlignment> start: root.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    out property <TextHorizontalAlignment> end: root.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
+
+    /// The text in the language's decimal separator (people type `.` or
+    /// `,` whatever the language).
+    pure function localized-number(text: string) -> string {
+        return text.replace-all(".", root.decimal-separator).replace-all(",", root.decimal-separator);
+    }
+
+    /// `text` in ASCII digits: the Arabic-Indic and Persian digits their
+    /// keyboards type, the Arabic decimal sign as `.`, and the minus sign
+    /// as `-`.
+    pure function ascii-digits(text: string) -> string {
+        return text.replace-all("٠", "0").replace-all("١", "1").replace-all("٢", "2").replace-all("٣", "3").replace-all("٤", "4").replace-all("٥", "5").replace-all("٦", "6").replace-all("٧", "7").replace-all("٨", "8").replace-all("٩", "9")
+            .replace-all("۰", "0").replace-all("۱", "1").replace-all("۲", "2").replace-all("۳", "3").replace-all("۴", "4").replace-all("۵", "5").replace-all("۶", "6").replace-all("۷", "7").replace-all("۸", "8").replace-all("۹", "9")
+            .replace-all("\u{066B}", ".").replace-all("\u{2212}", "-");
+    }
+
+    pure function parse-ascii(text: string) -> float {
+        if text.replace-all(",", ".").is-float() {
+            return text.replace-all(",", ".").to-float();
+        }
+        return root.localized-number(text).to-float();
+    }
+
+    /// The number a user typed, with the language's decimal separator or
+    /// with `.` or `,`, in Western, Arabic-Indic or Persian digits; 0 when
+    /// it is none.
+    public pure function number(text: string) -> float {
+        return root.parse-ascii(root.ascii-digits(text));
+    }
+
+    /// `text` for insertion into a translated text (`@tr("Open {}",
+    /// Locale.isolate(file-name))`): in right-to-left languages it is
+    /// isolated (U+2068 … U+2069), so that a file name, a path or a number
+    /// with its unit keeps its own order and leaves the text around it
+    /// alone.
+    public pure function isolate(text: string) -> string {
+        return root.rtl ? "\u{2068}" + text + "\u{2069}" : text;
+    }
+
+    pure function ascii-is-number(text: string) -> bool {
+        return text.replace-all(",", ".").is-float() || root.localized-number(text).is-float();
+    }
+
+    /// Whether `value` is finite (`x - x` is NaN for infinities and NaN).
+    pure function finite(value: float) -> bool {
+        return value - value == 0;
+    }
+
+    /// Whether `text` is a number (see `number`), and a finite one: Slint
+    /// reads "inf" and "NaN" as numbers too, which no field takes.
+    public pure function is-number(text: string) -> bool {
+        return root.ascii-is-number(root.ascii-digits(text)) && root.finite(root.number(text));
+    }
+}

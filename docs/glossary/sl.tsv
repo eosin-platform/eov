@@ -1,0 +1,270 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Za raziskave in izobraževanje. Ni medicinski pripomoček; ni namenjen primarni diagnostiki.	Safety text of the Home screen: translate in full, never shorten or soften.
+not a medical device	ni medicinski pripomoček	Regulatory term »medicinski pripomoček« (Uredba (EU) 2017/745; ZMedPri).
+primary diagnosis	primarna diagnostika	The first, final diagnosis of a case: »ni namenjen primarni diagnostiki«.
+not for diagnosis	ni namenjen diagnostiki	Agree in gender with the subject (»ni namenjeno diagnostiki« for a predicted image or value). Never weaken to »ni priporočljivo«.
+research use only (RUO)	samo za raziskovalno uporabo (RUO)	The phrase printed on RUO reagents; keep RUO. »NAPOVEDANO — samo za raziskovalno uporabo, ni namenjeno diagnostiki«.
+synthetic (image, channel, stain)	sintetičen	Computed by an algorithm. Never »umeten«, »lažen« or »simuliran«.
+predicted	napovedan	Noun: »napoved« (a prediction is not a measurement).
+generated	generiran	Computed by a model or an algorithm: »generirana slika«.
+slide	preparat	Histological slide and its scan (»histološki preparat«). Never »diapozitiv« or »drsnik«. The glass itself: »objektno steklo«.
+whole-slide image (WSI)	slika celotnega preparata (WSI)	Keep the abbreviation WSI: »datoteke WSI«.
+slide viewer, viewer	pregledovalnik preparatov, pregledovalnik	
+tab	zavihek	One open slide in a pane, as in a browser. Not »zaznamek« (that is a bookmark).
+pane	podokno	One of the side-by-side viewing areas: »poveži podokna«, gen. pl. »podoken«.
+panel	plošča	A section of the window (Channels, Plugins, Measurements…): »plošča Vtičniki«.
+view	pogled	What a pane shows (position, magnification, rotation): »prejšnji pogled«.
+viewport	prikazno območje	The area of a pane where the slide is drawn.
+minimap	minizemljevid	The small overview of the whole slide with the visible area marked.
+scale bar	merilna daljica	The bar showing a physical length (µm, mm).
+HUD	plavajoča plošča	Panels floating over the slide: »plavajoča plošča z metapodatki«.
+toolbar	orodna vrstica	
+sidebar	stranska vrstica	
+status bar	vrstica stanja	
+series bar	vrstica serije	The bar listing the slides and folders of the current folder.
+Home screen	začetni zaslon	The Home tab itself: »Začetek«.
+zoom	povečava (prikaza)	Screen scale (100 % = one slide pixel per screen pixel). Zoom in/out: »Povečaj«/»Pomanjšaj«.
+magnification (20×)	povečava (20×)	Objective-equivalent optical magnification; 20× stays 20×. Where both meet: »optična povečava« vs. »digitalna povečava«.
+objective, objective power	objektiv, povečava objektiva	
+pixel	slikovna pika	Unit px stays. Plural: 1 slikovna pika, 2 slikovni piki, 3 slikovne pike, 5 slikovnih pik.
+pixel size	velikost slikovne pike	
+MPP (µm per pixel)	MPP (µm na slikovno piko)	MPP stays; µm/px stays.
+calibration	kalibracija	
+level, pyramid level	raven, raven piramide	Level-0 pixels: »slikovne pike ravni 0«. Not »ravnina« (that is a focal plane).
+tile	ploščica	»velikost ploščice«.
+patch (dataset)	izsek	Patch extraction: »izrezovanje izsekov«. The dataset dialog's »Tile Size« is the patch size: »Velikost izseka«.
+cache	predpomnilnik	
+region of interest (ROI)	območje zanimanja (ROI)	Keep ROI as the abbreviation.
+region (annotation)	območje	A drawn area.
+measurement	meritev	Plural: 1 meritev, 2 meritvi, 3 meritve, 5 meritev.
+Measure (tool)	Merjenje	Tool name; verbs »meriti«, »izmeriti«.
+distance	razdalja	
+path length	dolžina poti	Measure mode of a polyline (several segments).
+area	površina	»površina mnogokotnika«.
+angle	kot	
+polygon	mnogokotnik	
+rectangle	pravokotnik	
+ellipse	elipsa	
+outline	obris	
+annotation	anotacija	A drawn mark with a meaning; a free-text comment is »komentar«.
+class (annotation class)	razred	E.g. »Tumor«, »Stroma«; »razred anotacije«.
+layer	plast	
+overlay	prekrivna plast; prekrivanje	Graphics drawn over the slide: »prekrivna plast«; the dimming outside a region: »prekrivanje«.
+cell count, counting	štetje celic, štetje	
+high-power field (HPF)	vidno polje velike povečave (HPF)	Keep HPF as the abbreviation: »polje HPF«, »mitoze na 10 HPF«.
+field number (FN)	številka vidnega polja (FN)	Eyepiece field number in mm.
+density	gostota	E.g. cells per mm².
+H&E	H&E	Hematoksilin-eozin; keep the abbreviation H&E.
+hematoxylin	hematoksilin	One-letter abbreviation H.
+eosin	eozin	One-letter abbreviation E.
+IHC	IHC	Imunohistokemija; keep the abbreviation IHC.
+DAB	DAB	Chromogen: »DAB-pozitivno«.
+stain (staining, stain type)	barvanje	The method or type: »barvanje H&E«, »normalizacija barvanja«, series order »Barvanje«.
+stain (one dye of a stain model)	barvilo	»izolirano barvilo«, »vektorji barvil«, »model barvanja ima 2 barvili«.
+stain normalization	normalizacija barvanja	Macenko and Vahadane stay undeclined: »normalizacija barvanja (Macenko)«.
+stain target	ciljno barvanje	The appearance normalisation maps slides onto: »uporabi kot ciljno barvanje«.
+stain model	model barvanja	E.g. H&E, H-DAB.
+stain vectors	vektorji barvil	»referenčni vektorji barvil«.
+stain fit	ocena barvil	Estimating a slide's stain vectors: »barvila se še ocenjujejo«.
+color deconvolution	barvna dekonvolucija	Ruifrok–Johnston stays.
+colour management	upravljanje barv	
+colour profile (ICC)	barvni profil (ICC)	
+colours as scanned	izvirne barve skenerja	Shown without colour management.
+H-score	H-score	Kept as in the literature.
+weak / moderate / strong (1+, 2+, 3+)	šibko / zmerno / močno (1+, 2+, 3+)	Staining intensity classes (agree with »obarvanje«).
+optical density	optična gostota	
+quantify, quantification	kvantificirati, kvantifikacija	»Kvantificiraj barvilo«.
+threshold	prag	»mejna vrednost« where clearer.
+histogram	histogram	
+channel	kanal	Plural: 1 kanal, 2 kanala, 3 kanali, 5 kanalov.
+multiplex immunofluorescence (mIF)	multipleksna imunofluorescenca (mIF)	
+marker	označevalec	Marker names (CD3, Ki-67, PanCK…) are never translated.
+focal plane (Z)	goriščna ravnina (Z)	The stack of planes: »Z-sklad«.
+time point (T), time series	časovna točka (T), časovna serija	
+heat map	toplotni zemljevid	
+opacity	neprosojnost	0–100 %.
+tissue	tkivo	
+tissue QC	kontrola kakovosti tkiva (QC)	Short: »QC tkiva«.
+pen marks	oznake s flomastrom	Marks of a marker pen on the glass.
+folds	gube	»gube tkiva«.
+blur, out of focus	zamegljenost, neostro	»zamegljena območja«, »morda neostro«.
+tissue detection, tissue mask	zaznavanje tkiva, maska tkiva	
+background	ozadje	
+dataset	nabor podatkov	»Izvozi nabor podatkov«.
+stride	korak	The step between patches.
+export	izvozi; izvoz	Menu item »Izvozi sliko …«; dialog title »Izvoz slike«.
+save a copy	shrani kopijo	
+convert	pretvori	»Pretvori barve v sRGB«.
+de-identify	odstrani identifikacijske podatke	Remove patient-identifying data (label, macro image, metadata). Adjective: »brez identifikacijskih podatkov«. Not »anonimiziraj«, which promises more.
+label image	slika nalepke	Caption: »Nalepka«.
+macro image	makroslika	Photo of the whole glass slide.
+overview image	pregledna slika	Caption: »Pregled«.
+thumbnail	sličica	
+bookmark	zaznamek	A saved view of a slide. Plural: 1 zaznamek, 2 zaznamka, 3 zaznamki, 5 zaznamkov.
+session	seja	
+case	primer	The patient case (accession) slides belong to.
+vendor, scanner	proizvajalec, skener	
+property (of a slide)	lastnost	Slide properties as the scanner wrote them.
+metadata	metapodatki	
+plugin	vtičnik	Plural: 1 vtičnik, 2 vtičnika, 3 vtičniki, 5 vtičnikov.
+package (.eop)	paket (.eop)	»paket vtičnika«.
+model, model store	model, shramba modelov	Machine-learning model files.
+inference	sklepanje	Running a model on images.
+batch	serija	»velikost serije«.
+thread	nit	Processor core: »jedro«.
+render	upodobiti, upodabljanje	
+renderer (CPU, GPU)	upodabljalnik CPU / GPU	CPU and GPU stay as they are.
+filtering (bilinear, trilinear, Lanczos)	filtriranje (bilinearno, trilinearno, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	ostrina, gama, svetlost, kontrast	Gamma symbol γ.
+image adjustments	prilagoditve slike	
+theme (dark, light, high contrast)	tema (temna, svetla, visok kontrast)	
+Check for Updates…	Preveri posodobitve …	Asks before going online; never imply automatic background updates.
+update	posodobitev; posodobiti	
+release, release notes	izdaja, opombe ob izdaji	»manifest izdaje«.
+signature	podpis	
+checksum	kontrolna vsota	SHA-256 stays.
+administrator policy	skrbniški pravilnik	»onemogočeno s skrbniškim pravilnikom {}«.
+safe mode	varni način	
+log folder	mapa dnevnikov	
+messages	sporočila	The notification list in the status bar.
+landmark (alignment)	orientacijska točka	Not »referenčna« (reserved for reference stain vectors and targets).
+align, alignment	poravnati, poravnava	Of linked slides.
+link / unlink panes	poveži podokna / prekini povezavo podoken	
+rotate, rotation	zasukati, zasuk	»Zasukaj desno za 90°«.
+flip horizontally	prezrcali vodoravno	Undo the flip: »Prekliči zrcaljenje«.
+pan	premakni pogled	Moving the view.
+point, line, arrow, text	točka, črta, puščica, besedilo	
+brush, eraser	čopič, radirka	
+hole (of a polygon)	luknja	
+comment, author	komentar, avtor	
+nucleus, nuclei	jedro, jedra	Cell nuclei: »celična jedra«.
+tumour cells	tumorske celice	
+reader (of annotations)	ocenjevalec	Another pathologist reading the same slide.
+blinded copy	zaslepljena kopija	
+gamepad	igralni plošček	
+Annotations (plugin name)	Anotacije	Descriptive plugin name: translated.
+Gamepad (plugin name)	Igralni plošček	Descriptive plugin name: translated.
+Example Plugin (plugin name)	Primer vtičnika	Descriptive plugin name: translated.
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	Coined product names: never translated.
+eov	eov	Lowercase and undeclined; masculine agreement (»eov se je zaprl«), or »program eov« where a case ending is needed.
+you (addressing the user)	vi (vikanje)	Instructions and questions use the polite plural: »Odprite preparat«, »Ali želite …?«.
+Open	Odpri	Buttons and menu items use the imperative (2nd person singular), sentence case.
+Close	Zapri	
+Cancel	Prekliči	
+OK	V redu	
+Save, Save…	Shrani, Shrani …	
+Delete	Izbriši	
+Remove	Odstrani	A plugin, an input, a heat map, a region of interest.
+Clear	Počisti	»Počisti nedavne datoteke«, »Počisti sporočila«; landmarks or a region of interest: »Odstrani …«.
+Settings	Nastavitve	
+Apply	Uporabi	
+Reset, Reset to Defaults	Ponastavi, Ponastavi na privzeto	Reset Rotation: »Ponastavi zasuk«.
+Show / Hide	Pokaži / Skrij	
+Toggle …	Pokaži/skrij …	Toolbar toggles.
+Import	Uvozi	
+Copy	Kopiraj	Status messages: »Kopirano: {}«.
+Undo / Redo	Razveljavi / Uveljavi	»Razveljavi: {}«; undo-step labels are verbal nouns (»Dodajanje meritve«).
+Zoom in / Zoom out	Povečaj / Pomanjšaj	
+Fit	Prilagodi	»Prilagodi preparat podoknu«.
+Enable / Disable	Omogoči / Onemogoči	States: »Omogočeno« / »Onemogočeno«.
+Confirm	Potrdi	
+Done	Končano	
+Add	Dodaj	
+Edit	Uredi	
+Rename	Preimenuj	
+Filter	Filtriraj; filter	
+Back / Forward / Up	Nazaj / Naprej / Gor	
+Download	Prenesi	Noun: »prenos«.
+Install / Uninstall	Namesti / Odstrani	
+Restart	Znova zaženi	»Znova zaženite eov«.
+Lock / Unlock	Zakleni / Odkleni	
+Merge	Združi	
+Select	Izberi	
+Loading…	Nalaganje …	
+Ready	Pripravljeno	
+Error / Warning / Information	Napaka / Opozorilo / Informacije	
+Language	Jezik	Language names are capitalised list entries: »Nemščina«.
+colour	barva	Colour names agree with »barva«: »Temno modra«.
+keyboard shortcut, hotkey	bližnjica na tipkovnici	Panel title: »Bližnjice na tipkovnici«.
+key	tipka	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) stay as they are.
+tooltip	opis orodja	
+clipboard	odložišče	
+folder, file manager	mapa, upravitelj datotek	
+path	pot	
+stroke (line style)	črta	Polna, črtkana, pikčasta; caps: »konci«.
+focused pane	aktivno podokno	
+self-update	samoposodabljanje	eov updating itself (eov update); not »samodejno posodabljanje«.
+update helper	pomočnik za posodobitev	
+app bundle (macOS)	paket aplikacije	Also a Flatpak bundle: »paket Flatpak«.
+N/A, Unknown (values)	ni na voljo, neznano	A property the file does not record.
+Copied/Saved/Exported {}	Kopirano/Shranjeno/Izvoženo: {}	Status pattern that avoids gender agreement with a name.
+{} of {}	{} od {}	»Časovna točka 2 od 5«.
+plural forms	1 / 2 / 3–4 / 5+	Four forms: form 0 for 1, 101…; form 1 (dual) for 2, 102…; form 2 for 3, 4, 103…; form 3 for 0, 5–20…; every form shows {n}. Verbs agree: je / sta / so / je (neuter).
+ellipsis …	…	Kept at the end of items that open a dialog; written with a space before it after a whole word (»Shrani …«, »Nalaganje …«).
+quotation marks “ ”	» «	Slovenian quotes (U+00BB, U+00AB).
+number and unit	12 MB, 50 %, 90°, 20×	Space before units and %; none before the ° of an angle; 1024 × 768 px. Times: 1 h 02 min, 4 min 05 s.
+colour normalisation	normalizacija barv	The pane badge and figure note of stain normalisation: »Barve normalizirane (Macenko)«.
+Navigate (tool)	Navigacija	The tool that moves the view.
+viewport lock	zaklep prikaznih območij	Panes showing the same slide move together.
+Stain Norm (short label)	Normalizacija	Short row label in the image adjustments panel.
+A–Z (sort order)	A–Ž	The Slovenian alphabet ends with Ž.
+Solo (channel)	Solo	Show one channel alone: »Pokaži samo kanal {}«.
+Auto contrast	Samodejni kontrast	
+Full screen	Celozaslonski način	
+Quit	Zapri	»Zapri eov«.
+Maximize / Minimize window	Maksimiraj / Minimiraj okno	
+script	skript	»(skript)« after a job started by a script.
+job (background task)	opravilo	A running task in the status bar, which can be cancelled.
+progress	napredek	
+repository	repozitorij	A GitHub repository.
+artifact (release)	artefakt	A file of a release (release.toml).
+proxy	posredniški strežnik	HTTPS_PROXY, NO_PROXY stay.
+policy file	datoteka pravilnika	
+lock file	datoteka zaklepa	
+command-line option	možnost	»z možnostjo --language«; the option itself stays.
+model weights	uteži modela	
+runtime (ONNX Runtime)	izvajalno okolje	The name ONNX Runtime stays.
+embedding	vložitev	Model output vector.
+reconstruction (VAE)	rekonstrukcija	VAE stays.
+score (tile score)	ocena	»ocene ploščic«.
+readout (region readout)	odčitek	»odčitek območja«.
+legend	legenda	
+virtual staining	virtualno barvanje	Computed (synthetic) stain; see »synthetic«.
+segmentation, detection, classification	segmentacija, zaznavanje, razvrščanje	»Zaznavanje jeder«; a classifier: »klasifikator«.
+mitosis, mitoses	mitoza, mitoze	»mitoze na 10 HPF«.
+positive / negative	pozitiven / negativen	»DAB-pozitivno«, »Ki-67-pozitivne celice«.
+coordinates	koordinate	
+group	skupina	
+database	zbirka podatkov	
+game controller	igralni krmilnik	Gamepad plugin; the device class: »igralni plošček«.
+stick, trigger (gamepad)	palica, sprožilec	»leva palica X«, »desni sprožilec«.
+dead zone	mrtvo območje	
+pointer (mouse)	kazalec	»hitrost kazalca«.
+profile (gamepad)	profil	
+undo-step label (plugins)	glagolnik	Plugin undo labels are verbal nouns too: »Dodajanje točke«, »Brisanje {n} anotacij«, »Uvoz {n} anotacij«; the same text also serves as a confirm-dialog title (»Brisanje plasti«).
+Unclassified (annotation class)	Nerazvrščeno	Annotations without a class: »prikazane bodo kot nerazvrščene«.
+review status: Draft / Verified / Rejected	Osnutek / Preverjeno / Zavrnjeno	Annotation status (»Stanje pregleda«); undo labels: »Označitev kot preverjeno«.
+count point	točka štetja	A point placed with the Count tool; the Count tab and tool: »Štetje«, »orodje Štetje (C)«.
+HPF field (annotations tool)	polje HPF	Tool »Polje HPF (H)«; »1 HPF = … mm²«.
+self-intersecting outline	obris, ki se seka sam s seboj; samopresečišče	»Obris se je sekal sam s seboj«; »obris s samopresečišči«.
+even-odd rule	pravilo sodo-liho	Fill rule for self-intersecting outlines.
+combined positive score (CPS)	kombinirana pozitivna ocena (CPS)	PD-L1 CPS; keep CPS.
+Feret diameter (max / min caliper)	največji / najmanjši premer (Feret)	Measurement rows of an annotation.
+DICOM bulk annotations	množične anotacije DICOM	Microscopy Bulk Simple Annotations (IOD name) stays in English.
+marker (example plugin point)	oznaka	A placed point in the example plugin; not »označevalec«, which is a protein marker.
+cell (Cellaris grid square, 41.6 µm)	mrežna celica	Never plain »celica«, which reads as a biological cell: »{done} od {n} mrežnih celic«.
+window (model input image)	okno	Square image a model predicts from: »okno 256×256 px«, »{n} oken napovedi«.
+tissue block (Cellaris, 5 µm square)	kvadratek tkiva	Not »blok tkiva« (paraffin block).
+display window (marker, arcsinh)	razpon prikaza	Range of values a marker colour is drawn over: »Razpon prikaza za {} (arcsinh)«.
+readout columns: mean / spread / density r²	povpr. / razpr. / r² gostote	Narrow columns of the Cellaris region readout; spread is the standard deviation (»razpršenost«).
+reconstruction error	napaka rekonstrukcije	eovae (VAE anomaly) analysis.
+error map	zemljevid napak	eovae overlay; also »Izvirnik«, »Rekonstrukcija«, »Razlika« (Overlay choices).
+preprocessing	predobdelava	eovae model input preparation.
+sidecar file (<model>.eovae.json)	spremna datoteka	
+model card	kartica modela	»vgrajena kartica modela«.
+reference model / your site's model	referenčni model / model vaše ustanove	Model downloads in Cellaris and eovae.
+mappings (gamepad)	dodelitve	Controls assigned to actions; action names are imperatives like eov's shortcuts (»Premakni pogled vodoravno«).
+D-pad	smerni križ	»Smerni križ levo«.
+shoulder button / face button (South, East, North, West)	ramenski gumb / spodnji, desni, zgornji, levi gumb	Face buttons are named by position.
+response curve	krivulja odziva	Gamepad tuning (»Fina nastavitev«).
+pause (gamepad input)	začasno ustaviti	»Omogoči / začasno ustavi«; »Igralni plošček je začasno ustavljen«.

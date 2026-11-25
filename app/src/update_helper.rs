@@ -169,6 +169,7 @@ fn run(transaction: &Transaction, wait: WaitFor) -> HelperReport {
         message: String::new(),
         installation: transaction.current_tree.clone(),
         previous: None,
+        restore_to: None,
     };
     let result = (|| -> Result<Outcome> {
         wait_for_parent(wait, transaction.pid, PARENT_TIMEOUT)?;
@@ -289,29 +290,23 @@ fn restore_tree(
     report: &mut HelperReport,
     error: anyhow::Error,
 ) -> anyhow::Error {
+    // The report says where both versions are, for the next eov to tell the
+    // user in their language (this helper has no translations).
     if let Some(parked) = parked
         && current.exists()
         && rename_with_retry(current, parked).is_err()
     {
         report.outcome = Outcome::Failed;
-        report.message = format!(
-            "The new version is still at {} and the previous one is at {}. Close every program that uses eov, then move {} away and rename {} to {}.",
-            current.display(),
-            previous.display(),
-            current.display(),
-            previous.display(),
-            current.display()
-        );
+        report.message = transaction::new_version_kept_message(current, previous);
+        report.previous = Some(previous.to_path_buf());
         return error;
     }
     if let Err(restore_error) = rename_with_retry(previous, current) {
         report.outcome = Outcome::Failed;
-        report.message = format!(
-            "eov could not be restored automatically ({restore_error}). Your previous installation is at {}; rename it to {}.",
-            previous.display(),
-            current.display()
-        );
+        report.message = transaction::not_restored_message(restore_error, previous, current);
         report.installation = Some(previous.to_path_buf());
+        report.previous = Some(previous.to_path_buf());
+        report.restore_to = Some(current.to_path_buf());
     }
     error
 }
@@ -777,6 +772,7 @@ mod tests {
             message: String::new(),
             installation: None,
             previous: None,
+            restore_to: None,
         }
     }
 
@@ -843,6 +839,71 @@ mod tests {
         assert_eq!(fs::read_to_string(current.join("eov.exe")).unwrap(), "old");
         assert!(!transaction.previous_tree.as_ref().unwrap().exists());
         assert_ne!(report.outcome, Outcome::Failed);
+    }
+
+    /// When restoring fails, the report says where both versions are, so
+    /// the next eov can tell the user what to do in their language; the
+    /// message keeps the helper's English words.
+    #[test]
+    fn a_damaged_installation_is_reported_with_both_folders() {
+        let temp = tempfile::tempdir().unwrap();
+        let transaction = transaction(temp.path());
+        let current = transaction.current_tree.clone().unwrap();
+        let previous = transaction.previous_tree.clone().unwrap();
+        // The new version cannot be moved away again.
+        tree(&current, "new");
+        tree(&previous, "old");
+        let mut report = report_for(&transaction);
+        report.installation = Some(current.clone());
+        let parked = temp.path().join("missing").join("parked");
+        let _ = restore_tree(
+            &current,
+            &previous,
+            Some(&parked),
+            &mut report,
+            anyhow::anyhow!("locked"),
+        );
+        assert_eq!(report.outcome, Outcome::Failed);
+        assert_eq!(report.installation.as_ref(), Some(&current));
+        assert_eq!(report.previous.as_ref(), Some(&previous));
+        assert_eq!(
+            report.message,
+            transaction::new_version_kept_message(&current, &previous)
+        );
+        assert!(report.localized_summary().contains("Close every program"));
+
+        // The previous version cannot be put back: the report also says
+        // where it has to go, which the window names.
+        let mut report = report_for(&transaction);
+        let gone = temp.path().join("gone");
+        let _ = restore_tree(&current, &gone, None, &mut report, anyhow::anyhow!("x"));
+        assert_eq!(report.outcome, Outcome::Failed);
+        assert_eq!(report.installation.as_ref(), Some(&gone));
+        assert_eq!(report.previous.as_ref(), Some(&gone));
+        assert_eq!(report.restore_to.as_ref(), Some(&current));
+        assert!(
+            report
+                .message
+                .starts_with("eov could not be restored automatically")
+        );
+        let shown = report.localized_summary();
+        assert!(
+            shown.contains(&format!(
+                "Your previous installation is at {}; rename it to {}.",
+                gone.display(),
+                current.display()
+            )),
+            "{shown}"
+        );
+        assert_eq!(shown.matches("rename it to").count(), 1, "{shown}");
+        // The command line and the helper's own message keep its words.
+        assert_eq!(
+            report.summary(),
+            format!(
+                "The last eov update failed and could not be fully rolled back: {}",
+                report.message
+            )
+        );
     }
 
     #[test]

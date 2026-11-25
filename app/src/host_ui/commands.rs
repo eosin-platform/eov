@@ -7,6 +7,7 @@ use crate::plugin_runtime::EventTarget;
 use crate::plugin_runtime::shared::{Command, ViewCommand};
 use crate::plugin_runtime::undo::{UndoAction, UndoEntry};
 use crate::state::PaneId;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{
     FileDialogArgs, HostEvent, NotifyLevel, PaneId as PaneUid, SeriesAction,
 };
@@ -157,7 +158,10 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
             if let (Some(title), Some(error)) = (failed, &args.error) {
                 host.notify(
                     NotifyLevel::Error,
-                    &format!("{title} failed"),
+                    // Translators: a notification title; {title} is the title
+                    // of a plugin's job as the plugin wrote it ("Detecting
+                    // nuclei").
+                    &tr!("Failed: {title}", title = title),
                     Some(error),
                     Some(&name),
                 );
@@ -172,10 +176,22 @@ pub(super) fn apply(host: &UiHost, plugin_id: &Arc<str>, command: Command) {
             );
         }
         Command::OverlaysChanged => host.redraw_overlays(),
-        Command::Refused { what, id, reason } => {
+        Command::Refused {
+            what,
+            id,
+            reason,
+            shown_reason,
+        } => {
+            // Plugins show `shown_reason`; `reason` stays English, as eov
+            // 1.0 sent it, for their logs and code.
             host.post(
                 EventTarget::Plugin(Arc::clone(plugin_id)),
-                HostEvent::RegistrationRefused { what, id, reason },
+                HostEvent::RegistrationRefused {
+                    what,
+                    id,
+                    reason,
+                    shown_reason: Some(shown_reason),
+                },
             );
         }
         // Batch runs happen in `eov batch`, never in the window.

@@ -1399,6 +1399,7 @@ dependencies = [
  "rayon",
  "regex",
  "rfd",
+ "rspolib",
  "rstar",
  "rustls",
  "rustls-native-certs",
@@ -1409,6 +1410,7 @@ dependencies = [
  "slint",
  "slint-build",
  "slint-interpreter",
+ "sys-locale",
  "tar",
  "tempfile",
  "thiserror 2.0.20",
@@ -1470,9 +1472,10 @@ dependencies = [
 
 [[package]]
 name = "eov-plugin-api"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "abi_stable",
+ "rspolib",
  "semver",
  "serde",
  "serde_json",

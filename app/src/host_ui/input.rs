@@ -19,6 +19,7 @@ use crate::plugin_runtime::contributions::HotkeyTarget;
 use crate::shortcuts::Action;
 use crate::state::PaneId;
 use crate::{PaneCursor, ToolType};
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{Cursor, FileId, HostEvent, Modifiers, PointerButton};
 use slint::ComponentHandle;
 use std::sync::Arc;
@@ -472,10 +473,10 @@ impl UiHost {
             }
         };
         let Some(visit) = visit else {
-            self.status(if back {
-                "No earlier view in this pane"
+            self.status(&if back {
+                tr!("No earlier view in this pane")
             } else {
-                "No later view in this pane"
+                tr!("No later view in this pane")
             });
             return;
         };
@@ -532,12 +533,15 @@ impl UiHost {
         let Some((file_id, wsi)) = found else {
             return;
         };
-        let (count, current, what) = match axis {
-            PlaneAxis::Focus => (wsi.focal_planes(), wsi.focal_plane(), "focal plane"),
-            PlaneAxis::Time => (wsi.time_points(), wsi.time_point(), "time point"),
+        let (count, current) = match axis {
+            PlaneAxis::Focus => (wsi.focal_planes(), wsi.focal_plane()),
+            PlaneAxis::Time => (wsi.time_points(), wsi.time_point()),
         };
         if count <= 1 {
-            self.status(&format!("This slide has one {what}"));
+            self.status(&match axis {
+                PlaneAxis::Focus => tr!("This slide has one focal plane"),
+                PlaneAxis::Time => tr!("This slide has one time point"),
+            });
             return;
         }
         let next = (i64::from(current) + delta).clamp(0, i64::from(count) - 1) as u32;
@@ -547,7 +551,10 @@ impl UiHost {
                 PlaneAxis::Time => wsi.set_time_point(next),
             };
             if let Err(error) = changed {
-                self.status(&format!("Could not change the {what}: {error}"));
+                self.status(&match axis {
+                    PlaneAxis::Focus => tr!("Could not change the focal plane: {}", error),
+                    PlaneAxis::Time => tr!("Could not change the time point: {}", error),
+                });
                 return;
             }
             crate::channels::rebuild_slide(self, file_id, &wsi);
@@ -555,14 +562,25 @@ impl UiHost {
                 crate::channels::refresh_summary(&ui);
             }
         }
-        let mut text = format!("{} {} of {count}", capitalised(what), next + 1);
-        if axis == PlaneAxis::Time && wsi.focal_planes() > 1 {
-            text.push_str(&format!(
-                ", focal plane {} of {}",
-                wsi.focal_plane() + 1,
-                wsi.focal_planes()
-            ));
-        }
+        let text = match axis {
+            PlaneAxis::Focus => tr!(
+                "Focal plane {number} of {count}",
+                number = next + 1,
+                count = count
+            ),
+            PlaneAxis::Time if wsi.focal_planes() > 1 => tr!(
+                "Time point {number} of {count}, focal plane {plane} of {planes}",
+                number = next + 1,
+                count = count,
+                plane = wsi.focal_plane() + 1,
+                planes = wsi.focal_planes()
+            ),
+            PlaneAxis::Time => tr!(
+                "Time point {number} of {count}",
+                number = next + 1,
+                count = count
+            ),
+        };
         self.status(&text);
     }
 
@@ -600,7 +618,7 @@ impl UiHost {
         if framed {
             self.request_render();
         } else {
-            self.status("No tissue was found; showing the whole slide");
+            self.status(&tr!("No tissue was found; showing the whole slide"));
             self.with_focused_viewport(crate::callbacks::frame_active_viewport);
         }
     }
@@ -878,12 +896,4 @@ mod tests {
 pub(crate) enum PlaneAxis {
     Focus,
     Time,
-}
-
-fn capitalised(text: &str) -> String {
-    let mut chars = text.chars();
-    chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default()
 }

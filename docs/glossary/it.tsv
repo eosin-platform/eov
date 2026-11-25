@@ -1,0 +1,271 @@
+term	translation	note
+(register)	tu; imperativo per pulsanti e menu	Address the user with "tu", as Microsoft, Apple and Google Italian UIs do; never "Lei"/"voi". Buttons and menu items: 2nd person imperative, sentence case ("Apri", "Salva una copia…"). Prefer impersonal phrasing in messages ("Impossibile aprire {}").
+(capitalisation)	maiuscola solo iniziale	No English Title Case: "Export Image…" → "Esporta immagine…". Product and format names keep their capitals.
+(quotation marks)	“ ”	Curly double quotes around names and inserted values; keep straight quotes only inside code, commands and configuration examples.
+(errors)	Impossibile + infinito	"Could not open {}" → "Impossibile aprire {}". Lowercase error fragments stay lowercase.
+(time units)	h, min, s	"1h 02m" → "1 h 02 min"; "4m 05s" → "4 min 05 s".
+For research and education. Not a medical device; not for primary diagnosis.	Per la ricerca e la didattica. Non è un dispositivo medico; non è destinato alla diagnosi primaria.	Safety text: never shorten or soften.
+research use only (RUO)	solo per uso di ricerca (RUO)	Italian wording printed on RUO reagents.
+intended use	destinazione d'uso	Regulatory term (MDR/IVDR).
+medical device	dispositivo medico	
+primary diagnosis	diagnosi primaria	
+synthetic	sintetico	Computed by an algorithm; never "artificiale" or "simulato".
+predicted	predetto	As in a model's prediction ("canale predetto").
+generated	generato	
+slide	vetrino	The glass slide and its scan; never "diapositiva". Plural "vetrini".
+whole-slide image (WSI)	immagine di vetrino intero (WSI)	Keep the abbreviation WSI.
+slide viewer, viewer	visualizzatore di vetrini, visualizzatore	
+tab	scheda	One open slide in a pane.
+pane	riquadro	One of the side-by-side viewing areas.
+split the view	dividi la vista	
+link / unlink panes	collega / scollega i riquadri	
+focused pane	riquadro attivo	
+view	vista	Position, zoom and rotation of a pane.
+viewport	area di visualizzazione	"Viewport lock" → "Blocco dell'area di visualizzazione".
+minimap	minimappa	
+scale bar	barra di scala	
+HUD	pannello sovrapposto	The small panels floating over the slide; "Toggle metadata HUD" → "Mostra/nascondi pannello dei metadati".
+overlay	sovrapposizione	Graphics drawn over the slide.
+layer	strato	A group of overlay graphics; "livello" is reserved for pyramid levels.
+toolbar	barra degli strumenti	
+sidebar	barra laterale	
+status bar	barra di stato	
+series bar	barra della serie	
+series	serie	Invariable.
+Home screen	schermata Home	The tab label stays "Home".
+zoom	zoom	Screen scale; masculine, invariable.
+zoom in / zoom out	aumenta lo zoom / riduci lo zoom	
+fit (to window)	adatta (alla finestra)	
+magnification	ingrandimento	Objective-equivalent magnification; 20× stays 20×.
+objective	obiettivo	The microscope objective (40×).
+objective power	ingrandimento dell'obiettivo	
+pixel size	dimensione del pixel	
+MPP	MPP	µm per pixel; do not translate.
+calibration	calibrazione	
+level, pyramid level	livello, livello della piramide	
+tile	tassello	A square piece of the image loaded at a time; plural "tasselli". In the dataset dialog "Tile size" means the patches: "Dimensione delle patch".
+patch (dataset)	patch	Feminine, invariable: "la patch", "le patch".
+dataset	dataset	Masculine, invariable.
+patch extraction	estrazione di patch	
+stride	passo	Step between patches.
+white threshold	soglia del bianco	
+cache	cache	Feminine: "la cache".
+region of interest (ROI)	regione di interesse (ROI)	Keep ROI.
+region	regione	
+measurement	misurazione	
+measure (tool)	misura, strumento di misura	
+distance	distanza	
+path length	lunghezza del percorso	
+area	area	
+angle	angolo	
+clockwise / counterclockwise	in senso orario / in senso antiorario	
+annotation	annotazione	A drawn mark with a meaning, not a free-text comment.
+class (annotation class)	classe	
+cell count, counting	conteggio cellulare, conteggio	
+high-power field (HPF)	campo ad alto ingrandimento (HPF)	Keep HPF.
+H&E	H&E	Do not translate (not "EE").
+hematoxylin	ematossilina	One letter: H (as in H&E).
+eosin	eosina	One letter: E.
+IHC	IHC	Immunoistochimica; keep the abbreviation.
+DAB	DAB	
+stain (n.)	colorazione	The staining of the tissue (H&E, IHC); a single dye is "colorante".
+dye	colorante	
+stain normalization	normalizzazione della colorazione	Macenko and Vahadane are not translated.
+stain target	target di colorazione	The colours that stain normalisation aims at; "reference stain target" → "target di colorazione di riferimento".
+color deconvolution	deconvoluzione del colore	Ruifrok–Johnston.
+colour management, colour-managed	gestione del colore, con gestione del colore	
+colour profile	profilo colore	ICC profile → profilo ICC.
+colours as scanned	colori originali della scansione	Colour management off: the colours the scanner captured.
+channel	canale	
+multiplex immunofluorescence (mIF)	immunofluorescenza multiplex (mIF)	
+marker	marcatore	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	piano focale (Z)	
+time point (T)	punto temporale (T)	
+time series	serie temporale	
+heat map	mappa di calore	
+colour map	mappa di colori	
+opacity	opacità	
+tissue	tessuto	
+tissue QC	controllo qualità del tessuto (QC del tessuto)	Short labels: "QC del tessuto".
+pen marks	segni di pennarello	
+folds	pieghe	
+blur, blurred, out of focus	sfocatura, sfocato, fuori fuoco	
+tissue detection	rilevamento del tessuto	
+tissue mask	maschera del tessuto	
+background	sfondo	
+export	esporta (v.), esportazione (n.)	
+Export Image…	Esporta immagine…	Menu item, Ctrl+E.
+save a copy	salva una copia	
+convert	converti	
+de-identify	de-identificare (de-identificazione)	Remove data that can identify a patient; not "anonimizzare", which claims more.
+label image	immagine dell'etichetta	
+macro image	immagine macro	
+thumbnail	miniatura	
+associated image	immagine associata	
+metadata	metadati	
+properties	proprietà	
+vendor	produttore	
+bookmark	segnalibro	Plural "segnalibri".
+session	sessione	
+plugin	plugin	Masculine, invariable.
+package (.eop)	pacchetto	
+model	modello	Machine-learning model.
+model store	archivio dei modelli	
+inference	inferenza	
+render (v.), rendering	eseguire il rendering, rendering	
+renderer	renderer	Masculine; "the GPU renderer" → "il renderer GPU".
+backend	backend	
+GPU, CPU	GPU, CPU	Feminine: "la GPU", "la CPU".
+graphics adapter	scheda grafica	
+filtering (bilinear, trilinear, Lanczos)	filtro (bilineare, trilineare, Lanczos)	
+sharpness, sharpen	nitidezza, aumenta la nitidezza	
+gamma	gamma	
+brightness	luminosità	
+contrast	contrasto	
+theme (dark, light, high contrast)	tema (scuro, chiaro, contrasto elevato)	
+notification	notifica	
+keyboard shortcut	scorciatoia da tastiera	
+language	lingua	
+update (n./v.)	aggiornamento / aggiorna	
+Check for Updates…	Verifica aggiornamenti…	Asks before going online.
+release (of eov)	versione	"GitHub Releases" stays.
+prerelease	versione preliminare	
+install / uninstall	installa / disinstalla	
+download	scarica (v.), download (n.)	
+Open	Apri	
+Open…	Apri…	
+Close	Chiudi	
+Cancel	Annulla	
+Save	Salva	
+Save As…	Salva con nome…	
+Delete	Elimina	
+Remove	Rimuovi	
+Add	Aggiungi	
+Rename	Rinomina	
+Edit	Modifica	
+Settings	Impostazioni	
+Preferences	Preferenze	
+Apply	Applica	
+Reset	Reimposta	
+Restore defaults	Ripristina valori predefiniti	
+Default	predefinito	
+Show / Hide	Mostra / Nascondi	
+Toggle …	Mostra/nascondi … (or Attiva/disattiva …)	
+Enable / Disable	Attiva / Disattiva	
+Import	Importa	
+Copy	Copia	
+Paste	Incolla	
+Undo / Redo	Annulla / Ripeti	
+Rotate	Ruota	
+Rotation	rotazione	
+Flip	Rifletti	
+Select	Seleziona	
+Select All	Seleziona tutto	
+Clear	Rimuovi / Cancella	"Rimuovi" for things on the slide (ROI, landmarks, measurements); "Cancella" for lists and messages (recent files).
+Search, Filter	Cerca, Filtra	
+Browse…	Sfoglia…	
+Retry	Riprova	
+Help	Aiuto	
+About eov	Informazioni su eov	
+Quit	Esci	
+Next / Previous	Successivo / Precedente	
+Back / Forward	Indietro / Avanti	
+Folder	cartella	
+File	file	Masculine, invariable.
+Path	percorso	
+Width / Height	larghezza / altezza	
+Resolution	risoluzione	
+Format	formato	
+Quality	qualità	
+Loading…	Caricamento…	
+Error	errore	
+Warning	avviso	
+Unknown	Sconosciuto	
+N/A	N/D	"non disponibile".
+Red, Green, Blue (one letter)	R, G, B	As in RGB.
+Dash length / gap between dashes / spacing of dots (one letter)	L / S / S	Lunghezza, spazio, spaziatura; the dot spacing is never shown with the dash fields.
+stain model	modello di colorazione	H&E, H-DAB, …
+stain vectors, stain fit	vettori di colorazione, stima (dei coloranti)	"Macenko fit" → "Stima Macenko".
+isolated stain	colorante isolato	
+preset (stain)	preimpostazione	
+weak / moderate / strong (1+ / 2+ / 3+)	debole / moderata / forte	Staining intensity classes of the H-score; "H-score" stays.
+landmark (alignment)	punto di riferimento	"Align from Landmarks" → "Allinea dai punti di riferimento".
+grid cell (tissue QC)	cella	Not "cellula" (biological cell).
+downsample	sottocampionamento	
+level-0 pixels	pixel di livello 0	
+Z-stack	Z-stack	
+intensity window (channels)	finestra di intensità	Lower/upper end → estremo inferiore/superiore.
+colour-blind safe	per daltonici	
+lossless	senza perdita	
+pyramidal TIFF	TIFF piramidale	
+file manager	gestore di file	
+link (eov://…)	link	Masculine, invariable; panes are "collegati", not "linkati".
+update helper	programma di aggiornamento	
+self-update	auto-aggiornamento	Only when eov updates itself on request; never imply background updates.
+policy (administrator)	criteri dell'amministratore	As Windows "Criteri di gruppo"; "the administrator policy {policy}" → "i criteri dell'amministratore in {policy}".
+safe mode	modalità provvisoria	
+crash, crashed	arresto anomalo, si è arrestato in modo anomalo	
+staged (update)	preparato	"staged" plugin status → "da installare all'uscita".
+artifact (release)	artefatto	
+manifest	manifest	Masculine, invariable.
+build	build	Feminine: "questa build".
+undo labels	nomi d'azione in minuscolo	"Undo {}" → "Annulla {}" with a lowercase noun phrase: "Annulla eliminazione della misurazione".
+click, right-click, drag	fai clic, clic destro, trascina	
+Done	Fine	Button; the notification colour "Done" (status) → "Completato".
+Confirm	Conferma	
+Ready	Pronto	
+Messages (panel)	Messaggi	"Open Log Folder" → "Apri cartella dei log".
+frame (rendering)	fotogramma	
+hotkey (class, tool)	tasto di scelta rapida	As eov's own catalog; "Set class hotkey" → "impostazione del tasto di scelta rapida della classe".
+undo labels (plugins)	nome d'azione in minuscolo	Plugin undo labels follow eov: "Add point" → "aggiunta di un punto", "Lock" → "blocco". Where one msgid is also a menu item or dialog title, the visible UI role wins ("Delete annotation" → "Elimina annotazione"; "Clear counts" → "Azzeramento dei conteggi").
+outline (region)	contorno	"crosses itself" → "si autointerseca"; self-intersecting → autointersecante.
+repair (outline)	ripara, riparazione	As GIS software ("Ripara geometrie").
+even-odd rule	regola pari-dispari	
+add to / cut from (region)	aggiungi a / sottrai da	Boolean region edits; "Cut from region" → "sottrazione dalla regione".
+brush, eraser, brush stroke	pennello, gomma, pennellata	
+freehand	a mano libera	
+count point	punto di conteggio	
+Count (tab, tool)	Conteggio	"Count tool" → "strumento Conteggio".
+clear counts	azzera i conteggi	Button "Azzera i conteggi…"; button in its dialog "Azzera".
+HPF field	campo HPF	Section heading "HIGH-POWER FIELDS" → "CAMPI AD ALTO INGRANDIMENTO".
+field number (FN)	numero di campo (FN)	Eyepiece field number; keep FN.
+unclassified	non classificato	Pseudo-class name; annotations shown as such → "non classificate".
+review status: draft / verified / rejected	bozza / verificata / rifiutata	Feminine: they describe an annotation.
+second reader, second read	secondo lettore, seconda lettura	
+blinded copy	copia in cieco	
+attach (annotations to a slide)	associa	"Attach annotations" → "Associa annotazioni".
+merge (database)	unisci, unione	
+back up	esegui il backup	Button "Esegui backup…".
+DICOM bulk annotations	annotazioni DICOM bulk	Microscopy Bulk Simple Annotations stays in English.
+feature (GeoJSON)	elemento	As QGIS; "FeatureCollection" stays.
+eov JSON / ASAP XML / ImageScope XML	JSON di eov / XML di ASAP / XML di ImageScope	Format names.
+combined positive score (CPS)	Combined Positive Score (CPS)	PD-L1 score; Italian pathology keeps the English name.
+tumour cells / immune cells	cellule tumorali / cellule immunitarie	
+95% (confidence interval)	IC 95%	Italian adds IC; no space before %, as in eov's catalog.
+not for diagnosis	non per uso diagnostico	RUO phrase; banner "PREDICTED — research use only, not for diagnosis" → "PREDIZIONE — solo per uso di ricerca, non per uso diagnostico".
+prediction	predizione	"Hide predictions" → "Nascondi predizioni".
+region readout (Cellaris)	lettura della regione	Tool "Cellaris region readout" → "Lettura di regione Cellaris".
+window (model input)	finestra	One square image a model predicts from.
+cell (Cellaris grid square)	cella	Never "cellula" here (grid square predicted at once).
+tissue block (5 µm)	blocco di tessuto	
+display window	finestra di visualizzazione	Range of values a marker's colour spans.
+model card	scheda del modello	
+reconstruction error	errore di ricostruzione	
+result cache	cache dei risultati	"Clear cache…" → "Svuota cache…".
+sidecar file	file sidecar	<model>.eovae.json.
+preprocessing	pre-elaborazione	
+viewport (eovae analysis scope)	area visibile	The button and job name that analyse the visible part; elsewhere viewport stays "area di visualizzazione".
+your site's model / copy	modello / copia della tua struttura	
+game controller, gamepad	controller di gioco, gamepad	Plugin name stays "Gamepad".
+stick, trigger, D-pad, shoulder button	levetta, grilletto, croce direzionale, pulsante dorsale	As Italian Xbox/PlayStation manuals; stick click → "pressione levetta".
+dead zone, response curve, mapping, profile	zona morta, curva di risposta, assegnazione, profilo	
+has focus (window)	la finestra di eov è attiva	
+marker (example plugin point)	indicatore	A placed point; "marcatore" is reserved for protein markers.
+compute (predictions, a readout)	calcolare, calcolo	Never "misurare": "Compute a readout of a large region?" → "Calcolare la lettura di una regione grande?"; "Computing: …" → "Calcolo in corso: …".
+this eov	questa versione di eov	"does not run with this eov" → "non funziona con questa versione di eov".
+worker thread	thread di lavoro	A part of eov or a plugin that works in the background: "Could not start a worker thread" → "Impossibile avviare un thread di lavoro".
+host (eov, as plugins see it)	host	Masculine: "the host returned …" → "l'host ha restituito …".
+flagged (tissue QC)	segnalato dal QC del tessuto	Flags for review, not certainties: "pen marks, possible folds or blur" → "segni di pennarello, possibili pieghe o aree sfocate".
+whole-slide image (file type)	Immagine di vetrino intero …	File managers' type names: "Hamamatsu NDPI whole-slide image" → "Immagine di vetrino intero Hamamatsu NDPI".
+Whole slide / Viewport / Region of interest / Automatic analysis (eovae jobs)	analisi dell'intero vetrino / dell'area visibile / della regione di interesse, analisi automatica	"Viewport finished in {duration}: {counts}." → "Analisi dell'area visibile completata in {duration}: {counts}."; cancelled → "annullata dopo", failed → "non riuscita".
+Low / High (display window)	Inferiore / Superiore	Ends of a Cellaris marker's display window, as "Estremo inferiore/superiore" of eov's channel windows.

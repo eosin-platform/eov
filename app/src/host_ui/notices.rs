@@ -1,6 +1,7 @@
 //! Messages, toasts, status-bar segments and background jobs.
 
 use crate::{AppWindow, JobData, NotificationData};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{JobFinishArgs, JobStartArgs, JobUpdateArgs, NotifyLevel};
 use slint::ComponentHandle;
 use slint::{ModelRc, Timer, VecModel};
@@ -121,7 +122,12 @@ impl Notices {
         let text = if source.is_empty() {
             message.to_string()
         } else {
-            format!("{source}: {message}")
+            // Translators: a toast with the name of the plugin that sent it.
+            tr!(
+                "{source}: {message}",
+                source = isolate(source),
+                message = message
+            )
         };
         Some((text, level))
     }

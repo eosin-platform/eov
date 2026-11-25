@@ -10,6 +10,7 @@
 //! wgpu's OpenGL backend did not appear in testing).
 
 use anyhow::Result;
+use eov_plugin_api::i18n::tr;
 use slint::BackendSelector;
 use slint::wgpu_30::wgpu;
 
@@ -28,7 +29,61 @@ pub(crate) enum UiRenderer {
     Gpu,
     /// Slint's software renderer, for the given reason: slides are drawn on
     /// the CPU.
-    Software(String),
+    Software(SoftwareReason),
+}
+
+/// Why the window is drawn by the software renderer. `Display` says it in
+/// English, for the log; [`SoftwareReason::localized`] in the interface's
+/// language.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SoftwareReason {
+    /// `EOV_RENDERER=software`.
+    Requested,
+    /// Slint could not start the GPU renderer (its words).
+    GpuFailed(String),
+    /// No Vulkan, DirectX 12 or Metal adapter.
+    NoAdapter,
+    /// Only software adapters, by name.
+    OnlySoftwareAdapters(String),
+}
+
+impl std::fmt::Display for SoftwareReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SoftwareReason::Requested => {
+                f.write_str("the software renderer was requested (EOV_RENDERER=software)")
+            }
+            SoftwareReason::GpuFailed(error) => {
+                write!(f, "the GPU renderer could not start ({error})")
+            }
+            SoftwareReason::NoAdapter => {
+                f.write_str("no Vulkan, DirectX 12 or Metal graphics adapter was found")
+            }
+            SoftwareReason::OnlySoftwareAdapters(names) => {
+                write!(f, "only software graphics adapters were found ({names})")
+            }
+        }
+    }
+}
+
+impl SoftwareReason {
+    /// The reason in the interface's language.
+    pub(crate) fn localized(&self) -> String {
+        match self {
+            SoftwareReason::Requested => {
+                tr!("the software renderer was requested (EOV_RENDERER=software)")
+            }
+            SoftwareReason::GpuFailed(error) => {
+                tr!("the GPU renderer could not start ({})", error)
+            }
+            SoftwareReason::NoAdapter => {
+                tr!("no Vulkan, DirectX 12 or Metal graphics adapter was found")
+            }
+            SoftwareReason::OnlySoftwareAdapters(names) => {
+                tr!("only software graphics adapters were found ({})", names)
+            }
+        }
+    }
 }
 
 pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<UiRenderer> {
@@ -36,7 +91,7 @@ pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<UiRender
     settings.backends = preferred_backends();
 
     let reason = if software_requested() {
-        "the software renderer was requested (EOV_RENDERER=software)".to_string()
+        SoftwareReason::Requested
     } else {
         match gpu_adapter(&settings) {
             Ok(adapter) => {
@@ -47,7 +102,7 @@ pub(crate) fn select_backend(window_geometry: WindowGeometry) -> Result<UiRender
                     .select()
                 {
                     Ok(()) => return Ok(UiRenderer::Gpu),
-                    Err(err) => format!("the GPU renderer could not start ({err})"),
+                    Err(err) => SoftwareReason::GpuFailed(err.to_string()),
                 }
             }
             Err(reason) => reason,
@@ -114,7 +169,7 @@ fn preferred_backends() -> wgpu::Backends {
 /// The adapter femtovg-wgpu would draw with, or why there is none. Applies
 /// the same test as Slint, which refuses to start femtovg-wgpu otherwise:
 /// a GPU adapter, or a software one with `SLINT_WGPU_CPU` set.
-fn gpu_adapter(settings: &slint::wgpu_30::WGPUSettings) -> Result<String, String> {
+fn gpu_adapter(settings: &slint::wgpu_30::WGPUSettings) -> Result<String, SoftwareReason> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: settings.backends,
         flags: settings.instance_flags,
@@ -131,7 +186,10 @@ fn gpu_adapter(settings: &slint::wgpu_30::WGPUSettings) -> Result<String, String
     usable_adapter(&adapters, std::env::var_os("SLINT_WGPU_CPU").is_some())
 }
 
-fn usable_adapter(adapters: &[wgpu::AdapterInfo], allow_cpu: bool) -> Result<String, String> {
+fn usable_adapter(
+    adapters: &[wgpu::AdapterInfo],
+    allow_cpu: bool,
+) -> Result<String, SoftwareReason> {
     if let Some(info) = adapters
         .iter()
         .find(|info| allow_cpu || info.device_type != wgpu::DeviceType::Cpu)
@@ -139,13 +197,10 @@ fn usable_adapter(adapters: &[wgpu::AdapterInfo], allow_cpu: bool) -> Result<Str
         return Ok(format!("{} ({:?})", info.name, info.backend));
     }
     Err(if adapters.is_empty() {
-        "no Vulkan, DirectX 12 or Metal graphics adapter was found".to_string()
+        SoftwareReason::NoAdapter
     } else {
         let names: Vec<&str> = adapters.iter().map(|info| info.name.as_str()).collect();
-        format!(
-            "only software graphics adapters were found ({})",
-            names.join(", ")
-        )
+        SoftwareReason::OnlySoftwareAdapters(names.join(", "))
     })
 }
 
@@ -166,7 +221,7 @@ pub(crate) fn report_startup_error(error: &anyhow::Error) {
     {
         let _ = rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Error)
-            .set_title("eov could not start")
+            .set_title(tr!("eov could not start"))
             .set_description(format!("{error:#}"))
             .set_buttons(rfd::MessageButtons::Ok)
             .show();
@@ -229,13 +284,12 @@ mod tests {
 
     #[test]
     fn software_adapters_alone_do_not_count_as_a_gpu() {
-        assert!(
-            usable_adapter(&[], false)
-                .unwrap_err()
-                .contains("no Vulkan")
+        assert_eq!(
+            usable_adapter(&[], false).unwrap_err(),
+            SoftwareReason::NoAdapter
         );
         let cpu = [adapter("llvmpipe", wgpu::DeviceType::Cpu)];
-        let reason = usable_adapter(&cpu, false).unwrap_err();
+        let reason = usable_adapter(&cpu, false).unwrap_err().to_string();
         assert!(reason.contains("only software") && reason.contains("llvmpipe"));
         assert!(
             usable_adapter(&cpu, true).is_ok(),
@@ -246,5 +300,38 @@ mod tests {
             adapter("Radeon", wgpu::DeviceType::DiscreteGpu),
         ];
         assert!(usable_adapter(&both, false).unwrap().starts_with("Radeon"));
+    }
+
+    /// The log says why in English whatever the interface's language; the
+    /// window says it in that language.
+    #[test]
+    fn the_log_gets_the_reason_in_english() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "no Vulkan, DirectX 12 or Metal graphics adapter was found",
+            &["kein Grafikadapter für Vulkan, DirectX 12 oder Metal gefunden"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(i18n::Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let reason = usable_adapter(&[], false).unwrap_err();
+        assert_eq!(
+            reason.to_string(),
+            "no Vulkan, DirectX 12 or Metal graphics adapter was found"
+        );
+        assert_eq!(
+            reason.localized(),
+            "kein Grafikadapter für Vulkan, DirectX 12 oder Metal gefunden"
+        );
     }
 }

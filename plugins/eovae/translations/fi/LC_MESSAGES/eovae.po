@@ -1,0 +1,1529 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: eovae\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Finnish\n"
+"Language: fi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "EOV VAE"
+msgstr "EOV VAE"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Reconstruction-error analysis with ONNX VAE models, showing how unlike the "
+"training data the tissue looks: heat maps, reconstructions, error statistics "
+"and highest-error regions. Research use only; not for diagnosis."
+msgstr ""
+"Rekonstruktiovirheanalyysi ONNX-muotoisilla VAE-malleilla. Näyttää, kuinka "
+"paljon kudos poikkeaa opetusaineistosta: lämpökartat, rekonstruktiot, "
+"virhetilastot ja suurimman virheen alueet. Vain tutkimuskäyttöön; ei saa "
+"käyttää diagnostiikkaan."
+
+#: src/batch.rs:89
+msgid ""
+"VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and "
+"summary.json per slide"
+msgstr ""
+"Jokaisen kudostiilen VAE-rekonstruktiovirhe: tiles.csv, heatmap.png ja "
+"summary.json näytelasia kohden"
+
+#: src/batch.rs:94
+msgid "the ONNX model (default: the one chosen in eov's VAE sidebar)"
+msgstr "ONNX-malli (oletus: eov:n VAE-sivupalkissa valittu malli)"
+
+#. Translators: a batch parameter: keep auto, cpu and cuda, the values typed
+#: src/batch.rs:104
+msgid "auto (CUDA, else the CPU), cpu or cuda"
+msgstr "auto (CUDA, muuten CPU), cpu tai cuda"
+
+#: src/batch.rs:109
+msgid "tiles per inference batch, for models without a fixed batch"
+msgstr "tiiliä päättelyerää kohden malleille, joilla ei ole kiinteää eräkokoa"
+
+#: src/batch.rs:114
+msgid "CPU inference threads (0: every core)"
+msgstr "CPU-päättelyn säikeet (0: kaikki ytimet)"
+
+#: src/batch.rs:119
+msgid "allow TF32 on CUDA (faster, slightly different results)"
+msgstr "salli TF32 CUDA:ssa (nopeampi, hieman erilaiset tulokset)"
+
+#. Translators: a batch parameter: keep auto, the value typed
+#: src/batch.rs:126
+msgid ""
+"auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that "
+"level's own pixels)"
+msgstr ""
+"auto (tiilet uudelleennäytteistetään mallin µm/px-arvoon) tai "
+"pienennyskerroin, esim. 4 (kyseisen tason omat pikselit)"
+
+#: src/batch.rs:132
+msgid "skip glass tiles"
+msgstr "ohita pelkkää lasia sisältävät tiilet"
+
+#. Translators: a batch parameter: keep auto and lo,hi, the values typed;
+#. p05–p95 is the 5th to 95th percentile
+#: src/batch.rs:140
+msgid ""
+"error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute "
+"error; the same scale for every slide)"
+msgstr ""
+"virhekartan värit: auto (kunkin näytelasin p05–p95) tai lo,hi "
+"(keskimääräinen absoluuttinen virhe; sama asteikko kaikille näytelaseille)"
+
+#. Translators: a batch parameter: keep off, store and reuse, the values typed
+#: src/batch.rs:148
+msgid ""
+"off; store (keep the results for eov's viewer); or reuse (also take tiles "
+"analysed before with the same model and settings)"
+msgstr ""
+"off; store (säilytä tulokset eov:n katseluohjelmaa varten); tai reuse (käytä "
+"myös samalla mallilla ja asetuksilla aiemmin analysoituja tiiliä)"
+
+#. Translators: {} is what was typed into the SHA-256 field; it is
+#. ignored and the field keeps its previous value.
+#: src/config.rs:159
+msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
+msgstr ""
+"”{}” ei ole SHA-256-tiiviste (64 heksadesimaalinumeroa), joten sitä ei "
+"tallennettu."
+
+#: src/contract.rs:162
+msgid "HistoVAE defaults"
+msgstr "HistoVAE-oletukset"
+
+#: src/contract.rs:163
+msgid "built-in model card"
+msgstr "sisäänrakennettu mallikortti"
+
+#: src/contract.rs:164
+msgid "model metadata"
+msgstr "mallin metatiedot"
+
+#: src/contract.rs:165
+msgid "sidecar file"
+msgstr "sivutiedosto"
+
+#. Translators: a value a model declares that eovae does not use
+#: src/contract.rs:196
+msgid "ignored {key} = '{value}'"
+msgstr "ohitettiin {key} = ”{value}”"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:201
+msgid "ignored mean/std with a non-positive std"
+msgstr ""
+"ohitettiin keskiarvo/keskihajonta (mean/std), koska keskihajonta ei ole "
+"positiivinen"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:203
+msgid "mean and std must be declared together"
+msgstr "keskiarvo ja keskihajonta (mean ja std) on määritettävä yhdessä"
+
+#: src/db.rs:526
+msgid "result cache: {}"
+msgstr "tulosvälimuisti: {}"
+
+#. Translators: two errors: opening the cache, then a new one
+#: src/db.rs:559
+msgid "{error}; then {again}"
+msgstr "{error}; sitten {again}"
+
+#: src/db.rs:567
+msgid ""
+"the result cache was created by a newer eovae; results are kept in memory "
+"only"
+msgstr ""
+"tulosvälimuistin on luonut uudempi eovae; tulokset säilytetään vain muistissa"
+
+#: src/db.rs:573
+msgid "the result cache is unavailable ({}); results are kept in memory only"
+msgstr ""
+"tulosvälimuisti ei ole käytettävissä ({}); tulokset säilytetään vain "
+"muistissa"
+
+#: src/db.rs:679
+msgid "the result cache is disabled"
+msgstr "tulosvälimuisti on poistettu käytöstä"
+
+#: src/db.rs:683 src/db.rs:684
+msgid "the result cache stopped"
+msgstr "tulosvälimuisti pysähtyi"
+
+#: src/engine.rs:107
+msgid "CPU · {n} thread"
+msgid_plural "CPU · {n} threads"
+msgstr[0] "CPU · {n} säie"
+msgstr[1] "CPU · {n} säiettä"
+
+#: src/engine.rs:121
+msgid ""
+"this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
+msgstr ""
+"tässä ONNX Runtime -versiossa ei ole CUDA-tukea (käytä GPU-koontiversiota; "
+"katso README)"
+
+#: src/lib.rs:91
+msgid ""
+"this eovae build has no ONNX Runtime support (built without the `onnx` "
+"feature)"
+msgstr ""
+"tässä eovae-koontiversiossa ei ole ONNX Runtime -tukea (käännetty ilman "
+"`onnx`-ominaisuutta)"
+
+#: src/lib.rs:96
+msgid "no inference runtime in this build"
+msgstr "tässä koontiversiossa ei ole päättelyn suoritusympäristöä"
+
+#. Translators: an error: the operation was cancelled
+#: src/message.rs:57
+msgid "cancelled"
+msgstr "peruutettu"
+
+#: src/model.rs:160
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles as the model "
+"declares."
+msgstr ""
+"Syötteen koko on dynaaminen; analysoidaan {size}×{size}-kokoisia tiiliä, "
+"kuten malli ilmoittaa."
+
+#: src/model.rs:167
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles (declare eovae."
+"tile_size to change)."
+msgstr ""
+"Syötteen koko on dynaaminen; analysoidaan {size}×{size}-kokoisia tiiliä "
+"(muuta määrittämällä eovae.tile_size)."
+
+#: src/model.rs:171
+msgid ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgid_plural ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgstr[0] ""
+"Mallin kiinteä eräkoko on {n}: tiilet analysoidaan {n} kerrallaan, ja kunkin "
+"ajon viimeinen erä täydennetään. Vie malli dynaamisella eräakselilla, jos "
+"haluat ajaa pieniä katselualueita."
+msgstr[1] ""
+"Mallin kiinteä eräkoko on {n}: tiilet analysoidaan {n} kerrallaan, ja kunkin "
+"ajon viimeinen erä täydennetään. Vie malli dynaamisella eräakselilla, jos "
+"haluat ajaa pieniä katselualueita."
+
+#: src/model.rs:175
+msgid "Float16 model: inputs are converted from float32."
+msgstr "Float16-malli: syötteet muunnetaan float32-muodosta."
+
+#. Translators: "Model" is the sidebar's Model section
+#: src/model.rs:178
+msgid "{n} image output; using '{name}' (change it in the Model section)."
+msgid_plural ""
+"{n} image outputs; using '{name}' (change it in the Model section)."
+msgstr[0] ""
+"{n} kuvatuloste; käytetään tulostetta ”{name}” (vaihda se Malli-osiossa)."
+msgstr[1] ""
+"{n} kuvatulostetta; käytetään tulostetta ”{name}” (vaihda se Malli-osiossa)."
+
+#: src/model.rs:183
+msgid "Model metadata: {}."
+msgstr "Mallin metatiedot: {}."
+
+#. Translators: the sidecar is a model's <model>.eovae.json file
+#: src/model.rs:185
+msgid "Sidecar: {}."
+msgstr "Sivutiedosto: {}."
+
+#: src/model.rs:187
+msgid "Ignored {}: the sidecar must be a JSON object."
+msgstr "Tiedosto {} ohitettiin: sivutiedoston on oltava JSON-objekti."
+
+#: src/model.rs:191
+msgid "Ignored {file}: {error}."
+msgstr "Tiedosto {file} ohitettiin: {error}."
+
+#: src/model.rs:196
+msgid ""
+"The model does not declare the resolution it was trained at (eovae.mpp); "
+"errors depend on the level you choose."
+msgstr ""
+"Malli ei ilmoita resoluutiota, jolla se on opetettu (eovae.mpp); virheet "
+"riippuvat valitsemastasi tasosta."
+
+#. Translators: "Preprocessing" is the sidebar's section of that name
+#: src/model.rs:200
+msgid ""
+"No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check "
+"it in Preprocessing."
+msgstr ""
+"Esikäsittelyä ei ole määritetty: käytetään HistoVAE:n esikäsittelyä ([-1, "
+"1], alfa valkoisella). Tarkista se Esikäsittely-osiossa."
+
+#. Translators: about the model's input tensor; the words in
+#. parentheses name its four axes in order and may be translated.
+#: src/model.rs:304
+msgid ""
+"it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
+msgid_plural ""
+"it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
+msgstr[0] ""
+"siinä on {n} ulottuvuus; kuvatensorissa on 4 (erä, kanavat, korkeus, leveys)"
+msgstr[1] ""
+"siinä on {n} ulottuvuutta; kuvatensorissa on 4 (erä, kanavat, korkeus, "
+"leveys)"
+
+#: src/model.rs:326
+msgid "it has {n} channel; eovae feeds RGB (3 channels)"
+msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
+msgstr[0] "siinä on {n} kanava; eovae syöttää RGB-kuvaa (3 kanavaa)"
+msgstr[1] "siinä on {n} kanavaa; eovae syöttää RGB-kuvaa (3 kanavaa)"
+
+#: src/model.rs:329
+msgid "its channel dimension is not 3 (RGB)"
+msgstr "sen kanavaulottuvuus ei ole 3 (RGB)"
+
+#: src/model.rs:372
+msgid "the model has no inputs"
+msgstr "mallissa ei ole syötteitä"
+
+#: src/model.rs:381
+msgid ""
+"the model needs {n} input ({names}); eovae feeds exactly one image input"
+msgid_plural ""
+"the model needs {n} inputs ({names}); eovae feeds exactly one image input"
+msgstr[0] ""
+"malli tarvitsee {n} syötteen ({names}); eovae syöttää täsmälleen yhden "
+"kuvasyötteen"
+msgstr[1] ""
+"malli tarvitsee {n} syötettä ({names}); eovae syöttää täsmälleen yhden "
+"kuvasyötteen"
+
+#: src/model.rs:394
+msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
+msgstr ""
+"syöte ”{name}” on tyyppiä {kind}; eovae syöttää float32- tai float16-arvoja"
+
+#: src/model.rs:403
+msgid "input '{}' does not declare its shape"
+msgstr "syöte ”{}” ei ilmoita muotoaan"
+
+#: src/model.rs:407
+msgid "input '{name}' is not an image: {error}"
+msgstr "syöte ”{name}” ei ole kuva: {error}"
+
+#: src/model.rs:418
+msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
+msgstr ""
+"syöte ”{name}” on {height}×{width}; eovae analysoi neliönmuotoisia tiiliä"
+
+#: src/model.rs:437
+msgid "tiles of {} px are not supported (16–2048)"
+msgstr "{} px:n tiiliä ei tueta (16–2048)"
+
+#. Translators: an output of the model (its name) that declares no shape
+#: src/model.rs:465
+msgid "{} (no shape)"
+msgstr "{} (ei muotoa)"
+
+#: src/model.rs:499
+msgid ""
+"the model only encodes (outputs mu and logvar); export the reconstruction "
+"model (HistoVAE: create_onnx --mode reconstruct)"
+msgstr ""
+"malli on pelkkä enkooderi (tulosteina mu ja logvar); vie rekonstruktiomalli "
+"(HistoVAE: create_onnx --mode reconstruct)"
+
+#: src/model.rs:510
+msgid ""
+"no output is an RGB image matching the input {shape} (outputs: {outputs})"
+msgstr ""
+"mikään tuloste ei ole syötettä {shape} vastaava RGB-kuva (tulosteet: "
+"{outputs})"
+
+#: src/model.rs:666
+msgid "only .onnx models are supported"
+msgstr "vain .onnx-malleja tuetaan"
+
+#: src/model.rs:670
+msgid "{} does not exist"
+msgstr "{} ei ole olemassa"
+
+#. The detail is technical, and English like a library's.
+#: src/model.rs:676
+msgid "not a valid ONNX model: {}"
+msgstr "ei kelvollinen ONNX-malli: {}"
+
+#: src/model.rs:688
+msgid "the model's weights point outside its folder ('{}')"
+msgstr "mallin painot osoittavat sen kansion ulkopuolelle (”{}”)"
+
+#: src/model.rs:697
+msgid ""
+"the model's weights file '{}' is missing; keep it next to the .onnx file"
+msgstr "mallin painotiedosto ”{}” puuttuu; pidä se .onnx-tiedoston vieressä"
+
+#: src/ort_backend.rs:153
+msgid "it could not be opened: {}"
+msgstr "sitä ei voitu avata: {}"
+
+#: src/ort_backend.rs:157
+msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
+msgstr "se ei ole ONNX Runtime (siitä puuttuu OrtGetApiBase)"
+
+#: src/ort_backend.rs:162
+msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
+msgstr "se ei ole ONNX Runtime (OrtGetApiBase ei palauttanut mitään)"
+
+#: src/ort_backend.rs:177
+msgid "it is ONNX Runtime {version}, older than {oldest}"
+msgstr "se on ONNX Runtime {version}, joka on vanhempi kuin {oldest}"
+
+#: src/ort_backend.rs:292
+msgid "{path}: opening it crashed ({error})"
+msgstr "{path}: avaaminen kaatui ({error})"
+
+#: src/ort_backend.rs:318
+msgid "loading it crashed ({})"
+msgstr "lataaminen kaatui ({})"
+
+#: src/ort_backend.rs:323
+msgid ""
+"ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
+"again."
+msgstr ""
+"ONNX Runtime -kirjastoa sijainnissa {path} ei voitu ladata: {error}. "
+"Käynnistä eov uudelleen, niin yritetään uudestaan."
+
+#. Translators: {variable} is an environment variable; "Model →
+#. Runtime" is the Runtime… button in the sidebar's Model section
+#: src/ort_backend.rs:342
+msgid ""
+"ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
+"the library, or choose it under Model → Runtime. Tried: {tried}"
+msgstr ""
+"ONNX Runtime -kirjastoa (1.22 tai uudempi) ei löytynyt. Asenna se, aseta "
+"{variable} osoittamaan kirjastoon tai valitse se kohdassa Malli → ONNX "
+"Runtime. Kokeiltiin: {tried}"
+
+#. Translators: a library that was loaded, as a note after an error
+#: src/ort_backend.rs:381
+msgid "loaded {}"
+msgstr "ladattu {}"
+
+#: src/ort_backend.rs:453
+msgid "building the session took longer than {} s"
+msgstr "istunnon muodostaminen kesti yli {} s"
+
+#: src/ort_backend.rs:472
+msgid "Building CPU session…"
+msgstr "Muodostetaan CPU-istuntoa…"
+
+#: src/ort_backend.rs:473
+msgid "Building CUDA session…"
+msgstr "Muodostetaan CUDA-istuntoa…"
+
+#: src/ort_backend.rs:483
+msgid "ONNX Runtime does not see input '{}'"
+msgstr "ONNX Runtime ei näe syötettä ”{}”"
+
+#: src/ort_backend.rs:491
+msgid "unknown output '{}'"
+msgstr "tuntematon tuloste ”{}”"
+
+#: src/ort_backend.rs:497
+msgid "ONNX Runtime does not see output '{}'"
+msgstr "ONNX Runtime ei näe tulostetta ”{}”"
+
+#: src/ort_backend.rs:553
+msgid "Checking the model…"
+msgstr "Tarkistetaan mallia…"
+
+#: src/ort_backend.rs:554
+msgid "Warming up CUDA…"
+msgstr "Lämmitetään CUDA-ympäristöä…"
+
+#: src/ort_backend.rs:560
+msgid "test run failed: {}"
+msgstr "testiajo epäonnistui: {}"
+
+#. Translators: the model's output has the wrong size;
+#. {returned} and {expected} are bare numbers of values.
+#: src/ort_backend.rs:569
+msgid ""
+"the model returned the wrong number of values for {n} tile: {returned} "
+"instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for {n} tiles: {returned} "
+"instead of {expected}"
+msgstr[0] ""
+"malli palautti väärän määrän arvoja {n} tiilelle: {returned} odotetun "
+"{expected} sijaan"
+msgstr[1] ""
+"malli palautti väärän määrän arvoja {n} tiilelle: {returned} odotetun "
+"{expected} sijaan"
+
+#: src/ort_backend.rs:598
+msgid "Loading ONNX Runtime…"
+msgstr "Ladataan ONNX Runtime -kirjastoa…"
+
+#: src/ort_backend.rs:638
+msgid "CUDA is unavailable: {}"
+msgstr "CUDA ei ole käytettävissä: {}"
+
+#: src/ort_backend.rs:660
+msgid "ONNX Runtime: {}"
+msgstr "ONNX Runtime: {}"
+
+#: src/ort_backend.rs:661
+msgid "ONNX Runtime is loaded with the first model."
+msgstr "ONNX Runtime ladataan ensimmäisen mallin yhteydessä."
+
+#: src/ort_backend.rs:821
+msgid "the model produced no '{}'"
+msgstr "malli ei tuottanut tulostetta ”{}”"
+
+#. Translators: why an analysis failed: the
+#. host (eov) gave {n} bytes of pixel data,
+#. the wrong size for a region of {tile} ×
+#. {tile} pixels.
+#: src/pipeline.rs:317
+msgid "the host returned {n} byte for a {tile}×{tile} region"
+msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
+msgstr[0] "isäntäohjelma palautti {n} tavun {tile}×{tile} pikselin alueelle"
+msgstr[1] "isäntäohjelma palautti {n} tavua {tile}×{tile} pikselin alueelle"
+
+#: src/pipeline.rs:335
+msgid "{n} tile could not be read (level {level}); last error: {error}"
+msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
+msgstr[0] "{n} tiiltä ei voitu lukea (taso {level}); viimeisin virhe: {error}"
+msgstr[1] "{n} tiiltä ei voitu lukea (taso {level}); viimeisin virhe: {error}"
+
+#. Translators: why an analysis failed: it ended before every
+#. tile was done ({done} of the {total} tiles were).
+#: src/pipeline.rs:440
+msgid "it stopped before every tile was done ({done} of {total})"
+msgstr "se pysähtyi ennen kuin kaikki tiilet oli käsitelty ({done}/{total})"
+
+#: src/pipeline.rs:480
+msgid "inference failed: {}"
+msgstr "päättely epäonnistui: {}"
+
+#. Translators: the model's output has the wrong size; {returned}
+#. and {expected} are bare numbers of values.
+#: src/pipeline.rs:492
+msgid ""
+"the model returned the wrong number of values for a batch of {n} tile: "
+"{returned} instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for a batch of {n} tiles: "
+"{returned} instead of {expected}"
+msgstr[0] ""
+"malli palautti väärän määrän arvoja {n} tiilen erälle: {returned} odotetun "
+"{expected} sijaan"
+msgstr[1] ""
+"malli palautti väärän määrän arvoja {n} tiilen erälle: {returned} odotetun "
+"{expected} sijaan"
+
+#: src/plugin.rs:57
+msgid "VAE reconstruction analysis"
+msgstr "VAE-rekonstruktioanalyysi"
+
+#: src/plugin.rs:61 src/presenter.rs:794
+msgid "VAE tile grid"
+msgstr "VAE-tiiliruudukko"
+
+#: src/plugin.rs:65 src/presenter.rs:790
+msgid "VAE overlay"
+msgstr "VAE-peittokuva"
+
+#: src/plugin.rs:227 src/plugin.rs:239
+msgid "Whole slide"
+msgstr "Koko näytelasi"
+
+#: src/plugin.rs:228 src/plugin.rs:240
+msgid "Viewport"
+msgstr "Katselualue"
+
+#: src/plugin.rs:229 src/plugin.rs:241
+msgid "Region of interest"
+msgstr "Tarkastelualue"
+
+#: src/plugin.rs:230
+msgid "Visible tiles"
+msgstr "Näkyvät tiilet"
+
+#: src/plugin.rs:242
+msgid "Automatic analysis"
+msgstr "Automaattinen analyysi"
+
+#: src/plugin.rs:516
+msgid "Load an ONNX model first."
+msgstr "Lataa ensin ONNX-malli."
+
+#: src/plugin.rs:517
+msgid "The model is still loading."
+msgstr "Mallia ladataan vielä."
+
+#: src/plugin.rs:518
+msgid "The model could not be loaded: {}"
+msgstr "Mallia ei voitu ladata: {}"
+
+#: src/plugin.rs:519
+msgid "Preparing the inference engine…"
+msgstr "Valmistellaan päättelymoottoria…"
+
+#. Translators: eovae is working out which slide file this is (its
+#. content fingerprint), to find its stored results; it does not
+#. identify a patient.
+#: src/plugin.rs:524
+msgid "Identifying the slide…"
+msgstr "Tunnistetaan näytelasia…"
+
+#: src/plugin.rs:525
+msgid "The slide reports no pyramid levels."
+msgstr "Näytelasi ei ilmoita pyramiditasoja."
+
+#: src/plugin.rs:526
+msgid "The slide is not open."
+msgstr "Näytelasi ei ole auki."
+
+#. Translators: eovae is this plugin's name; {} says why, in English
+#: src/plugin.rs:753
+msgid "eovae settings were unreadable and were reset ({})"
+msgstr ""
+"eovae-asetukset olivat lukukelvottomia, ja ne palautettiin oletuksiin ({})"
+
+#. Translators: the title of an error notification; eovae is
+#. this plugin's name
+#: src/plugin.rs:804
+msgid "An eovae worker thread failed unexpectedly"
+msgstr "eovae-laajennuksen työsäie kaatui odottamatta"
+
+#: src/plugin.rs:1120
+msgid ""
+"This eov cannot show layers in some panes only: every pane of a slide shows "
+"the same VAE overlay."
+msgstr ""
+"Tämä eov ei voi näyttää kerroksia vain osassa ruutuja: näytelasin kaikki "
+"ruudut näyttävät saman VAE-peittokuvan."
+
+#: src/plugin.rs:1260
+msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
+msgstr ""
+"Lataa ONNX-malli VAE-sivupalkissa, jos haluat analysoida tämän näytelasin."
+
+#: src/plugin.rs:1305
+msgid "VAE analysis"
+msgstr "VAE-analyysi"
+
+#: src/plugin.rs:1351
+msgid ""
+"The ONNX Runtime library is used from the next start of eov if a runtime is "
+"already loaded."
+msgstr ""
+"Jos suoritusympäristö on jo ladattu, ONNX Runtime -kirjastoa käytetään eov:n "
+"seuraavasta käynnistyksestä alkaen."
+
+#: src/plugin.rs:1378
+msgid "The VAE result cache was cleared."
+msgstr "VAE-tulosvälimuisti tyhjennettiin."
+
+#: src/plugin.rs:1382
+msgid "Could not clear the VAE result cache"
+msgstr "VAE-tulosvälimuistia ei voitu tyhjentää"
+
+#: src/plugin.rs:1411
+msgid "the model file could not be read"
+msgstr "mallitiedostoa ei voitu lukea"
+
+#: src/plugin.rs:1440
+msgid "The VAE model could not be loaded"
+msgstr "VAE-mallia ei voitu ladata"
+
+#. Translators: "Load ONNX…" is the sidebar's button of that name
+#: src/plugin.rs:1496
+msgid "This eov cannot download models: load the model file with Load ONNX…"
+msgstr ""
+"Tämä eov ei voi ladata malleja verkosta: avaa mallitiedosto painikkeella "
+"Lataa ONNX…"
+
+#: src/plugin.rs:1620
+msgid "the inference engine failed unexpectedly"
+msgstr "päättelymoottori kaatui odottamatta"
+
+#: src/plugin.rs:1666
+msgid "VAE inference runs on the CPU: {}"
+msgstr "VAE-päättely suoritetaan CPU:lla: {}"
+
+#: src/plugin.rs:1673
+msgid "The VAE model cannot run"
+msgstr "VAE-mallia ei voi suorittaa"
+
+#: src/plugin.rs:1754
+msgid "Starting…"
+msgstr "Käynnistetään…"
+
+#: src/plugin.rs:1810
+msgid "Preparing the model…"
+msgstr "Valmistellaan mallia…"
+
+#: src/plugin.rs:1865
+msgid "Draw a region of interest on the slide first."
+msgstr "Piirrä ensin tarkastelualue näytelasille."
+
+#: src/plugin.rs:1884
+msgid "The slide is not shown in a pane."
+msgstr "Näytelasia ei näytetä missään ruudussa."
+
+#: src/plugin.rs:1939
+msgid "VAE: whole slide"
+msgstr "VAE: koko näytelasi"
+
+#: src/plugin.rs:1940
+msgid "VAE: region of interest"
+msgstr "VAE: tarkastelualue"
+
+#: src/plugin.rs:1941
+msgid "VAE: viewport"
+msgstr "VAE: katselualue"
+
+#: src/plugin.rs:1951
+msgid "Analysing on {}"
+msgstr "Analysoidaan: {}"
+
+#: src/plugin.rs:1983
+msgid "internal error while analysing tiles"
+msgstr "sisäinen virhe tiiliä analysoitaessa"
+
+#: src/plugin.rs:2031
+msgid "internal error: {}"
+msgstr "sisäinen virhe: {}"
+
+#: src/plugin.rs:2069
+msgid "VAE analysis failed"
+msgstr "VAE-analyysi epäonnistui"
+
+#: src/plugin.rs:2097
+msgid "Nothing to export"
+msgstr "Ei vietävää"
+
+#: src/plugin.rs:2156
+msgid "Exported {n} tile to {file}"
+msgid_plural "Exported {n} tiles to {file}"
+msgstr[0] "Vietiin {n} tiili tiedostoon {file}"
+msgstr[1] "Vietiin {n} tiiltä tiedostoon {file}"
+
+#: src/plugin.rs:2162
+msgid "The export failed"
+msgstr "Vienti epäonnistui"
+
+#. Translators: eovae is this plugin's name; {} is eov's reason, in English
+#: src/plugin.rs:2180
+msgid "eovae settings could not be saved: {}"
+msgstr "eovae-asetuksia ei voitu tallentaa: {}"
+
+#. Translators: a duration in seconds
+#: src/plugin.rs:2232
+msgid "{} s"
+msgstr "{} s"
+
+#. Translators: a duration in minutes and seconds, e.g. "3m 05s"
+#: src/plugin.rs:2235
+msgid "{minutes}m {seconds}s"
+msgstr "{minutes} min {seconds} s"
+
+#. Translators: a duration in hours and minutes, e.g. "1h 02m"
+#: src/plugin.rs:2241
+msgid "{hours}h {minutes}m"
+msgstr "{hours} h {minutes} min"
+
+#: src/plugin.rs:2252
+msgid "about {} left"
+msgstr "noin {} jäljellä"
+
+#: src/plugin.rs:2260
+msgid "{analysed} analysed"
+msgstr "analysoitu {analysed}"
+
+#: src/plugin.rs:2262
+msgid "{analysed} analysed, {background} background"
+msgstr "analysoitu {analysed}, taustaa {background}"
+
+#: src/plugin.rs:2267
+msgid "{analysed} analysed, {unreadable} unreadable"
+msgstr "analysoitu {analysed}, lukukelvottomia {unreadable}"
+
+#: src/plugin.rs:2272
+msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
+msgstr ""
+"analysoitu {analysed}, taustaa {background}, lukukelvottomia {unreadable}"
+
+#. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
+#: src/plugin.rs:2301
+msgid "{what}: everything was already analysed."
+msgstr "{what}: kaikki oli jo analysoitu."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2305
+msgid "Whole slide finished in {duration}: {counts}."
+msgstr "Koko näytelasin analyysi valmistui ajassa {duration}: {counts}."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2311
+msgid "Viewport finished in {duration}: {counts}."
+msgstr "Katselualueen analyysi valmistui ajassa {duration}: {counts}."
+
+#. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2317
+msgid "Region of interest finished in {duration}: {counts}."
+msgstr "Tarkastelualueen analyysi valmistui ajassa {duration}: {counts}."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2323
+msgid "Automatic analysis finished in {duration}: {counts}."
+msgstr "Automaattinen analyysi valmistui ajassa {duration}: {counts}."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2329
+msgid "Whole slide cancelled after {duration}: {counts}."
+msgstr "Koko näytelasin analyysi peruutettiin {duration} jälkeen: {counts}."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2335
+msgid "Viewport cancelled after {duration}: {counts}."
+msgstr "Katselualueen analyysi peruutettiin {duration} jälkeen: {counts}."
+
+#. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2341
+msgid "Region of interest cancelled after {duration}: {counts}."
+msgstr "Tarkastelualueen analyysi peruutettiin {duration} jälkeen: {counts}."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2347
+msgid "Automatic analysis cancelled after {duration}: {counts}."
+msgstr "Automaattinen analyysi peruutettiin {duration} jälkeen: {counts}."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2353
+msgid "Whole slide failed ({counts}): {error}"
+msgstr "Koko näytelasin analyysi epäonnistui ({counts}): {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2357
+msgid "Viewport failed ({counts}): {error}"
+msgstr "Katselualueen analyysi epäonnistui ({counts}): {error}"
+
+#. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2362
+msgid "Region of interest failed ({counts}): {error}"
+msgstr "Tarkastelualueen analyysi epäonnistui ({counts}): {error}"
+
+#. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2370
+msgid "Automatic analysis failed ({counts}): {error}"
+msgstr "Automaattinen analyysi epäonnistui ({counts}): {error}"
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
+#: src/plugin.rs:2377
+msgid "Whole slide failed: {error}"
+msgstr "Koko näytelasin analyysi epäonnistui: {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
+#: src/plugin.rs:2381
+msgid "Viewport failed: {error}"
+msgstr "Katselualueen analyysi epäonnistui: {error}"
+
+#. Translators: the analysis of the region of interest failed; {error}: why
+#: src/plugin.rs:2385
+msgid "Region of interest failed: {error}"
+msgstr "Tarkastelualueen analyysi epäonnistui: {error}"
+
+#. Translators: {error}: why
+#: src/plugin.rs:2389
+msgid "Automatic analysis failed: {error}"
+msgstr "Automaattinen analyysi epäonnistui: {error}"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave an image of another size than asked for, in
+#. pixels.
+#: src/plugin.rs:2417
+msgid ""
+"the host returned {width}×{height} for a {asked_width}×{asked_height} region"
+msgstr ""
+"isäntäohjelma palautti {width}×{height} pikselin kuvan, vaikka pyydettiin "
+"{asked_width}×{asked_height} pikselin aluetta"
+
+#. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
+#: src/plugin.rs:2493
+msgid "{done} of {n} tile"
+msgid_plural "{done} of {n} tiles"
+msgstr[0] "{done}/{n} tiili"
+msgstr[1] "{done}/{n} tiiltä"
+
+#. Translators: {eta} is the time left, e.g. "about 2m 05s left"
+#: src/plugin.rs:2499
+msgid "{done} of {n} tile, {eta}"
+msgid_plural "{done} of {n} tiles, {eta}"
+msgstr[0] "{done}/{n} tiili, {eta}"
+msgstr[1] "{done}/{n} tiiltä, {eta}"
+
+#. Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
+#: src/presenter.rs:381
+msgid "VAE {done} / {n} tile"
+msgid_plural "VAE {done} / {n} tiles"
+msgstr[0] "VAE {done} / {n} tiili"
+msgstr[1] "VAE {done} / {n} tiiltä"
+
+#. Translators: the status bar: how the inference engine is being prepared
+#: src/presenter.rs:385 src/presenter.rs:387
+msgid "VAE: {}"
+msgstr "VAE: {}"
+
+#: src/presenter.rs:781
+msgid "VAE error map"
+msgstr "VAE-virhekartta"
+
+#. Translators: the outline of the region under the pointer
+#: src/presenter.rs:786
+msgid "VAE highlight"
+msgstr "VAE-korostus"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for
+#. rows of a region of {width} × {height} pixels.
+#: src/resample.rs:129
+msgid "the host returned {n} byte for rows of a {width}×{height} region"
+msgid_plural ""
+"the host returned {n} bytes for rows of a {width}×{height} region"
+msgstr[0] ""
+"isäntäohjelma palautti {n} tavun {width}×{height} pikselin alueen riveille"
+msgstr[1] ""
+"isäntäohjelma palautti {n} tavua {width}×{height} pikselin alueen riveille"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for a
+#. region of {width} × {height} pixels.
+#: src/resample.rs:216
+msgid "the host returned {n} byte for a {width}×{height} region"
+msgid_plural "the host returned {n} bytes for a {width}×{height} region"
+msgstr[0] "isäntäohjelma palautti {n} tavun {width}×{height} pikselin alueelle"
+msgstr[1] "isäntäohjelma palautti {n} tavua {width}×{height} pikselin alueelle"
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu)
+#: src/sidebar.rs:35
+msgid ""
+"This eov does not report its display adjustments: reconstructions are shown "
+"without them, so reset gamma, contrast and stain normalisation before "
+"comparing Original and Reconstruction."
+msgstr ""
+"Tämä eov ei ilmoita näytön säätöjään: rekonstruktiot näytetään ilman niitä, "
+"joten palauta gamma ja kontrasti oletusarvoihin ja poista värjäyksen "
+"normalisointi käytöstä ennen kuin vertaat peittokuvia Alkuperäinen ja "
+"Rekonstruktio."
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu); {} names the stain processing
+#: src/sidebar.rs:43
+msgid ""
+"Reconstructions get this pane's gamma, brightness, contrast and sharpening, "
+"but not its stain processing ({}): turn that off before comparing Original "
+"and Reconstruction."
+msgstr ""
+"Rekonstruktioihin sovelletaan tämän ruudun gammaa, kirkkautta, kontrastia ja "
+"terävöitystä, mutta ei sen värjäyskäsittelyä ({}): poista se käytöstä ennen "
+"kuin vertaat peittokuvia Alkuperäinen ja Rekonstruktio."
+
+#: src/sidebar.rs:50
+msgid ""
+"Reconstructions are shown with this pane's display adjustments, like the "
+"slide."
+msgstr ""
+"Rekonstruktiot näytetään tämän ruudun näyttösäädöin, kuten näytelasikin."
+
+#: src/sidebar.rs:58
+msgid ""
+"Errors are measured on the slide's own pixels; display adjustments do not "
+"change them."
+msgstr ""
+"Virheet mitataan näytelasin omista pikseleistä; näytön säädöt eivät muuta "
+"niitä."
+
+#. Translators: {} is the method's name: Macenko or Vahadane
+#: src/sidebar.rs:90
+msgid "{} normalisation"
+msgstr "{}-normalisointi"
+
+#: src/sidebar.rs:163
+msgid "Download the reference model"
+msgstr "Lataa viitemalli"
+
+#: src/sidebar.rs:164
+msgid "Use the reference model"
+msgstr "Käytä viitemallia"
+
+#: src/sidebar.rs:165
+msgid "Download your site's model"
+msgstr "Lataa organisaatiosi malli"
+
+#: src/sidebar.rs:166
+msgid "Use your site's model"
+msgstr "Käytä organisaatiosi mallia"
+
+#. Translators: {} is the start of the model's SHA-256 checksum
+#: src/sidebar.rs:171
+msgid "Your site's model (SHA-256 {}…)"
+msgstr "Organisaatiosi malli (SHA-256 {}…)"
+
+#. Translators: eov first asks the user whether to download the model
+#. (nothing is downloaded without that answer), then downloads it.
+#: src/sidebar.rs:182
+msgid ""
+"eov is asking you whether to download the model, or downloading it (see the "
+"status bar)…"
+msgstr "eov kysyy sinulta, ladataanko malli, tai lataa sitä (katso tilarivi)…"
+
+#. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
+#: src/sidebar.rs:188
+msgid "{} is in eov's model store."
+msgstr "{} on eov:n mallivarastossa."
+
+#. Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
+#: src/sidebar.rs:193
+msgid "{what}, from {server}."
+msgstr "{what}, palvelimelta {server}."
+
+#. Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
+#: src/sidebar.rs:202
+msgid ""
+"{}: from your site's copy. Set its address (Address…), unless your "
+"administrator has given it to eov."
+msgstr ""
+"{}: organisaatiosi kopiosta. Aseta sen osoite (Osoite…), ellei ylläpitäjä "
+"ole jo antanut sitä eov:lle."
+
+#. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
+#: src/sidebar.rs:260
+msgid "Changed by you (model declares: {})"
+msgstr "Muutettu itse (mallin määritys: {})"
+
+#: src/sidebar.rs:263
+msgid "From HistoVAE defaults"
+msgstr "HistoVAE-oletuksista"
+
+#: src/sidebar.rs:264
+msgid "From built-in model card"
+msgstr "Sisäänrakennetusta mallikortista"
+
+#: src/sidebar.rs:265
+msgid "From model metadata"
+msgstr "Mallin metatiedoista"
+
+#. Translators: the sidecar is the model's <model>.eovae.json file
+#: src/sidebar.rs:267
+msgid "From sidecar file"
+msgstr "Sivutiedostosta"
+
+#: src/sidebar.rs:289
+msgid "No model loaded."
+msgstr "Mallia ei ole ladattu."
+
+#: src/sidebar.rs:295
+msgid "Reading and hashing the model…"
+msgstr "Luetaan mallia ja lasketaan tiivistettä…"
+
+#: src/sidebar.rs:348
+msgid "CUDA unavailable: {}"
+msgstr "CUDA ei käytettävissä: {}"
+
+#. Translators: the model's fixed batch size (tiles per inference run)
+#: src/sidebar.rs:374
+msgid "batch {}"
+msgstr "eräkoko {}"
+
+#. Translators: the model takes any number of tiles per inference run
+#: src/sidebar.rs:376
+msgid "dynamic batch"
+msgstr "dynaaminen eräkoko"
+
+#: src/sidebar.rs:423
+msgid "Embeddings from '{name}' ({n} value) are stored with results."
+msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
+msgstr[0] ""
+"Tulosteen ”{name}” upotusvektorit ({n} arvo) tallennetaan tulosten mukana."
+msgstr[1] ""
+"Tulosteen ”{name}” upotusvektorit ({n} arvoa) tallennetaan tulosten mukana."
+
+#. Translators: the Threads field's hint: keep "auto", the word typed there
+#: src/sidebar.rs:503
+msgid "1–{}, or auto"
+msgstr "1–{} tai auto"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:527
+msgid "Auto: the model's {mpp}, resampled from level {level}"
+msgstr "Automaattinen: mallin {mpp}, uudelleennäytteistetty tasolta {level}"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:533
+msgid "Auto: the model's {mpp} = level {level}"
+msgstr "Automaattinen: mallin {mpp} = taso {level}"
+
+#. Translators: a resolution choice
+#: src/sidebar.rs:538
+msgid "Auto (level 0)"
+msgstr "Automaattinen (taso 0)"
+
+#. Translators: a level of the slide's pyramid, in the resolution choices
+#: src/sidebar.rs:548
+msgid "Level {}"
+msgstr "Taso {}"
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:574
+msgid ""
+"The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
+"are interpolated and errors will be inflated."
+msgstr ""
+"Näytelasin tarkin taso on {mpp}, mikä on karkeampi kuin mallin {model}: "
+"tiilet interpoloidaan, ja virheet ovat todellista suurempia."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:583
+msgid ""
+"Level {level} is {mpp} but the model was trained at {model}; errors will be "
+"inflated."
+msgstr ""
+"Taso {level} on {mpp}, mutta malli on opetettu tarkkuudella {model}; virheet "
+"ovat todellista suurempia."
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:593
+msgid ""
+"Tiles are read from level {level} ({mpp}) and resampled to the model's "
+"{model}."
+msgstr ""
+"Tiilet luetaan tasolta {level} ({mpp}) ja uudelleennäytteistetään mallin "
+"tarkkuuteen {model}."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:604
+msgid "Level {level} at {mpp} (model {model})."
+msgstr "Taso {level}, {mpp} (malli {model})."
+
+#. Translators: {mpp} is a resolution like "0.23 µm/px"
+#: src/sidebar.rs:611
+msgid "Level {level} at {mpp}."
+msgstr "Taso {level}, {mpp}."
+
+#: src/sidebar.rs:616
+msgid "Level {} (the slide is not calibrated)."
+msgstr "Taso {} (näytelasia ei ole kalibroitu)."
+
+#: src/sidebar.rs:629 src/sidebar.rs:886
+msgid "Open a slide."
+msgstr "Avaa näytelasi."
+
+#: src/sidebar.rs:651
+msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
+msgid_plural ""
+"{done} of {n} tiles · {background} background · {unreadable} unreadable"
+msgstr[0] ""
+"{done}/{n} tiili · taustaa {background} · lukukelvottomia {unreadable}"
+msgstr[1] ""
+"{done}/{n} tiiltä · taustaa {background} · lukukelvottomia {unreadable}"
+
+#. Translators: Viewport and Whole slide are the buttons of the same names
+#: src/sidebar.rs:699
+msgid ""
+"Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
+"Whole slide."
+msgid_plural ""
+"Zoom in to analyse automatically ({n} tiles visible), or run Viewport or "
+"Whole slide."
+msgstr[0] ""
+"Lähennä, jotta analyysi käynnistyy automaattisesti ({n} tiili näkyvissä), "
+"tai suorita Katselualue tai Koko näytelasi."
+msgstr[1] ""
+"Lähennä, jotta analyysi käynnistyy automaattisesti ({n} tiiltä näkyvissä), "
+"tai suorita Katselualue tai Koko näytelasi."
+
+#: src/sidebar.rs:748
+msgid ""
+"{n} tissue tile scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgid_plural ""
+"{n} tissue tiles scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgstr[0] ""
+"{n} kudostiili pisteytetty, taustaa {background}, lukukelvottomia "
+"{unreadable} — {percent} % kaikista tason {level} tiilistä ({total})."
+msgstr[1] ""
+"{n} kudostiiltä pisteytetty, taustaa {background}, lukukelvottomia "
+"{unreadable} — {percent} % kaikista tason {level} tiilistä ({total})."
+
+#. Translators: MAE is the mean absolute error; p95 the 95th percentile
+#: src/sidebar.rs:768
+msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
+msgstr ""
+"Tiilen MAE: keskiarvo {mean} · mediaani {median} · p95 {p95} · maks. {max}"
+
+#. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
+#: src/sidebar.rs:788
+msgid "{lo}–{hi}: {n} tile"
+msgid_plural "{lo}–{hi}: {n} tiles"
+msgstr[0] "{lo}–{hi}: {n} tiili"
+msgstr[1] "{lo}–{hi}: {n} tiiltä"
+
+#. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
+#: src/sidebar.rs:845
+msgid "MAE {mae} · max {max}"
+msgstr "MAE {mae} · maks. {max}"
+
+#. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
+#: src/sidebar.rs:859
+msgid "Tile MAE (p05–p95)"
+msgstr "Tiilen MAE (p05–p95)"
+
+#: src/sidebar.rs:866
+msgid "Pixel error"
+msgstr "Pikselivirhe"
+
+#: src/sidebar.rs:885
+msgid "Nothing analysed on this slide with these settings yet."
+msgstr "Tällä näytelasilla ei ole vielä analysoitu mitään näillä asetuksilla."
+
+#. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
+#: src/sidebar.rs:913
+msgid "{used} of {budget} on disk · {n} run"
+msgid_plural "{used} of {budget} on disk · {n} runs"
+msgstr[0] "levyllä {used}/{budget} · {n} ajo"
+msgstr[1] "levyllä {used}/{budget} · {n} ajoa"
+
+#: src/sidebar.rs:919
+msgid "Disk cache disabled"
+msgstr "Levyvälimuisti poistettu käytöstä"
+
+#: src/sidebar.rs:927
+msgid "Tile pixels in memory: {used} of {limit}"
+msgstr "Tiilien pikselit muistissa: {used}/{limit}"
+
+#: src/sidebar.rs:995
+msgid "Open an ONNX model"
+msgstr "Avaa ONNX-malli"
+
+#: src/sidebar.rs:997
+msgid "ONNX models"
+msgstr "ONNX-mallit"
+
+#: src/sidebar.rs:1024
+msgid "Choose the ONNX Runtime library"
+msgstr "Valitse ONNX Runtime -kirjasto"
+
+#: src/sidebar.rs:1272
+msgid "Open a slide first."
+msgstr "Avaa ensin näytelasi."
+
+#: src/sidebar.rs:1366
+msgid "Export tile scores"
+msgstr "Vie tiilien pisteet"
+
+#: src/sidebar.rs:1383
+msgid "Clear the VAE result cache?"
+msgstr "Tyhjennetäänkö VAE-tulosvälimuisti?"
+
+#. Translators: {} is a size, e.g. "120 MB"
+#: src/sidebar.rs:1386
+msgid ""
+"This deletes {} of stored results for every slide. Results are recomputed "
+"when needed."
+msgstr ""
+"Tämä poistaa kaikkien näytelasien tallennetut tulokset ({}). Tulokset "
+"lasketaan tarvittaessa uudelleen."
+
+#: src/sidebar.rs:1389
+msgid "Clear"
+msgstr "Tyhjennä"
+
+#: src/sidebar.rs:1390
+msgid "Cancel"
+msgstr "Peruuta"
+
+#: ui/eovae-sidebar.slint:201
+msgctxt "EovaeSidebar"
+msgid "No model loaded."
+msgstr "Mallia ei ole ladattu."
+
+#: ui/eovae-sidebar.slint:221
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "ImageNet-keskiarvo/-keskihajonta"
+
+#. Translators: inference device: CUDA when it works, else the CPU
+#: ui/eovae-sidebar.slint:230
+msgctxt "Device"
+msgid "Auto"
+msgstr "Automaattinen"
+
+#: ui/eovae-sidebar.slint:232
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "Automaattinen"
+
+#: ui/eovae-sidebar.slint:258
+msgctxt "Overlay"
+msgid "Original"
+msgstr "Alkuperäinen"
+
+#: ui/eovae-sidebar.slint:259
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "Rekonstruktio"
+
+#: ui/eovae-sidebar.slint:260
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "Virhekartta"
+
+#: ui/eovae-sidebar.slint:261
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "Erotus"
+
+#. Translators: the sidebar's section about the ONNX model
+#: ui/eovae-sidebar.slint:333
+msgctxt "EovaeSidebar"
+msgid "Model"
+msgstr "Malli"
+
+#: ui/eovae-sidebar.slint:347
+msgctxt "EovaeSidebar"
+msgid "No model"
+msgstr "Ei mallia"
+
+#. Translators: {} is the inference device, e.g. CPU · 8 threads
+#: ui/eovae-sidebar.slint:362
+msgctxt "EovaeSidebar"
+msgid "Running on {}"
+msgstr "Suoritetaan: {}"
+
+#: ui/eovae-sidebar.slint:369
+msgctxt "EovaeSidebar"
+msgid "Load ONNX…"
+msgstr "Lataa ONNX…"
+
+#. Translators: unloads the model
+#: ui/eovae-sidebar.slint:378
+msgctxt "EovaeSidebar"
+msgid "Clear"
+msgstr "Tyhjennä"
+
+#. Translators: chooses the ONNX Runtime library
+#: ui/eovae-sidebar.slint:385
+msgctxt "EovaeSidebar"
+msgid "Runtime…"
+msgstr "ONNX Runtime…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Address…"
+msgstr "Osoite…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Hide address"
+msgstr "Piilota osoite"
+
+#: ui/eovae-sidebar.slint:423
+msgctxt "EovaeSidebar"
+msgid ""
+"Your site's copy of the model (the .onnx file; the reference model's .onnx."
+"data comes from the same folder):"
+msgstr ""
+"Organisaatiosi kopio mallista (.onnx-tiedosto; viitemallin .onnx.data "
+"haetaan samasta kansiosta):"
+
+#: ui/eovae-sidebar.slint:438
+msgctxt "EovaeSidebar"
+msgid ""
+"SHA-256 of your own model at that address (empty: the reference model, "
+"checked against the SHA-256 eovae knows):"
+msgstr ""
+"Kyseisessä osoitteessa olevan oman mallisi SHA-256 (tyhjä: viitemalli, joka "
+"tarkistetaan eovae-laajennuksen tunteman SHA-256-tiivisteen avulla):"
+
+#: ui/eovae-sidebar.slint:443
+msgctxt "EovaeSidebar"
+msgid "64 hex digits"
+msgstr "64 heksadesimaalinumeroa"
+
+#. Translators: {} is the model's input: name · type · shape
+#: ui/eovae-sidebar.slint:458
+msgctxt "EovaeSidebar"
+msgid "Input: {}"
+msgstr "Syöte: {}"
+
+#. Translators: the model's output the sidebar reads
+#: ui/eovae-sidebar.slint:462
+msgctxt "EovaeSidebar"
+msgid "Output"
+msgstr "Tuloste"
+
+#: ui/eovae-sidebar.slint:484
+msgctxt "EovaeSidebar"
+msgid "Preprocessing"
+msgstr "Esikäsittely"
+
+#: ui/eovae-sidebar.slint:494
+msgctxt "EovaeSidebar"
+msgid "Input range"
+msgstr "Syötteen arvoalue"
+
+#: ui/eovae-sidebar.slint:506
+msgctxt "EovaeSidebar"
+msgid "Output range"
+msgstr "Tulosteen arvoalue"
+
+#: ui/eovae-sidebar.slint:518
+msgctxt "EovaeSidebar"
+msgid "Composite transparency onto white"
+msgstr "Yhdistä läpinäkyvyys valkoiselle pohjalle"
+
+#: ui/eovae-sidebar.slint:524
+msgctxt "EovaeSidebar"
+msgid "Turn near-black pixels white"
+msgstr "Muuta lähes mustat pikselit valkoisiksi"
+
+#: ui/eovae-sidebar.slint:532
+msgctxt "EovaeSidebar"
+msgid "Use the model's preprocessing"
+msgstr "Käytä mallin esikäsittelyä"
+
+#: ui/eovae-sidebar.slint:544
+msgctxt "EovaeSidebar"
+msgid "Analysis"
+msgstr "Analyysi"
+
+#. Translators: the inference device (CPU or CUDA)
+#: ui/eovae-sidebar.slint:559
+msgctxt "EovaeSidebar"
+msgid "Device"
+msgstr "Laite"
+
+#. Translators: the pyramid level tiles are read from
+#: ui/eovae-sidebar.slint:572
+msgctxt "EovaeSidebar"
+msgid "Resolution"
+msgstr "Resoluutio"
+
+#. Translators: CPU inference threads
+#: ui/eovae-sidebar.slint:590
+msgctxt "EovaeSidebar"
+msgid "Threads"
+msgstr "Säikeet"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch"
+msgstr "Eräkoko"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch (model)"
+msgstr "Eräkoko (malli)"
+
+#. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
+#. (CUDA); the computed errors change slightly.
+#: ui/eovae-sidebar.slint:622
+msgctxt "EovaeSidebar"
+msgid "Allow TF32 on CUDA (faster, less precise)"
+msgstr "Salli TF32 CUDA:ssa (nopeampi, vähemmän tarkka)"
+
+#: ui/eovae-sidebar.slint:628
+msgctxt "EovaeSidebar"
+msgid "Skip background tiles"
+msgstr "Ohita taustatiilet"
+
+#: ui/eovae-sidebar.slint:634
+msgctxt "EovaeSidebar"
+msgid "Analyse visible tiles automatically"
+msgstr "Analysoi näkyvät tiilet automaattisesti"
+
+#. Translators: analyses the visible part of the slide
+#: ui/eovae-sidebar.slint:645
+msgctxt "EovaeSidebar"
+msgid "Viewport"
+msgstr "Katselualue"
+
+#. Translators: analyses the region of interest drawn on the slide
+#: ui/eovae-sidebar.slint:655
+msgctxt "EovaeSidebar"
+msgid "ROI"
+msgstr "ROI"
+
+#: ui/eovae-sidebar.slint:664
+msgctxt "EovaeSidebar"
+msgid "Whole slide"
+msgstr "Koko näytelasi"
+
+#. Translators: stops the running analysis
+#: ui/eovae-sidebar.slint:674
+msgctxt "EovaeSidebar"
+msgid "Cancel"
+msgstr "Peruuta"
+
+#: ui/eovae-sidebar.slint:722
+msgctxt "EovaeSidebar"
+msgid "Results"
+msgstr "Tulokset"
+
+#. Translators: what the overlay shows: Original, Reconstruction, …
+#: ui/eovae-sidebar.slint:737
+msgctxt "EovaeSidebar"
+msgid "Overlay"
+msgstr "Peittokuva"
+
+#: ui/eovae-sidebar.slint:824
+msgctxt "EovaeSidebar"
+msgid "Highest-error regions"
+msgstr "Suurimman virheen alueet"
+
+#: ui/eovae-sidebar.slint:840
+msgctxt "EovaeSidebar"
+msgid "Export CSV…"
+msgstr "Vie CSV…"
+
+#. Translators: the intended use: keep its meaning exactly
+#: ui/eovae-sidebar.slint:848
+msgctxt "EovaeSidebar"
+msgid "Research use only; not for diagnosis."
+msgstr "Vain tutkimuskäyttöön; ei saa käyttää diagnostiikkaan."
+
+#. Translators: the section about eovae's stored results
+#: ui/eovae-sidebar.slint:856
+msgctxt "EovaeSidebar"
+msgid "Cache"
+msgstr "Välimuisti"
+
+#: ui/eovae-sidebar.slint:874
+msgctxt "EovaeSidebar"
+msgid "Keep reconstructions on disk (large)"
+msgstr "Säilytä rekonstruktiot levyllä (vie paljon tilaa)"
+
+#: ui/eovae-sidebar.slint:883
+msgctxt "EovaeSidebar"
+msgid "Clear cache…"
+msgstr "Tyhjennä…"

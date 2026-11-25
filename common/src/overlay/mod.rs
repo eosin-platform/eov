@@ -23,7 +23,8 @@ pub use items::{Corner, OverlayItem, measurement_items};
 pub use measure::format_measurement_label;
 pub use measure::{Calibration, Length, format_length, format_physical_length, measure_segment};
 pub use scale_bar::{
-    ScaleBarLayout, ScaleBarStyle, layout_scale_bar, nice_scale_length_um, scale_bar_for_view,
+    ScaleBarLayout, ScaleBarStyle, ViewScaleBar, layout_scale_bar, nice_scale_length_um,
+    scale_bar_for_view, view_scale_bar,
 };
 
 use serde::{Deserialize, Serialize};
@@ -450,6 +451,8 @@ impl<'a> Canvas<'a> {
     }
 
     /// Draws `text` with its top-left corner at `(x, y)`, with kerning.
+    /// Invisible format characters (directional marks and isolates,
+    /// zero-width spaces and joiners) take no room.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_text(
         &mut self,
@@ -470,7 +473,7 @@ impl<'a> Canvas<'a> {
         }
         let mut cursor_x = x;
         let mut previous = None;
-        for ch in text.chars() {
+        for ch in text.chars().filter(|&ch| !is_invisible_format(ch)) {
             let glyph_id = font.glyph_id(ch);
             if let Some(prev) = previous {
                 cursor_x += scaled.kern(prev, glyph_id);
@@ -660,13 +663,31 @@ fn line_pixel_coverage(
     edge_alpha * pattern_alpha
 }
 
-/// Pixel width of `text` at `size_px`, including kerning.
+/// Whether `ch` is an invisible format character: a directional mark,
+/// embedding, override or isolate, a zero-width space or joiner, a word
+/// joiner, the byte-order mark. They order or join the text around them
+/// and are never drawn, but the embedded font lacks them, so each would
+/// take the room of a missing glyph (a gap the width of a digit).
+fn is_invisible_format(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{061C}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
+    )
+}
+
+/// Pixel width of `text` at `size_px`, including kerning (invisible format
+/// characters take no room).
 pub fn measure_text(text: &str, font: &FontArc, size_px: f32) -> f32 {
     use ab_glyph::{Font, ScaleFont};
     let scaled = font.as_scaled(size_px);
     let mut width = 0.0;
     let mut previous = None;
-    for ch in text.chars() {
+    for ch in text.chars().filter(|&ch| !is_invisible_format(ch)) {
         let id = font.glyph_id(ch);
         if let Some(prev) = previous {
             width += scaled.kern(prev, id);
@@ -901,6 +922,28 @@ mod tests {
         assert!(inked > 40, "{inked}");
         let width = measure_text("25 µm", embedded_font(), 14.0);
         assert!(width > 20.0 && width < 60.0, "{width}");
+    }
+
+    /// Marks that order right-to-left text, and zero-width characters,
+    /// are not drawn as gaps: text with them looks as it does without.
+    #[test]
+    fn invisible_format_characters_take_no_room() {
+        let font = embedded_font();
+        let plain = "12.5 µm";
+        let marked = "\u{2068}12.5\u{200b} µm\u{2069}\u{200f}\u{feff}";
+        assert_eq!(
+            measure_text(marked, font, 14.0),
+            measure_text(plain, font, 14.0)
+        );
+        let (w, h) = (80u32, 24u32);
+        let draw = |text: &str| {
+            let mut buf = blank(w, h);
+            Canvas::new(&mut buf, w, h).draw_text(2.0, 2.0, text, OverlayColor::WHITE, font, 14.0);
+            buf
+        };
+        assert_eq!(draw(marked), draw(plain));
+        // A character the font lacks still takes room.
+        assert!(measure_text("12\u{66b}5", font, 14.0) > measure_text("125", font, 14.0));
     }
 
     #[test]

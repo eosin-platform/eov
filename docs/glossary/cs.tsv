@@ -1,0 +1,258 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Pro výzkum a výuku. Není zdravotnickým prostředkem; není určeno k primární diagnostice.	Safety text of the Home screen: translate in full, never shorten or soften.
+not a medical device	není zdravotnickým prostředkem	Regulatory term „zdravotnický prostředek“ (MDR; zákon č. 375/2022 Sb.).
+primary diagnosis	primární diagnostika	The first, final diagnosis of a case: „není určeno k primární diagnostice“.
+not for diagnosis	není určeno k diagnostice	Never weaken to „nedoporučuje se“.
+research use only (RUO)	pouze pro výzkumné účely (RUO)	The phrase printed on RUO reagents; keep RUO.
+synthetic (image, channel, stain)	syntetický	Computed by an algorithm. Never „umělý“ or „falešný“, never „simulovaný“.
+predicted	predikovaný	Noun: „predikce“ (a prediction is not a measurement).
+generated	vygenerovaný	Computed by a model or an algorithm.
+slide	preparát	Histological slide and its scan („histologický preparát“). Never „snímek“ or „slide“. The glass itself: „sklíčko“.
+whole-slide image (WSI)	obraz celého preparátu (WSI)	Keep the abbreviation WSI: „soubory WSI“.
+slide viewer, viewer	prohlížeč preparátů, prohlížeč	
+tab	karta	One open slide in a pane, as in a browser. Not „záložka“ (that is a bookmark).
+pane	podokno	One of the side-by-side viewing areas: „rozdělit podokno“, „propojit podokna“.
+panel	panel	A section of the window (Channels, Plugins, Measurements…).
+view	zobrazení	What a pane shows (position, magnification, rotation): „předchozí zobrazení“.
+viewport	zobrazovací plocha	The area of a pane where the slide is drawn.
+minimap	minimapa	
+scale bar	měřítko	The bar showing a physical length (µm, mm).
+HUD	plovoucí panel	Panels floating over the slide: „plovoucí panel metadat“.
+toolbar	panel nástrojů	
+sidebar	postranní panel	
+status bar	stavový řádek	
+series bar	panel série	The bar listing the slides and folders of the current folder.
+Home screen	domovská obrazovka	The Home tab itself: „Domů“.
+zoom	přiblížení	Screen scale (100 % = one slide pixel per screen pixel). Zoom in/out: „přiblížit“/„oddálit“.
+magnification (20×)	zvětšení (20×)	Objective-equivalent optical magnification; 20× stays 20×.
+objective, objective power	objektiv, zvětšení objektivu	
+pixel size	velikost pixelu	
+MPP (µm per pixel)	MPP (µm na pixel)	MPP stays.
+calibration	kalibrace	
+level, pyramid level	úroveň, úroveň pyramidy	Level-0 pixels: „pixely úrovně 0“.
+tile	dlaždice	Also the dataset's „Tile Size“: „velikost dlaždice“.
+patch (dataset)	výřez	Patch extraction: „extrakce výřezů“.
+cache	mezipaměť	
+region of interest (ROI)	oblast zájmu (ROI)	Keep ROI as the abbreviation.
+region (annotation)	oblast	A drawn area.
+measurement	měření	Same form in singular and plural: add „všechna“, „vybraná“, „více“ where the number matters.
+Measure (tool)	Měření	Tool name; verbs „měřit“, „změřit“.
+distance	vzdálenost	
+path length	délka lomené čáry	Measure mode of a polyline.
+area	plocha	„plocha mnohoúhelníku“.
+angle	úhel	
+polygon	mnohoúhelník	
+rectangle	obdélník	
+ellipse	elipsa	
+outline	obrys	
+annotation	anotace	A drawn mark with a meaning; a free-text comment is „komentář“.
+class (annotation class)	třída	E.g. „Nádor“, „Stroma“; „třída anotace“.
+layer	vrstva	
+overlay	překryv	Graphics drawn over the slide; „překryvná vrstva“ where a layer is meant.
+cell count, counting	počet buněk, počítání buněk	
+high-power field (HPF)	zorné pole velkého zvětšení (HPF)	Keep HPF as the abbreviation: „pole HPF“ (a placed field), „mitózy na 10 HPF“.
+field number (FN)	číslo zorného pole (FN)	Eyepiece field number in mm.
+density	hustota	E.g. cells per mm².
+H&E	H&E	Hematoxylin-eozin; keep the abbreviation H&E.
+hematoxylin	hematoxylin	One-letter abbreviation H.
+eosin	eozin	Czech spelling with z; one-letter abbreviation E.
+IHC	IHC	Imunohistochemie; keep the abbreviation.
+DAB	DAB	Chromogen: „DAB-pozitivní“.
+stain (staining, stain type)	barvení	The method or type: „barvení H&E“, „normalizace barvení“, series order „Barvení“.
+stain (one dye of a stain model)	barvivo	„izolované barvivo“, „vektory barviv“, „model barvení má 2 barviva“.
+stain normalization	normalizace barvení	Macenko and Vahadane stay undeclined: „normalizace barvení Macenko“.
+stain target	cílové barvení	The appearance normalisation maps slides onto.
+stain model	model barvení	E.g. H&E, H-DAB.
+stain vectors	vektory barviv	
+stain fit	odhad barviv	Estimating a slide's stain vectors: „barviva se odhadují“.
+color deconvolution	dekonvoluce barev	Ruifrok–Johnston stays.
+colour management	správa barev	
+colour profile (ICC)	barevný profil (ICC)	
+colours as scanned	barvy podle skeneru	Shown without colour management.
+H-score	H-skóre	
+weak / moderate / strong (1+, 2+, 3+)	slabé / střední / silné (1+, 2+, 3+)	Staining intensity classes (agree with „barvení“).
+optical density	optická denzita	
+quantify, quantification	kvantifikovat, kvantifikace	„Kvantifikace barviva“.
+threshold	práh	„prahová hodnota“ where clearer.
+histogram	histogram	
+channel	kanál	
+multiplex immunofluorescence (mIF)	multiplexní imunofluorescence (mIF)	
+marker	marker	Marker names (CD3, Ki-67, PanCK…) are never translated.
+focal plane (Z)	ohnisková rovina (Z)	The stack of planes: „Z-stack“.
+time point (T), time series	časový bod (T), časová řada	
+heat map	teplotní mapa	
+opacity	neprůhlednost	0–100 %.
+tissue	tkáň	
+tissue QC	kontrola kvality tkáně (QC)	
+pen marks	značky popisovačem	Marks of a marker pen on the glass.
+folds	záhyby	„záhyby tkáně“.
+blur, out of focus	rozostření, rozostřený	
+tissue detection, tissue mask	detekce tkáně, maska tkáně	
+background	pozadí	
+dataset	datová sada	
+stride	krok	The step between patches.
+export	exportovat; export	Menu item „Exportovat obrázek…“; dialog title „Export obrázku“.
+save a copy	uložit kopii	
+convert	převést	„Převést barvy do sRGB“.
+de-identify	odstranit identifikační údaje	Remove patient-identifying data (label, macro image, metadata). Adjective: „bez identifikačních údajů“. Not „anonymizovat“, which promises more.
+label image	obrázek štítku	Caption: „Štítek“.
+macro image	makrosnímek	Photo of the whole glass slide.
+overview image	přehledový snímek	Caption: „Přehled“.
+thumbnail	miniatura	
+bookmark	záložka	A saved view of a slide.
+session	relace	
+case	případ	The patient case (accession) slides belong to.
+vendor, scanner	výrobce, skener	
+property (of a slide)	vlastnost	Slide properties as the scanner wrote them.
+metadata	metadata	
+plugin	zásuvný modul	Plural „zásuvné moduly“.
+package (.eop)	balíček (.eop)	„balíček zásuvného modulu“.
+model, model store	model, úložiště modelů	Machine-learning model files.
+inference	inference	Running a model on images.
+batch	dávka	
+thread	vlákno	Processor core: „jádro“.
+render	vykreslit, vykreslování	
+renderer (CPU, GPU)	vykreslování na CPU / na GPU	CPU and GPU stay as they are.
+filtering (bilinear, trilinear, Lanczos)	filtrování (bilineární, trilineární, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	ostrost, gama, jas, kontrast	Gamma symbol γ.
+image adjustments	úpravy obrazu	
+theme (dark, light, high contrast)	motiv (tmavý, světlý, vysoký kontrast)	
+Check for Updates…	Zkontrolovat aktualizace…	Asks before going online; never imply automatic background updates.
+update	aktualizace; aktualizovat	
+release, release notes	vydání, poznámky k vydání	„manifest vydání“.
+signature	podpis	
+checksum	kontrolní součet	SHA-256 stays.
+administrator policy	zásady správce	„zakázáno zásadami správce {}“.
+safe mode	nouzový režim	
+log folder	složka protokolů	
+messages	zprávy	The notification list in the status bar.
+landmark (alignment)	orientační bod	
+align, alignment	zarovnat, zarovnání	Of linked slides.
+link / unlink panes	propojit / rozpojit podokna	
+rotate, rotation	otočit, otočení	„Otočit doprava o 90°“.
+flip horizontally	převrátit vodorovně	
+pan	posunout	Moving the view.
+point, line, arrow, text	bod, čára, šipka, text	
+brush, eraser	štětec, guma	
+hole (of a polygon)	otvor	
+comment, author	komentář, autor	
+nucleus, nuclei	jádro, jádra	Cell nuclei: „buněčná jádra“.
+tumour cells	nádorové buňky	
+reader (of annotations)	hodnotitel	Another pathologist reading the same slide.
+blinded copy	zaslepená kopie	
+gamepad	herní ovladač	
+Annotations (plugin name)	Anotace	Descriptive plugin name: translated.
+Gamepad (plugin name)	Herní ovladač	Descriptive plugin name: translated.
+Example Plugin (plugin name)	Ukázkový zásuvný modul	Descriptive plugin name: translated.
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	Coined product names: never translated.
+eov	eov	Lowercase and undeclined; masculine agreement („program eov“) where Czech needs a gender, or rephrase.
+Open	Otevřít	Buttons and menu items use the infinitive, sentence case.
+Close	Zavřít	
+Cancel	Zrušit	
+OK	OK	
+Save, Save…	Uložit, Uložit…	
+Delete	Smazat	
+Remove	Odebrat	A plugin, an input, a heat map.
+Clear	Vymazat	„Vymazat měření“, „Vymazat nedávné soubory“; a region of interest: „Odstranit oblast zájmu“.
+Settings	Nastavení	
+Apply	Použít	
+Reset, Reset to Defaults	Obnovit výchozí	Reset Rotation: „Zrušit otočení“.
+Show / Hide	Zobrazit / Skrýt	
+Toggle …	Zobrazit/skrýt …	Toolbar toggles.
+Import	Importovat	
+Copy	Kopírovat	Status messages: „Zkopírováno: {}“.
+Undo / Redo	Zpět / Znovu	„Zpět: {}“; undo-step labels are verbal nouns („Přidání měření“).
+Zoom in / Zoom out	Přiblížit / Oddálit	
+Fit	Přizpůsobit	„Přizpůsobit preparát podoknu“.
+Enable / Disable	Povolit / Zakázat	States: „Povoleno“ / „Zakázáno“.
+Confirm	Potvrdit	
+Done	Hotovo	
+Add	Přidat	
+Edit	Upravit	
+Rename	Přejmenovat	
+Filter	Filtrovat; filtr	
+Back / Forward / Up	Zpět / Vpřed / Nahoru	
+Download	Stáhnout	
+Install / Uninstall	Nainstalovat / Odinstalovat	
+Restart	Restartovat	
+Lock / Unlock	Zamknout / Odemknout	
+Merge	Sloučit	
+Select	Vybrat	
+Loading…	Načítání…	
+Ready	Připraveno	
+Error / Warning / Information	Chyba / Upozornění / Informace	
+Language	Jazyk	Language names are capitalised list entries: „Němčina“.
+colour	barva	Colour names agree with „barva“: „Tmavě modrá“.
+keyboard shortcut, hotkey	klávesová zkratka	
+key	klávesa	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) stay as they are.
+tooltip	popisek	
+clipboard	schránka	
+folder, file manager	složka, správce souborů	
+path	cesta	
+stroke (line style)	styl čáry	Plná, čárkovaná, tečkovaná; caps: „zakončení“.
+focused pane	aktivní podokno	
+self-update	vlastní aktualizace	eov updating itself (eov update); not „automatická“.
+update helper	pomocný program pro aktualizaci	
+app bundle (macOS)	balík aplikace	Also a Flatpak bundle: „balík Flatpak“.
+N/A, Unknown (values)	neuvedeno, neznámé	A property the file does not record.
+Copied/Saved/Exported {}	Zkopírováno/Uloženo/Exportováno: {}	Status pattern that avoids gender agreement with a name.
+{} of {}	{} z {}	„Časový bod 2 z 5“.
+ellipsis …	…	Kept at the end of items that open a dialog.
+quotation marks “ ”	„ “	Czech quotes (U+201E, U+201C).
+number and unit	12 MB, 50 %, 90°, 20×	Space before units and %; none before the ° of an angle; 1024 × 768 px.
+undo-step labels (plugins)	podstatné jméno slovesné	„Přidání bodu“, „Smazání vrstvy“, shown as „Zpět: …“; a label that is also a dialog title stays a noun („Smazání třídy“). Exception: „Smazat anotaci“ is shared with a context-menu item.
+Count (tab), Count tool	Počítání, nástroj Počítání	Annotations plugin; tool tooltip „Počítání buněk (Shift+klik: druhá třída)“.
+count point(s), counts	počítací bod(y), počty	Points placed with the Count tool: „Vymazat počty…“, „Odebrat všech 12 počítacích bodů…“.
+HPF field	pole HPF	A placed high-power field; tool „Pole HPF (H)“; „{} /pole HPF“.
+regular layer	běžná vrstva	As opposed to the layers of count points and HPF fields.
+shape, vertex, outline	tvar, vrchol, obrys	„Obrys protínal sám sebe…“.
+freehand outline	obrys od ruky	
+text label (annotation)	textový popisek	
+review status: Draft / Verified / Rejected	stav kontroly: Koncept / Ověřeno / Zamítnuto	Undo labels: „Označení jako ověřené“.
+second reader, reader	druhý hodnotitel, hodnotitel	Section heading „DRUHÝ HODNOTITEL“.
+even-odd rule	pravidlo sudá–lichá	Fill rule of self-crossing outlines.
+DICOM bulk annotations	hromadné anotace DICOM	The IOD name „Microscopy Bulk Simple Annotations“ stays in English.
+frame (DICOM)	snímek	DICOM frames only; a slide is never „snímek“.
+attach (annotations to a slide)	připojit	„Připojit anotace jiného preparátu“.
+Bring them in (old database)	Přenést	Button; „Přenést její anotace do aktuální databáze?“.
+combined positive score (CPS)	kombinované pozitivní skóre (CPS)	PD-L1; „na 100 nádorových buněk“.
+immune cells	imunitní buňky	„PD-L1-pozitivní imunitní buňky“.
+Shift+click, Alt+click, Ctrl+click	Shift+klik, Alt+klik, Ctrl+klik	Instrumental: „Shift+klikem“.
+prediction, predicted (Cellaris)	predikce, predikovaný	Banner „PREDIKCE — pouze pro výzkumné účely, není určeno k diagnostice“; never weaken.
+cell (Cellaris grid square, 41.6 µm)	políčko	Not a biological cell: never „buňka“ in Cellaris.
+window (square model input)	okno	Cellaris/eovae: „okno predikcí“, „{} s na okno“.
+display window (marker value range)	rozsah zobrazení	Cellaris; eov's Channels panel says „Okna (rozsahy zobrazení)“.
+tissue block (5 µm square)	blok tkáně	
+readout, region readout	odečet, odečet oblasti	Cellaris; tool „Odečet oblasti Cellaris“, section „ODEČET OBLASTI“.
+spread (readout column: SD)	kolísání	Not „rozptyl“ (that is the variance).
+density r²	r² denzity	Cellaris readout column.
+bright-field	světlé pole	„H&E ve světlém poli“.
+training data	trénovací data	„nepodobné trénovacím datům“.
+ONNX Runtime library, runtime	knihovna ONNX Runtime, běhové prostředí	ONNX Runtime stays (masculine): „ONNX Runtime nebyl nalezen“; button „Běhové prostředí…“.
+session (ONNX Runtime)	relace	„Vytváření relace pro CPU…“.
+reconstruction error	chyba rekonstrukce	eovae; MAE = mean absolute error stays MAE.
+anomaly (VAE)	anomálie	
+error map	mapa chyb	eovae overlay; overlays „Originál“, „Rekonstrukce“, „Mapa chyb“, „Rozdíl“.
+highest-error regions (hot regions)	oblasti s nejvyšší chybou	eovae.
+result cache	mezipaměť výsledků	eovae.
+preprocessing	předzpracování	eovae section „Předzpracování“.
+model card	karta modelu	„vestavěná karta modelu“.
+sidecar file (<model>.eovae.json)	doprovodný soubor	
+embeddings	embeddingy	
+Viewport (eovae analysis button and job)	Zobrazení	Short label for analysing the visible part of the slide; elsewhere viewport = zobrazovací plocha.
+Auto (device, resolution)	Automaticky	Typed values such as auto, cpu, cuda stay as they are.
+your site's copy (of a model)	kopie na vašem pracovišti	„Model vašeho pracoviště (SHA-256 …)“.
+hex digits	šestnáctkové číslice	„64 šestnáctkových číslic“.
+stick, trigger, shoulder button	páčka, spoušť, ramenní tlačítko	Gamepad: „Levá páčka X“, „Pravá spoušť“, „Levé ramenní tlačítko“.
+D-pad	směrový kříž	„Směrový kříž vlevo“.
+face buttons: South / East / North / West	akční tlačítko dole / vpravo / nahoře / vlevo	Named by position (A/Cross is „dole“).
+dead zone, response curve	mrtvá zóna, křivka odezvy	
+mapping (gamepad)	přiřazení	Section „Přiřazení“; „přiřaďte páčce akci Posunout ukazatel“.
+profile (gamepad)	profil	„Profil herního ovladače“.
+system pointer	systémový ukazatel	„Ovládání systémového ukazatele“.
+Off / On (small switch)	Vyp. / Zap.	
+marker (example plugin: a placed point)	značka	Not a biomarker.
+file type name (whole-slide image)	Obraz celého preparátu <výrobce/formát>	Names of file types in file managers: „Obraz celého preparátu Hamamatsu NDPI“, „Obrázek BigTIFF“; maker and format names stay.
+host (the application running a plugin)	hostitelská aplikace	Plugin error details: „hostitelská aplikace vrátila 1024 bajtů pro oblast 256×256“.
+worker thread	pracovní vlákno	„Pracovní vlákno nelze spustit“, „Pracovní vlákno eovae neočekávaně selhalo“.
+Low / High (ends of a display window)	Dolní mez / Horní mez	Cellaris display window; as eov's „Dolní mez kanálu {}“.

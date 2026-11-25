@@ -1,0 +1,250 @@
+term	translation	note
+eov	eov	Never translated; lowercase.
+slide	præparat	Glass microscope slide and its scan (et præparat, præparatet, præparater). Never "dias" or "slide". "objektglas" only for the physical glass.
+whole-slide image (WSI)	digitalt præparat (WSI)	Keep the abbreviation WSI; WSI-fil, WSI-filer. Viewer title: "Fremviser til digitale præparater (WSI)".
+slide viewer, viewer	fremviser	præparatfremviser where needed.
+tab	fane	en fane, fanen, faner.
+pane	rude	As in Microsoft's Danish (navigationsrude): en rude, ruden, ruder. Split Right = Opdel til højre.
+view	visning	What a pane shows (position, magnification, rotation).
+viewport	visningsområde	The area of a pane where the slide is drawn.
+minimap	minikort	
+scale bar	målestok	
+HUD	panel	The idea, not the abbreviation: metadata HUD = metadatapanel.
+toolbar	værktøjslinje	
+sidebar	sidepanel	
+status bar	statuslinje	
+series bar	serielinje	The strip of slides of a folder.
+zoom	zoom; zoome	Screen scale. Zoom in = Zoom ind; Zoom out = Zoom ud.
+magnification	forstørrelse	Objective-equivalent optical magnification; 20× stays 20×.
+objective	objektiv	
+objective power	objektivforstørrelse	
+pixel size	pixelstørrelse	Physical size of one image pixel.
+MPP (µm per pixel)	MPP (µm pr. pixel)	Keep MPP; "pr." for per.
+calibration	kalibrering	
+level, pyramid level	niveau, pyramideniveau	L0 = full resolution.
+tile	flise	Square piece of the image loaded at a time.
+patch (dataset)	udsnit	Small image cut from a slide for machine learning (et udsnit, udsnittet, udsnit). Dataset "Tile Size" = Udsnitsstørrelse.
+cache	cache	
+region of interest (ROI)	interesseområde (ROI)	Keep ROI as the abbreviation.
+measurement	måling	
+measure (tool)	måleværktøj; tool name: Måling	Measure: Distance = Måling: Afstand.
+Navigate (tool)	Navigering	Tool name.
+annotation	annotation	A drawn mark with a meaning (en annotation, annotationen, annotationer); not a comment (kommentar).
+class (annotation class)	klasse	Annotation class = annotationsklasse.
+cell count, counting	celletælling, tælling	
+high-power field (HPF)	synsfelt ved stor forstørrelse (HPF)	Keep the abbreviation HPF in compact labels (pr. 10 HPF).
+H&E	H&E	Never HE or translated.
+hematoxylin	hæmatoxylin	Danish spelling; letter H.
+eosin	eosin	Letter E.
+IHC, immunohistochemistry	IHC, immunhistokemi	Keep IHC.
+DAB	DAB	Keep.
+chromogen	kromogen	
+stain (method, staining)	farvning	H&E, Giemsa, the slide's stain: Farvning: {}.
+stain (dye, component)	farvestof	Hematoxylin, eosin, DAB as components of a stain model: Isoleret farvestof.
+stain model	farvningsmodel	
+stain vectors	farvevektorer	Reference vectors = referencevektorer.
+stain normalization (Macenko, Vahadane)	farvenormalisering	Also for "colour normalisation"; Macenko and Vahadane stay.
+stain target	farvningsmål	The appearance normalisation maps onto; reference stain target = reference-farvningsmål.
+color deconvolution	farvedekonvolution	Ruifrok–Johnston.
+optical density	optisk densitet	
+H-score	H-score	Weak (1+) = Svag (1+), Moderate (2+) = Moderat (2+), Strong (3+) = Kraftig (3+).
+threshold	tærskel	Tærskelværdi in running text when clearer.
+channel	kanal	
+multiplex immunofluorescence (mIF)	multipleks immunfluorescens (mIF)	
+marker	markør	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	fokalplan	et fokalplan, fokalplanet.
+Z-stack	Z-stak	
+time point (T)	tidspunkt	
+time series	tidsserie	
+heat map	varmekort	
+overlay	overlejring	
+layer	lag	et lag, laget, lag, lagene.
+opacity	opacitet	Compact; 0–100 %.
+tissue QC	vævs-QC	Kvalitetskontrol af væv in running text; Check Tissue Quality = Kontrollér vævskvalitet.
+pen marks	tuschmarkeringer	Marker-pen ink on the glass.
+folds	folder	Tissue folds (en fold, folder).
+blur, out of focus	uskarphed, ude af fokus	Blurred areas = uskarpe områder.
+tissue detection, tissue mask	vævsdetektion, vævsmaske	
+dataset	datasæt	
+patch extraction	udtræk af udsnit	Dataset extraction = udtræk af datasæt.
+stride	skridtlængde	Step between patches.
+export	eksportere; Eksportér	Export Image = Eksportér billede.
+save a copy	gem en kopi	Save a Copy of the Slide = Gem en kopi af præparatet.
+convert	konvertere	
+de-identify	afidentificere; Afidentificér	Danish health-data practice; de-identified = afidentificeret.
+label image	etiketbillede	Photo of the slide's paper label; label = etiket.
+macro image	makrobillede	Photo of the whole glass slide.
+thumbnail	miniature	
+overview (associated image)	oversigt	
+bookmark	bogmærke	Bookmark the view = Sæt bogmærke ved visningen.
+session	session	
+plugin	plugin	et plugin, pluginet, plugins; avoid the awkward definite plural (rephrase).
+package (.eop)	pakke; pluginpakke	
+model, model store	model, modellager	Machine-learning model file; eov's modellager.
+inference	inferens	
+render	rendere	
+renderer (CPU, GPU)	rendering (CPU-rendering, GPU-rendering)	CPU and GPU stay.
+backend	backend	
+filtering	filtrering	Filtering mode = Filtreringstilstand.
+bilinear, trilinear, Lanczos	bilineær, trilineær, Lanczos	Lanczos is a name.
+sharpness	skarphed	
+gamma	gamma	
+brightness	lysstyrke	
+contrast	kontrast	Auto contrast = Autokontrast.
+theme	tema	
+Dark, Light, High Contrast (theme)	Mørk, Lys, Høj kontrast	
+colour management	farvestyring	Colour-managed = farvestyret; colours as scanned = farver som scannet.
+colour profile, ICC profile	farveprofil, ICC-profil	
+Home screen	startskærm	
+Home (tab)	Start	
+Check for Updates…	Søg efter opdateringer…	Asks before going online; never imply automatic updates.
+research and education	forskning og undervisning	
+not a medical device	ikke medicinsk udstyr	Regulatory term (MDR); never soften.
+primary diagnosis	primær diagnostik	Not for primary diagnosis = ikke til primær diagnostik.
+research use only (RUO)	kun til forskningsbrug (RUO)	Phrase printed on RUO reagents.
+synthetic, predicted, generated	syntetisk, forudsagt, genereret	Computed by an algorithm; never "falsk" or "kunstig".
+intended use	tilsigtet anvendelse	
+alignment, align	justering, justere	Of linked slides (Microsoft: justér = align).
+adjust	tilpasse	Adjust the alignment = Tilpas justeringen.
+landmark	landemærke	Alignment landmark = justeringslandemærke.
+link, unlink (panes)	sammenkæde, ophæve sammenkædning	Panes linked = Ruder sammenkædet.
+focused pane	den aktive rude	
+split (view)	opdele	
+quantify	kvantificere; Kvantificér	
+Open	Åbn	Imperative for buttons and menu items; sentence case.
+Open Folder…	Åbn mappe…	
+Close	Luk	
+Cancel	Annuller	Standard Danish button (no accent).
+OK	OK	
+Confirm	Bekræft	
+Done	Færdig	Status "done" (completed) = Fuldført.
+Save	Gem	
+Save As	Gem som	
+Import	Importér	Accent on imperatives of verbs in -ere (Kopiér, Eksportér, Rotér, Aktivér…), except Annuller.
+Copy	Kopiér	
+Paste	Sæt ind	
+Delete	Slet	
+Remove	Fjern	
+Add	Tilføj	
+Edit	Redigér	
+Rename	Omdøb	
+Clear	Ryd	Clear All Measurements = Ryd alle målinger.
+Settings	Indstillinger	
+Apply	Anvend	
+Reset	Nulstil	Reset to Defaults = Gendan standarder.
+Restore	Gendan	
+Show, Hide	Vis, Skjul	
+Toggle	Vis/skjul; Slå til/fra	
+Enable, Disable	Aktivér, Deaktivér	Enabled = aktiveret, Disabled = deaktiveret, Active = aktiv.
+Undo, Redo	Fortryd, Gentag	Nothing to undo = Intet at fortryde.
+Zoom to {}	Zoom til {}	
+Fit	Tilpas	Fit the slide to the pane = Tilpas præparatet til ruden.
+Rotate, rotation	Rotér, rotation	Rotate Right 90° = Rotér 90° til højre.
+Flip horizontally	Spejlvend vandret	Mirror the view = Spejlvend visningen.
+Pan	Panorér	
+Update (verb), update (noun)	Opdatér, opdatering	Updating = opdaterer; up to date = opdateret.
+Install, uninstall	Installér, afinstallér	
+Download	Download; downloade	Downloading = downloader.
+Load	Indlæs	
+Filter	Filtrér (verb), filter (noun)	
+Back, Forward, Up	Tilbage, Frem, Op	
+Next, Previous	Næste, Forrige	
+Select, choose	Vælg	
+Retry, try again	Prøv igen	
+Quit	Afslut	Quit eov = Afslut eov.
+file, folder, path	fil, mappe, sti	Open Containing Folder = Åbn overordnet mappe.
+file manager	filhåndtering	
+clipboard	udklipsholder	
+properties	egenskaber	Slide properties, as the scanner wrote them.
+metadata	metadata	
+vendor	producent	
+scan date	scanningsdato	
+dimensions	dimensioner	
+file size	filstørrelse	
+preview	forhåndsvisning	
+format, quality, compression, lossless	format, kvalitet, komprimering, tabsfri	
+resolution	opløsning	
+messages, notification	meddelelser, meddelelse	
+error, warning, information	fejl, advarsel, information	
+log folder	logmappe	
+crash report	nedbrudsrapport	
+safe mode	fejlsikret tilstand	
+language	sprog	Automatic (System Default) = Automatisk (systemstandard).
+Keyboard Shortcuts	Tastaturgenveje	Hotkey = genvejstast; no key = ingen tast.
+full screen	fuld skærm	
+recent files, recently opened	seneste filer, senest åbnet	
+administrator policy	administratorpolitik	Policy file = politikfil.
+release, release notes, prerelease	udgivelse, udgivelsesnoter, forhåndsudgivelse	
+signature, signed, verified	signatur, signeret, verificeret	
+update helper	opdateringshjælper	
+repository	repository	GitHub repository.
+artifact	artefakt	Release artifact.
+manifest, catalog, registry	manifest, katalog, register	Plugin catalog = pluginkatalog.
+bundle	pakke	macOS app bundle = macOS-programpakke; offline update bundle = offlineopdateringspakke.
+lock file	låsefil	
+distance, area, angle, length	afstand, areal, vinkel, længde	Measure modes: Afstand, Stilængde, Polygonareal, Rektangelareal, Ellipseareal, Vinkel.
+colour names	rød, orange, gul, grøn, turkis, blå, lilla, pink, hvid, grå, sort	Navy = marineblå; letters R, G, B stay.
+units	enheder	Micrometres = mikrometer; millimetres = millimeter; inches = tommer.
+percent	{} %	Space before % in Danish.
+time units	t, min, s	{hours} t {minutes} min; {minutes} min {seconds} s.
+undo labels (Undo {}, Redo {})	lowercase noun phrase: tilføjelse af måling, sletning af målinger	Inserted into Fortryd {} / Gentag {}: Fortryd tilføjelse af måling.
+stain fit, fit the stains	estimering af farvestoffer; estimere	Macenko fit = Macenko-estimering; the fit did not converge = estimeringen konvergerede ikke.
+Measure tool, region tool	måleværktøjet, områdeværktøjet	In running text; tool names in tooltips and the shortcut list: Måling, Interesseområde, Navigering.
+A–Z (sort order)	A–Å	Danish alphabet order.
+Newest, Stain, Case (sort order)	Nyeste, Farvning, Sag	Case = the patient's accession (sag).
+staged (update)	klargjort	Installed by the update helper after eov exits.
+N/A	I/T	ikke tilgængelig
+Solid, Dashed, Dotted (line style)	Optrukket, Stiplet, Prikket	Stroke = Streg; Caps = Ender (Rund, Firkantet, Flad).
+display window (channel), lower/upper end	vindue, nedre/øvre grænse	Channels panel.
+colour composite	sammensat farvebillede	
+build (software)	build	et build: dette build, et udviklingsbuild.
+Copied, Saved, Exported, Removed {}	{} er kopieret, {} er gemt, {} er eksporteret, {} er fjernet	Passive 'er + participle'; Could not X {} = {} kunne ikke X'es.
+Could not / Cannot	… kunne ikke … / … kan ikke …	Passive with the object first: Præparatet kunne ikke læses.
+you	du	Danish platforms use du; prefer impersonal or passive constructions.
+quotation marks	“…”	Curly double quotes around names; keep straight quotes in config examples ("Ctrl+D").
+region (annotation)	område	A drawn area annotation (polygon, rectangle, ellipse, freehand): et område, områder; Add region = tilføjelse af område (undo label). Not the ROI (interesseområde).
+outline (of a region)	omrids	et omrids, omridset, omrids; Repair = Reparér; the outline crossed itself = omridset krydsede sig selv.
+shape (annotation geometry)	form	en form, former; kind of shape = formtype; vertices = hjørnepunkter.
+point, line, arrow, text label (annotation kinds)	punkt, linje, pil, tekstetiket	Arrow tail/tip = hale/spids; Line / path = Linje/sti.
+cut (from a region)	udskæring; skære fra	Cut from region = udskæring fra område (undo label); Shift: add / Alt: cut = Shift: føj til / Alt: skær fra.
+brush, eraser, brush stroke	pensel, viskelæder, penselstrøg	Erase = viske ud (undo label: udviskning).
+count point, Count tool, Count tab	tællepunkt, tælleværktøj, Tælling	Clear counts = Ryd tællinger; second/third class = anden/tredje klasse.
+HPF field	HPF-felt	et felt, felter; HPF field tool = HPF-feltværktøjet; section HIGH-POWER FIELDS = SYNSFELTER (HPF).
+field number (FN)	feltnummer (FN)	Eyepiece field number; FN (mm) stays.
+review status: Draft, Verified, Rejected	Gennemgangsstatus: Kladde, Verificeret, Afvist	Mark verified = markering som verificeret (undo label).
+second reader, another reader	anden bedømmer, en anden bedømmer	Inter-observer comparison; Neither reader = Ingen af bedømmerne.
+blinded copy	blindet kopi	Export a blinded copy… = Eksportér en blindet kopi…
+attach (annotations to a slide)	tilknytte; Tilknyt	
+back up, backup	sikkerhedskopiere, sikkerhedskopi	Back up… = Sikkerhedskopiér…
+merge (a database)	flette (ind); Flet…	Merge a database… = Flet en database…
+even-odd rule	lige-ulige-reglen	Fill rule of self-crossing outlines.
+combined positive score (CPS)	kombineret positiv score (CPS)	PD-L1; tumour cells, immune cells = tumorceller, immunceller.
+confidence interval	konfidensinterval; KI	Compact: (95 %-KI {low}–{high}).
+mouse pointer, system pointer	musemarkør, systemets musemarkør	Never plain markør (= marker); Pointer Speed = Markørhastighed.
+undo label that is also a menu item or dialog title	imperative (Slet lag, Slet klasse, Ryd tællinger, Slet annotation)	Same msgid serves both; a noun phrase would be wrong in the menu/dialog.
+prediction, predict	forudsigelse, forudsige	Predicted = forudsagt (see synthetic, predicted).
+readout, region readout	aflæsning, områdeaflæsning	Cellaris; REGION READOUT = OMRÅDEAFLÆSNING; Cellaris region readout = Cellaris-områdeaflæsning (tool name).
+window (model input)	vindue	Square image a model predicts from (Cellaris, eovae); s per window = s pr. vindue.
+display window (Cellaris marker)	visningsvindue	Kept apart from the model's vindue; ends Black/White = Sort/Hvid.
+cell (Cellaris grid cell)	gittercelle	Square of the slide predicted at once; never a biological cell (celle).
+tissue block (Cellaris, 5 µm square)	vævskvadrat; kvadrat	Not vævsblok (= paraffin block); 5 µm blocks = kvadrater på 5 µm.
+bright-field	lysfelt	not bright-field = ikke et lysfeltbillede; lysfelt-H&E.
+reconstruction error, error map	rekonstruktionsfejl, fejlkort	eovae; MAE, p95 stay; Highest-error regions = Områder med størst fejl.
+runtime (ONNX Runtime library)	kørselsmiljø	ONNX Runtime (product) stays; Choose runtime…/Runtime… = Vælg kørselsmiljø…/Kørselsmiljø…
+model card, sidecar file	modelkort, ledsagefil	Sidecar = the model's <model>.eovae.json.
+preprocessing	forbehandling	eovae section Preprocessing = Forbehandling.
+your site's copy / model	din organisations kopi / model	As eov: the site's copy = organisationens kopi.
+thread (CPU), batch	tråd, batch	{n} tråde; batches på {n}; batch size = batchstørrelse.
+resample, upsample	omsample, opsample	
+embeddings	indlejringer	
+Gamepad (plugin), game controller	Spilcontroller, spilcontroller	controller = controller; Gamepad Control = Styring med spilcontroller.
+stick, trigger, D-pad, shoulder button	styrepind, udløser, retningsknap, skulderknap	Microsoft Danish; Left Stick Click = Tryk på venstre styrepind.
+face buttons South/East/North/West	nederste/højre/øverste/venstre frontknap	Named by position.
+dead zone, response curve	dødzone, responskurve	Tuning = Finjustering.
+mapping (gamepad), Unassigned	tildeling, Ikke tildelt	Mappings = Tildelinger.
+profile (settings)	profil	Save As/New/Import/Export/Delete = Gem som/Ny/Importér/Eksportér/Slet.
+whole-slide image (file type name)	Digitalt præparat (…)	File manager type names: Aperio whole-slide image = Digitalt præparat (Aperio); Hamamatsu NDPI whole-slide image = Digitalt præparat (Hamamatsu NDPI); BigTIFF image = BigTIFF-billede.
+compute (predictions, a readout)	beregne; Beregn	Never måle: Computing: = Beregner:; Compute a readout of a large region? = Vil du beregne en aflæsning af et stort område?
+worker thread	arbejdstråd	A plugin's background thread: Could not start a worker thread = En arbejdstråd kunne ikke startes.
+host (eov, for a plugin)	værtsprogrammet	eovae errors: the host returned … = værtsprogrammet returnerede …
+Whole slide / Viewport / Region of interest / Automatic analysis finished, cancelled, failed (eovae)	Analysen af hele præparatet / visningsområdet / interesseområdet; Den automatiske analyse	Button names used as the subject become "the analysis of …": blev fuldført på {duration}, blev annulleret efter {duration}, mislykkedes.

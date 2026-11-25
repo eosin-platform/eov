@@ -10,6 +10,7 @@ use crate::quantify_panel::{self, Quantification};
 use eov_common::export::{ExportError, ExportFormat, TiffCompression};
 use eov_common::job::JobControl;
 use eov_common::stain::StainPreset;
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::Rect;
 use serde::Deserialize;
 use serde_json::json;
@@ -140,7 +141,7 @@ pub(super) fn quantify(session: &Session, params: Quantify) -> CallResult {
             )
         };
         let job_id = host.start_host_job(
-            "Quantifying the stain (script)",
+            &tr!("Quantifying the stain (script)"),
             Some(Box::new(move || stop.store(true, Ordering::Relaxed))),
         );
         Ok((job.0, job.1, job_id))
@@ -343,7 +344,7 @@ pub(super) fn export_view(session: &Session, params: ExportView) -> CallResult {
             )));
         }
         let job_id = host.start_host_job(
-            &format!("Exporting {file_name} (script)"),
+            &tr!("Exporting {} (script)", isolate(&file_name)),
             Some(Box::new(move || stop.cancel())),
         );
         Ok((job, job_id))

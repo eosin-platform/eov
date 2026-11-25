@@ -4,6 +4,7 @@
 //! deterministic (plugin id, declared order, registration order — PLG-16),
 //! and hotkeys are checked against the host's shortcuts and each other.
 
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{
     BatchCommandSpec, ButtonUpdate, FilterSpec, Hotkey, HotkeySpec, HudButtonSpec, MenuItem,
     PaneId, ToolSpec, ToolbarButtonSpec,
@@ -13,6 +14,81 @@ use std::sync::Arc;
 
 /// Largest inline SVG accepted for an icon.
 const MAX_ICON_BYTES: usize = 64 * 1024;
+
+/// Why a plugin's hotkey was ignored. `Display` says it in English, for the
+/// log and for the plugin (`reason` of its `RegistrationRefused` event);
+/// [`HotkeyRefusal::localized`] in the interface's language, for the user
+/// and for the plugin to show (`shown_reason`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotkeyRefusal {
+    /// The key, as the plugin gave it.
+    pub key: String,
+    /// The contribution that asked for it (`plugin:id`).
+    pub owner: String,
+    pub conflict: HotkeyConflict,
+}
+
+/// What is wrong with a hotkey.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HotkeyConflict {
+    Empty,
+    /// A key eov uses itself.
+    Reserved,
+    /// The key of another contribution (`plugin:id`).
+    Taken(String),
+}
+
+impl std::fmt::Display for HotkeyRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            key,
+            owner,
+            conflict,
+        } = self;
+        match conflict {
+            HotkeyConflict::Empty => {
+                write!(
+                    f,
+                    "Hotkey '{key}' of {owner} was ignored: it is an empty key."
+                )
+            }
+            HotkeyConflict::Reserved => write!(
+                f,
+                "Hotkey '{key}' of {owner} was ignored: it is a key eov already uses."
+            ),
+            HotkeyConflict::Taken(other) => write!(
+                f,
+                "Hotkey '{key}' of {owner} was ignored: it is the same key as {other}."
+            ),
+        }
+    }
+}
+
+impl HotkeyRefusal {
+    /// The warning in the interface's language.
+    pub fn localized(&self) -> String {
+        let key = isolate(&self.key);
+        let owner = isolate(&self.owner);
+        match &self.conflict {
+            HotkeyConflict::Empty => tr!(
+                "Hotkey '{key}' of {owner} was ignored: it is an empty key.",
+                key = key,
+                owner = owner
+            ),
+            HotkeyConflict::Reserved => tr!(
+                "Hotkey '{key}' of {owner} was ignored: it is a key eov already uses.",
+                key = key,
+                owner = owner
+            ),
+            HotkeyConflict::Taken(other) => tr!(
+                "Hotkey '{key}' of {owner} was ignored: it is the same key as {other}.",
+                key = key,
+                owner = owner,
+                other = isolate(other)
+            ),
+        }
+    }
+}
 
 fn validate_id(kind: &str, id: &str) -> Result<(), String> {
     let ok = !id.is_empty()
@@ -173,25 +249,27 @@ impl Contributions {
             .map(|(owner, id, _)| format!("{owner}:{id}"))
     }
 
-    /// Drops a conflicting hotkey, returning a warning for the user.
+    /// Drops a conflicting hotkey, returning why (for the user, the log and
+    /// the plugin).
     fn vet_hotkey(
         &self,
         plugin_id: &str,
         own_id: &str,
         hotkey: &mut Option<Hotkey>,
-    ) -> Option<String> {
+    ) -> Option<HotkeyRefusal> {
         let candidate = hotkey.as_ref()?;
-        let problem = if candidate.key.trim().is_empty() {
-            Some("an empty key".to_string())
+        let conflict = if candidate.key.trim().is_empty() {
+            HotkeyConflict::Empty
         } else if is_reserved(candidate) {
-            Some("a key eov already uses".to_string())
+            HotkeyConflict::Reserved
         } else {
-            self.hotkey_taken(plugin_id, own_id, candidate)
-                .map(|other| format!("the same key as {other}"))
+            HotkeyConflict::Taken(self.hotkey_taken(plugin_id, own_id, candidate)?)
         };
-        problem.map(|problem| {
-            let key = hotkey.take().map(|h| h.key).unwrap_or_default();
-            format!("Hotkey '{key}' of {plugin_id}:{own_id} was ignored: it is {problem}.")
+        let key = hotkey.take().map(|hotkey| hotkey.key).unwrap_or_default();
+        Some(HotkeyRefusal {
+            key,
+            owner: format!("{plugin_id}:{own_id}"),
+            conflict,
         })
     }
 
@@ -203,7 +281,7 @@ impl Contributions {
         &mut self,
         plugin_id: &Arc<str>,
         mut spec: ToolbarButtonSpec,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<HotkeyRefusal>, String> {
         validate_id("button", &spec.button_id)?;
         validate_icon(&spec.icon_svg)?;
         if let Some(icon) = &spec.toggled_icon_svg {
@@ -397,7 +475,7 @@ impl Contributions {
         &mut self,
         plugin_id: &Arc<str>,
         mut spec: ToolSpec,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<HotkeyRefusal>, String> {
         validate_id("tool", &spec.tool_id)?;
         validate_icon(&spec.icon_svg)?;
         if !spec.freehand_tolerance_px.is_finite() || spec.freehand_tolerance_px < 0.0 {
@@ -533,7 +611,7 @@ impl Contributions {
         &mut self,
         plugin_id: &Arc<str>,
         spec: HotkeySpec,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<HotkeyRefusal>, String> {
         validate_id("hotkey", &spec.hotkey_id)?;
         let exists =
             |e: &HotkeyEntry| e.plugin_id == *plugin_id && e.spec.hotkey_id == spec.hotkey_id;
@@ -785,8 +863,30 @@ mod tests {
         // Reserved host key.
         let warning = c
             .add_toolbar(&plugin("a"), button("x", 0, Some("f")))
+            .unwrap()
             .unwrap();
-        assert!(warning.unwrap().contains("eov already uses"));
+        // In English for the log and the plugin, as eov always wrote it;
+        // the user reads it in the interface's language.
+        assert_eq!(
+            warning.to_string(),
+            "Hotkey 'f' of a:x was ignored: it is a key eov already uses."
+        );
+        {
+            use eov_plugin_api::i18n;
+            struct English;
+            impl Drop for English {
+                fn drop(&mut self) {
+                    i18n::set_catalog(i18n::source(), None);
+                }
+            }
+            let _english = English;
+            i18n::set_catalog(i18n::by_tag("he").unwrap(), None);
+            assert_eq!(
+                warning.to_string(),
+                "Hotkey 'f' of a:x was ignored: it is a key eov already uses."
+            );
+            assert!(warning.localized().contains("'\u{2068}f\u{2069}'"));
+        }
         assert!(c.toolbar_button("a", "x").unwrap().spec.hotkey.is_none());
         // First come, first served; case-insensitive.
         assert!(
@@ -800,7 +900,7 @@ mod tests {
                 ToolSpec::new("t", "T", "<svg/>", ToolKind::Point).with_hotkey(Hotkey::key("P")),
             )
             .unwrap();
-        assert!(warning.unwrap().contains("a:p"));
+        assert!(warning.unwrap().to_string().contains("a:p"));
         // Modifiers make keys distinct.
         let warning = c
             .register_tool(
@@ -847,7 +947,7 @@ mod tests {
         );
         // Taken and reserved keys are refused, with the reason.
         let refused = c.register_hotkey(&plugin("b"), spec("mine", "j")).unwrap();
-        assert!(refused.unwrap().contains("a:next"));
+        assert!(refused.unwrap().to_string().contains("a:next"));
         assert!(
             c.register_hotkey(&plugin("b"), spec("fit", "f"))
                 .unwrap()

@@ -7,6 +7,7 @@ use super::annotations::HostEdit;
 use crate::MeasurementRow;
 use crate::interaction::measure::{self, Calibration, MeasureMode};
 use eov_common::MeasurementUnit;
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{FileId, NotifyLevel, Rect};
 use slint::{ModelRc, VecModel};
 use std::rc::Rc;
@@ -14,20 +15,48 @@ use std::rc::Rc;
 /// The row id of the region of interest.
 const ROI_ID: &str = "roi";
 
-/// A region of interest's size as people read it.
+/// A region of interest's size as people read it, in the interface's
+/// language.
 fn roi_value(rect: &Rect, calibration: &Calibration, unit: MeasurementUnit) -> String {
+    roi_text(
+        rect,
+        calibration,
+        unit,
+        measure::display_length,
+        measure::display_area,
+    )
+}
+
+/// [`roi_value`] with `.` decimals, for the CSV.
+fn roi_csv_value(rect: &Rect, calibration: &Calibration, unit: MeasurementUnit) -> String {
+    roi_text(
+        rect,
+        calibration,
+        unit,
+        measure::format_length,
+        measure::format_area,
+    )
+}
+
+fn roi_text(
+    rect: &Rect,
+    calibration: &Calibration,
+    unit: MeasurementUnit,
+    length: fn(f64, MeasurementUnit) -> String,
+    area: fn(f64, MeasurementUnit) -> String,
+) -> String {
     let value = measure::measure(
         MeasureMode::Rectangle,
         &measure::roi_shape(rect),
         calibration,
     );
     match (calibration.spacing(), value.area_um2) {
-        (Some((x, y, approximate)), Some(area)) => format!(
+        (Some((x, y, approximate)), Some(square)) => format!(
             "{}{} × {} · {}",
             if approximate { "≈ " } else { "" },
-            measure::format_length(rect.width * x, unit),
-            measure::format_length(rect.height * y, unit),
-            measure::format_area(area, unit)
+            length(rect.width * x, unit),
+            length(rect.height * y, unit),
+            area(square, unit)
         ),
         _ => format!("{} × {} px", rect.width.round(), rect.height.round()),
     }
@@ -70,7 +99,7 @@ impl UiHost {
             state.active_file_id_for_pane(state.active_viewport_pane())
         };
         let Some(file_id) = file_id else {
-            self.status("Open a slide to see its measurements");
+            self.status(&tr!("Open a slide to see its measurements"));
             return;
         };
         self.measurements_panel.set(Some(FileId::from(file_id)));
@@ -105,7 +134,7 @@ impl UiHost {
         if let Some(rect) = &file.roi {
             rows.push(MeasurementRow {
                 id: ROI_ID.into(),
-                kind: "Region of interest".into(),
+                kind: tr!("Region of interest").into(),
                 value: roi_value(rect, &calibration, unit).into(),
             });
         }
@@ -113,17 +142,20 @@ impl UiHost {
             let value = measure::measure(m.mode, &m.shape, &calibration);
             rows.push(MeasurementRow {
                 id: m.id.clone().into(),
-                kind: m.mode.label().into(),
-                value: measure::label(m.mode, &value, unit).into(),
+                kind: super::annotations::measure_mode_label(m.mode).into(),
+                value: measure::display_label(m.mode, &value, unit).into(),
             });
         }
-        ui.set_measurements_title(format!("Measurements · {}", file.filename).into());
+        ui.set_measurements_title(tr!("Measurements · {}", isolate(&file.filename)).into());
         let key = crate::shortcuts::current().label(crate::shortcuts::Action::ToolMeasure);
         ui.set_measurements_empty_text(
             if key.is_empty() {
-                "No measurements yet: use the Measure tool.".to_string()
+                tr!("No measurements yet: use the Measure tool.")
             } else {
-                format!("No measurements yet: use the Measure tool ({key}).")
+                tr!(
+                    "No measurements yet: use the Measure tool ({}).",
+                    isolate(&key)
+                )
             }
             .into(),
         );
@@ -163,7 +195,7 @@ impl UiHost {
             }
         };
         if !framed {
-            self.status("That slide is not shown in the focused pane");
+            self.status(&tr!("That slide is not shown in the focused pane"));
             return;
         }
         if let Some(ui) = self.ui() {
@@ -182,9 +214,9 @@ impl UiHost {
             state.get_file(file_id as i32).and_then(|file| {
                 let unit = state.file_pane_unit(file.id).unwrap_or_default();
                 file.roi.map(|rect| {
-                    format!(
+                    tr!(
                         "Region of interest: {}",
-                        roi_value(&rect, &super::publish::calibration(file), unit)
+                        isolate(roi_value(&rect, &super::publish::calibration(file), unit))
                     )
                 })
             })
@@ -194,7 +226,11 @@ impl UiHost {
         if let Some(text) = text {
             crate::clipboard::copy_text(text.clone());
             if let Some(ui) = self.ui() {
-                super::notices::show_toast(&ui, &format!("Copied {text}"), NotifyLevel::Info);
+                super::notices::show_toast(
+                    &ui,
+                    &tr!("Copied {}", isolate(&text)),
+                    NotifyLevel::Info,
+                );
             }
         }
     }
@@ -254,12 +290,13 @@ impl UiHost {
                     .join(","),
                 );
             };
+            // The CSV is data for other programs: its kinds stay in English.
             if let Some(rect) = file.roi {
                 let shape = measure::roi_shape(&rect);
                 let value = measure::measure(MeasureMode::Rectangle, &shape, &calibration);
                 row(
                     "Region of interest",
-                    roi_value(&rect, &calibration, unit),
+                    roi_csv_value(&rect, &calibration, unit),
                     value,
                     rect,
                 );
@@ -276,7 +313,7 @@ impl UiHost {
         if let Some(ui) = self.ui() {
             super::notices::show_toast(
                 &ui,
-                &format!("Copied {count} rows as CSV"),
+                &tr!("Copied {n} row as CSV" | "Copied {n} rows as CSV" % count),
                 NotifyLevel::Info,
             );
         }

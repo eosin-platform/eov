@@ -1,0 +1,261 @@
+term	translation	note
+(style) register	です・ます調	メッセージ・説明文は丁寧語（です・ます）。ボタン・メニュー・見出しは体言止めまたは「〜を…する」の短い形（例: 画像をコピー）。英語の Title Case は再現しない
+(style) spacing	半角英数字と和文の間に半角スペース	Microsoft/Apple の日本語 UI と同じ。例: eov を開く、{n} 個のファイル。全角の句読点・かっこ（、。：（）「」）の前後には入れない。数値と % ・ ° の間は空けない（12.5%）。µm・mm・px の前は半角スペース
+(style) punctuation	、 。 ： ？	全角の読点・句点・コロン・疑問符。英語がピリオドで終わる文は「。」で終え、ピリオドのないラベル・状態表示には付けない
+(style) parentheses	（）	和文中のかっこは全角（）。数式・リンク・設定例など技術的な文字列の中のかっこはそのまま
+(style) quotation marks	「」	ファイル名・名前・項目名は「」で囲む。設定ファイルに書く値（"Ctrl+B" など）やコマンドは英語のまま
+(style) ellipsis	…	ダイアログを開くメニュー項目の末尾の「…」は残す。処理中の表示は「〜中…」
+(style) long vowel	フォルダー、ビューアー、レンダラー、マーカー	-er/-or/-ar で終わる語は長音符を付ける（JIS Z 8301・Microsoft 方式）。-ry/-ty は付けない（メモリ、ライブラリ、ディレクトリ、プロパティ、カテゴリ、エントリ）
+(style) counters	{n} 枚のスライド、{n} 個、{n} 件	スライド・タイル・画像は「枚」、メッセージ・ブックマークは「件」、その他は「個」。日本語は単数・複数の区別なし（複数形は 1 つで {n} を必ず含める）
+For research and education. Not a medical device; not for primary diagnosis.	研究・教育用です。医療機器ではありません。一次診断には使用できません。	安全表示。弱めたり省略したりしない
+research use only (RUO)	研究用途限定（RUO）	研究用試薬の表示（研究用）に準じる。臨床判断に使わないことを明示し、短縮しない
+not for diagnosis	診断には使用できません	安全表示。「推奨しません」などに弱めない
+primary diagnosis	一次診断	規制用語（症例の最初の最終診断）
+medical device	医療機器	
+synthetic (image, channel, stain)	合成	アルゴリズムが計算した画素。「人工の」「偽の」「シミュレーション」は使わない
+predicted	予測	予測値・予測マーカー。推定・予測であることを省略しない
+generated	生成	「生成画像」など
+slide	スライド	ガラススライド標本とそのスキャン。プレゼンテーションのスライドではない
+whole-slide image (WSI)	ホールスライドイメージ（WSI）	略語 WSI はそのまま。「WSI ファイル」
+slide viewer, viewer	スライドビューアー、ビューアー	
+tab	タブ	ペイン内の開いているスライド 1 枚（ブラウザーのタブと同様）
+pane	ペイン	ウィンドウ内に並ぶ表示領域。「分割」「連動」と組み合わせる
+focused pane	アクティブなペイン	
+view	表示	ペインの表示状態（位置・倍率・回転）。「表示をブックマーク」「前の表示に戻る」
+viewport	ビューポート	スライドが描画される領域
+minimap	ミニマップ	
+scale bar	スケールバー	
+HUD	HUD	スライド上に浮かぶ小パネル。HUD のまま
+toolbar	ツールバー	
+sidebar	サイドバー	
+status bar	ステータスバー	
+series bar	シリーズバー	フォルダー内のスライドを並べた帯
+Home screen	ホーム画面	スライドを開いていないときの開始画面。タブ名は「ホーム」
+zoom	ズーム	画面上の表示倍率（%）
+Zoom in / Zoom out	拡大 / 縮小	
+magnification (20×)	倍率（20×）	対物レンズ相当の光学倍率。20× は 20× のまま
+objective	対物レンズ	
+objective power	対物倍率	
+pixel size	ピクセルサイズ	
+MPP (µm per pixel)	MPP（µm/ピクセル）	MPP はそのまま
+calibration	キャリブレーション	
+level, pyramid level	レベル、ピラミッドレベル	画像ピラミッドの解像度段階。L0 = 最高解像度
+level-0 pixels	レベル 0 のピクセル	
+tile	タイル	一度に読み込む画像の断片。データセットのパッチの意味もある
+cache	キャッシュ	
+rotate, rotation	回転	「右に 90° 回転」
+flip horizontally	左右反転	
+focal plane (Z)	焦点面（Z）	
+Z-stack	Z スタック	
+time point (T)	タイムポイント（T）	
+time series	時系列	
+link (panes)	連動	ペインを連動・連動を解除
+alignment, align	位置合わせ	
+landmark	ランドマーク	位置合わせ用の目印
+bookmark	ブックマーク	スライドの表示を保存したもの
+session	セッション	
+recent files	最近使ったファイル	Recently Opened = 最近開いた項目
+region of interest (ROI)	関心領域（ROI）	ROI は略語のまま
+measurement	計測	距離・面積などの計測結果
+Measure (tool)	計測（ツール）	
+distance	距離	
+path length	経路長	
+area	面積	（コピー保存ダイアログの Area = 範囲）
+angle	角度	
+perimeter	周囲長	
+annotation	アノテーション	意味を持つ描画（点・領域・線・テキスト）。自由記述のコメントではない
+comment	コメント	
+class (annotation class)	クラス	「腫瘍」「間質」などの分類
+cell count, counting	細胞カウント、カウント	
+high-power field (HPF)	強拡大視野（HPF）	HPF は略語のまま。「/10 HPF」
+layer	レイヤー	
+overlay	オーバーレイ	
+opacity	不透明度	0–100%
+heat map	ヒートマップ	
+colour map	カラーマップ	
+stain	染色	染色法、または色分解の色素成分
+H&E	H&E	
+hematoxylin	ヘマトキシリン	略記 H
+eosin	エオジン	略記 E
+IHC	IHC（免疫組織化学）	略語のまま
+DAB	DAB	
+chromogen	色原体	
+stain normalization	染色正規化	Macenko、Vahadane は手法名なので訳さない
+stain target	染色ターゲット	正規化の目標となる染色の見え方
+reference (stain vectors, H&E)	参照（参照染色ベクトル、参照 H&E）	
+stain model	染色モデル	
+stain vector	染色ベクトル	
+fit (stain fit)	推定	スライドから染色ベクトルを求めること。「推定を棄却」
+color deconvolution	カラーデコンボリューション	Ruifrok–Johnston 法
+isolated stain/channel	単独表示（染色・チャンネル）	1 つの染色だけをグレーで表示
+intensity	強度	
+concentration	濃度	染色濃度
+optical density	光学濃度	
+quantify	定量	「染色の定量」
+H-score	H スコア	
+weak / moderate / strong (1+/2+/3+)	弱 / 中等度 / 強	IHC の染色強度区分
+positive	陽性	「DAB 陽性」
+threshold	しきい値	
+colour management	カラーマネジメント	
+colour profile, ICC profile	カラープロファイル、ICC プロファイル	
+colours as scanned	スキャン時の色	カラーマネジメントなし
+colour normalisation	色の正規化	
+channel	チャンネル	蛍光または計算で得たチャンネル。チャンネル名は訳さない
+multiplex immunofluorescence (mIF)	多重免疫蛍光（mIF）	
+marker	マーカー	CD3、Ki-67、PanCK などのマーカー名は訳さない
+sharpness, gamma, brightness, contrast	シャープネス、ガンマ、明るさ、コントラスト	
+filtering (bilinear, trilinear, Lanczos)	フィルタリング（双線形、三線形、Lanczos）	双線形補間・三線形補間の用語。ツールバーの狭い欄に収まるよう漢字で表記（バイリニア/トライリニアとは書かない）。Lanczos は名前なので訳さない
+render, renderer	描画、レンダラー	CPU・GPU はそのまま
+backend	バックエンド	
+theme (dark, light, high contrast)	テーマ（ダーク、ライト、ハイコントラスト）	
+tissue	組織	
+tissue QC	組織 QC	スキャンした組織の品質チェック
+tissue quality	組織の品質	
+pen marks	ペンマーク	
+folds	折れ込み	切片の折れ込み（組織が重なった部分）
+blur, out of focus	焦点ぼけ	「焦点ぼけ領域」「焦点ぼけの可能性」
+tissue detection, tissue mask	組織検出、組織マスク	
+background	背景	
+dataset	データセット	
+patch, patch extraction	パッチ、パッチ抽出	
+stride	ストライド	パッチ間の間隔
+white threshold	白色しきい値	背景（白）とみなす割合
+export	エクスポート	
+save a copy	コピーを保存	
+convert	変換	
+de-identify	匿名化	患者を特定できるデータ（ラベル画像・メタデータ）を除くこと
+label image, macro image, thumbnail	ラベル画像、マクロ画像、サムネイル	
+pyramidal TIFF	ピラミッド型 TIFF	
+compression, lossless	圧縮、可逆圧縮	
+resolution	解像度	
+format	形式	
+metadata	メタデータ	
+property (slide)	プロパティ	
+vendor	ベンダー	
+scanner	スキャナー	
+folder	フォルダー	
+clipboard	クリップボード	
+log folder	ログフォルダー	
+plugin	プラグイン	
+package (.eop)	パッケージ（.eop）	
+plugin API	プラグイン API	
+model, model store	モデル、モデルストア	機械学習モデルとその保存場所
+inference	推論	
+update (software)	アップデート	ソフトウェアの更新。自動でバックグラウンド更新すると読める表現は避ける
+Check for Updates…	アップデートを確認…	オンラインに接続する前に確認する
+update helper	アップデートヘルパー	
+release	リリース	
+release notes	リリースノート	
+signature	署名	
+administrator policy	管理者ポリシー	
+safe mode	セーフモード	
+restart	再起動	
+self-update	セルフアップデート	eov が自分自身をアップデートする機能
+repository, manifest, artifact	リポジトリ、マニフェスト、アーティファクト	リリース関連の技術用語
+staging, stage (an update)	ステージング	アップデートを終了後に適用するため準備しておくこと。状態表示は「終了後に適用」
+hotkey	ホットキー	キーそのものは「キー」
+install, uninstall	インストール、アンインストール	
+official (plugin)	公式	
+Annotations (plugin name)	アノテーション	説明的な名前なので訳す
+Gamepad (plugin name)	ゲームパッド	
+Example Plugin	サンプルプラグイン	
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris、eovae/EOVAE、HistoVAE	固有の製品名。訳さない
+Open	開く	
+Open File	ファイルを開く	
+Open Folder…	フォルダーを開く…	
+Close	閉じる	
+Cancel	キャンセル	
+OK	OK	
+Confirm	確定	
+Save, Save…	保存、保存…	
+Delete	削除	
+Remove	削除	一覧から外すだけの場合も「削除」
+Settings	設定	
+Apply	適用	
+Reset	リセット	Reset to Defaults = 既定値に戻す
+Show / Hide	表示 / 非表示	「〜を表示」「〜を非表示」
+Toggle …	…の表示切り替え	
+Import	インポート	
+Copy	コピー	
+Undo / Redo	元に戻す / やり直し	
+Fit	合わせる	Fit the slide to the pane = スライドをペインに合わせる
+Enable / Disable	有効にする / 無効にする	状態は「有効」「無効」
+Add	追加	
+Edit	編集	
+Clear	クリア	
+Done	完了	
+Download	ダウンロード	
+Retry	再試行	
+Back / Forward / Up	戻る / 進む / 上へ	
+Next / Previous	次の / 前の	
+Filter (a list)	絞り込み	データセットのフィルターは「フィルター」
+Messages	メッセージ	
+Error / Warning / Information	エラー / 警告 / 情報	
+Language	言語	
+Automatic (System Default)	自動（システムの既定）	
+Unknown	不明	
+None	なし	
+Loading…	読み込み中…	
+Could not …	…できませんでした	失敗の報告。「〜に失敗しました」も可
+Cannot …	…できません	
+Keyboard Shortcuts	キーボードショートカット	
+N/A (not recorded)	記録なし	ファイルに記録されていない項目
+Navigate (tool)	ナビゲート	表示を移動するツール
+order: A–Z / Newest / Stain / Case	名前順 / 新しい順 / 染色順 / 症例順	シリーズバーの並べ替え
+Solo (channel)	単独	1 つのチャンネルだけを表示
+Units	単位	マイクロメートル（µm）、ミリメートル（mm）、インチ・ミル
+(plugins) outline	輪郭	アノテーション領域の輪郭。「輪郭が自己交差しています」
+(plugins) region (annotation)	領域	領域アノテーション。Shift で領域に追加、Alt で領域から切り取り
+annotation kinds: Point / Line / Arrow / Polygon / Rectangle / Ellipse / Text	ポイント / 線 / 矢印 / 多角形 / 矩形 / 楕円 / テキスト	eov の計測モード（多角形の面積・矩形の面積・楕円の面積）と同じ語。Line / path ツール = 線 / 折れ線
+freehand	フリーハンド	
+self-intersecting (crossed itself)	自己交差	「輪郭が自己交差していたため…」
+even-odd rule	偶奇規則	自己交差した輪郭の面積・修復の規則
+repair (outline)	修復	
+HPF field	HPF 視野	強拡大視野 1 つ分。見出しは「強拡大視野」。cells /HPF = {} /HPF 視野、/10 HPF はそのまま
+field number (FN)	視野数	接眼レンズの視野数（mm）。「視野数と対物倍率」
+count point, counts	カウントポイント、カウント	Count tab / tool = 「カウント」タブ / カウントツール
+lock / unlock	ロック / ロックを解除	状態表示は「ロック中」、チェックボックスは「ロック」
+review status: Draft / Verified / Rejected	下書き / 確認済み / 却下	Mark draft = 下書きにする
+Unclassified	未分類	
+(another / second) reader	評価者（ほかの評価者 / 第 2 評価者）	観察者間比較の評価者。読影者とは訳さない
+blinded copy	盲検用コピー	
+attach (annotations of another slide)	関連付け	保存し直した・匿名化したスライドのアノテーションを開いているスライドに付け替えること
+merge (database)	統合	Merge… = 統合…
+Feret diameter / min caliper	フェレ径 / 最小キャリパー径	Max diameter (Feret) = 最大径（フェレ径）
+brush / eraser / stroke	ブラシ / 消しゴム / ストローク	
+DICOM bulk annotations	DICOM バルクアノテーション	Microscopy Bulk Simple Annotations などの DICOM 名は訳さない
+geometry, feature (GeoJSON)	ジオメトリ、フィーチャー	FeatureCollection など GeoJSON の型名は訳さない
+tumour cells / immune cells	腫瘍細胞 / 免疫細胞	
+CPS (combined positive score)	CPS（Combined Positive Score）	PD-L1 の CPS。式はそのまま
+confidence interval (95%)	95% 信頼区間	
+readout, region readout (Cellaris)	集計、領域集計	予測値の領域ごとの集計。Measure（readout を実行）も「集計」。予測は計測値ではないため「計測」「測定」は使わない
+window (model input square)	予測ウィンドウ	モデルが予測に使う正方形の画像。GUI のウィンドウと区別する
+display window (marker, channel)	表示範囲	eov のチャンネルパネル（表示範囲（ウィンドウ））と同じ
+cell (Cellaris grid cell)	セル	一度に予測するスライドの小さな正方形。生物学的な細胞（細胞）と混同しない
+tissue block (5 µm square, Cellaris)	組織区画、区画	パラフィンの「組織ブロック」と混同しないよう「区画」とする
+near-black	ほぼ黒	
+bright-field	明視野	
+reconstruction, reconstruction error	再構成画像、再構成誤差	VAE。Original / Reconstruction / Error map / Difference = 元画像 / 再構成画像 / 誤差マップ / 差分
+MAE (mean absolute error)	MAE（平均絶対誤差）	p05–p95、p95 はそのまま
+reference model	リファレンスモデル	既定の公式モデル
+your site's model / copy	施設のモデル / 施設で保管しているコピー	
+model card, sidecar file, metadata	モデルカード、サイドカーファイル、メタデータ	
+runtime (ONNX Runtime library)	ランタイム	ONNX Runtime はそのまま
+inference device, threads, batch	デバイス、スレッド数、バッチ	Auto = 自動
+preprocessing	前処理	
+result cache	結果キャッシュ	
+embedding	埋め込み	
+duration (about 3 min, 3m 05s)	約 3 分、3 分 05 秒	秒・分・時間。「残り約 3 分」
+game controller, gamepad	ゲームコントローラー、ゲームパッド	台数は「台」（コントローラー 2 台）
+stick / trigger / D-pad / shoulder / stick click	スティック / トリガー / 十字キー / ショルダー / スティック押し込み	
+face buttons South / East / North / West	下ボタン / 右ボタン / 上ボタン / 左ボタン	位置で呼ぶ（A・×などの刻印名は使わない）
+dead zone, response curve	デッドゾーン、応答カーブ	
+mapping (gamepad)	割り当て	Unassigned = 割り当てなし
+profile (gamepad)	プロファイル	Untitled = 無題
+system pointer	システムポインター	Move Pointer = 「ポインターを移動」
+Pause / Enable	一時停止 / 有効化	
+flagged (tissue QC)	フラグが付いた	確認のための目印で確定ではない。「組織 QC でフラグが付いたパッチ（ペンマーク、折れ込みの可能性、焦点ぼけの可能性）」
+fallback stain vectors	代替の染色ベクトル	スライド自身の染色を推定できず、代わりに汎用の H&E（参照）染色ベクトルを使ったこと。色のバッジ「色を正規化済み（Macenko、代替の染色ベクトル）」
+host (eov, as a plugin sees it)	ホスト（eov）	プラグインのエラー文「the host returned …」。ホストが eov であることを明示する
+worker thread	ワーカースレッド	バックグラウンドで処理するスレッド
+Low / High (display window, Cellaris)	下限 / 上限	マーカーの表示範囲の両端。eov のチャンネルパネルの Minimum / Maximum は 最小値 / 最大値

@@ -5,6 +5,7 @@
 //! the exact host command, for the installation (per-user or system-wide)
 //! that the running app came from.
 
+use eov_plugin_api::i18n::tr;
 use serde::Serialize;
 use std::path::Path;
 
@@ -61,10 +62,14 @@ pub fn install_instructions(installation: Installation, bundle: &Path) -> String
     match installation {
         Installation::User => format!("    flatpak install --user --bundle {bundle}"),
         Installation::System => format!(
-            "    flatpak install --system --bundle {bundle}\n(system-wide installations need administrator rights)"
+            "    flatpak install --system --bundle {bundle}\n{}",
+            tr!("(system-wide installations need administrator rights)")
         ),
-        Installation::Unknown => format!(
-            "    flatpak install --user --bundle {bundle}\nor, for a system-wide installation:\n    flatpak install --system --bundle {bundle}"
+        // Translators: {user} and {system} are commands, each on a line of its own.
+        Installation::Unknown => tr!(
+            "{user}\nor, for a system-wide installation:\n{system}",
+            user = format!("    flatpak install --user --bundle {bundle}"),
+            system = format!("    flatpak install --system --bundle {bundle}")
         ),
     }
 }

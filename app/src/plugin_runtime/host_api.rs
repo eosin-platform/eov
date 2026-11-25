@@ -5,6 +5,7 @@
 //! settings) change immediately, so a plugin always reads back what it just
 //! wrote; visible effects are queued as [`Command`]s.
 
+use super::contributions::HotkeyRefusal;
 use super::shared::{Command, HostShared, PluginContext, SurfaceCommand, ViewCommand};
 use crate::model_store::{ModelRequest, ModelStore, StoredModel};
 use crate::overlay::store::StoredRaster;
@@ -20,7 +21,7 @@ use eov_plugin_api::abi::{
 use eov_plugin_api::protocol::{methods, *};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -32,12 +33,22 @@ pub struct HostApi {
     ctx: Arc<PluginContext>,
     shared: Arc<HostShared>,
     owner: Owner,
+    /// The hotkey refusals the user was warned about, by contribution
+    /// (`tool:id`, `hotkey:id`, `button:id`). A plugin that registers the
+    /// same refused key again (as it does after a change of language, to
+    /// update its texts) is told again, but the user is warned once.
+    reported_refusals: parking_lot::Mutex<HashMap<String, HotkeyRefusal>>,
 }
 
 impl HostApi {
     pub fn new(ctx: Arc<PluginContext>, shared: Arc<HostShared>) -> Self {
         let owner = Owner::Plugin(Arc::clone(&ctx.id));
-        Self { ctx, shared, owner }
+        Self {
+            ctx,
+            shared,
+            owner,
+            reported_refusals: parking_lot::Mutex::default(),
+        }
     }
 
     pub fn into_ffi(self) -> HostBox {
@@ -146,7 +157,7 @@ impl HostApi {
                     .lock()
                     .add_toolbar(&self.ctx.id, spec)
                     .map_err(invalid)?;
-                self.refused(&id, warning);
+                self.refused("button", &id, warning);
                 self.push(Command::ContributionsChanged);
                 null
             }
@@ -207,7 +218,7 @@ impl HostApi {
                     .lock()
                     .register_hotkey(&self.ctx.id, spec)
                     .map_err(invalid)?;
-                self.refused(&id, warning);
+                self.refused("hotkey", &id, warning);
                 null
             }
             methods::HOTKEY_UNREGISTER => {
@@ -230,7 +241,7 @@ impl HostApi {
                     .lock()
                     .register_tool(&self.ctx.id, spec)
                     .map_err(invalid)?;
-                self.refused(&id, warning);
+                self.refused("tool", &id, warning);
                 self.push(Command::ContributionsChanged);
                 null
             }
@@ -738,21 +749,41 @@ impl HostApi {
         }
     }
 
-    /// Reports a refused hotkey to the user and to the plugin.
-    fn refused(&self, id: &str, warning: Option<String>) {
-        if let Some(message) = warning {
-            tracing::warn!("{message}");
+    /// Reports a refused hotkey of the contribution `kind` `id` to the
+    /// plugin (in English, and in the interface's language for it to show)
+    /// and, unless the same refusal was reported for it before, to the user
+    /// (in the interface's language) and the log. A registration without a
+    /// refusal (`None`) forgets the earlier one, so a key refused again
+    /// after it was accepted warns again. Unregistering does not: plugins
+    /// unregister and register again to update texts, and get the reason in
+    /// the new language that way after a change of language.
+    fn refused(&self, kind: &str, id: &str, refusal: Option<HotkeyRefusal>) {
+        let contribution = format!("{kind}:{id}");
+        let mut reported = self.reported_refusals.lock();
+        let Some(refusal) = refusal else {
+            reported.remove(&contribution);
+            return;
+        };
+        let reason = refusal.to_string();
+        let shown_reason = refusal.localized();
+        if reported.get(&contribution) == Some(&refusal) {
+            tracing::debug!("{reason} (reported before)");
+        } else {
+            tracing::warn!("{reason}");
             self.push(Command::Notify(NotifyArgs {
                 level: NotifyLevel::Warning,
-                message: message.clone(),
+                message: shown_reason.clone(),
                 detail: None,
             }));
-            self.push(Command::Refused {
-                what: "hotkey".to_string(),
-                id: id.to_string(),
-                reason: message,
-            });
+            reported.insert(contribution, refusal);
         }
+        drop(reported);
+        self.push(Command::Refused {
+            what: "hotkey".to_string(),
+            id: id.to_string(),
+            reason,
+            shown_reason,
+        });
     }
 
     fn read_region_inner(&self, request: RegionRequest) -> Result<Pixels, FfiError> {
@@ -1028,6 +1059,87 @@ mod tests {
         let ctx = Arc::new(PluginContext::new("p", dir.path().to_path_buf()));
         let host = Host::from_ffi(HostApi::new(Arc::clone(&ctx), Arc::clone(&shared)).into_ffi());
         (dir, shared, ctx, host)
+    }
+
+    /// A refused key registered again (as plugins do after a change of
+    /// language) is reported to the plugin each time, to the user once.
+    #[test]
+    fn a_refused_hotkey_warns_the_user_once() {
+        let (_dir, shared, _ctx, host) = setup();
+        let warnings_and_refusals = |shared: &HostShared| {
+            let commands = shared.take_commands();
+            let warnings = commands
+                .iter()
+                .filter(|(_, c)| matches!(c, Command::Notify(_)))
+                .count();
+            let refusals = commands
+                .iter()
+                .filter(|(_, c)| matches!(c, Command::Refused { id, .. } if id == "t"))
+                .count();
+            (warnings, refusals)
+        };
+        // 'f' is one of eov's own keys.
+        let tool = |key: &str| {
+            ToolSpec::new("t", "T", "<svg/>", ToolKind::Point).with_hotkey(Hotkey::key(key))
+        };
+        host.register_tool(tool("f")).unwrap();
+        assert_eq!(warnings_and_refusals(&shared), (1, 1));
+        host.unregister_tool("t").unwrap();
+        host.register_tool(tool("f")).unwrap();
+        assert_eq!(warnings_and_refusals(&shared), (0, 1));
+        // Another refused key warns (the arrow keys pan the view); so does
+        // the first one again after a key that was accepted.
+        host.register_tool(tool("ArrowLeft")).unwrap();
+        assert_eq!(warnings_and_refusals(&shared), (1, 1));
+        host.register_tool(tool("y")).unwrap();
+        assert_eq!(warnings_and_refusals(&shared), (0, 0));
+        host.register_tool(tool("f")).unwrap();
+        assert_eq!(warnings_and_refusals(&shared), (1, 1));
+    }
+
+    /// The plugin is told why in English (as eov 1.0 told it, for its log
+    /// and code) and in the interface's language (to show), as the user is.
+    #[test]
+    fn a_refused_hotkey_is_explained_in_english_and_as_shown() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        // Hebrew: the shown reason isolates the key (no catalog is needed
+        // for that).
+        i18n::set_catalog(i18n::by_tag("he").unwrap(), None);
+        let (_dir, shared, _ctx, host) = setup();
+        host.register_tool(
+            ToolSpec::new("t", "T", "<svg/>", ToolKind::Point).with_hotkey(Hotkey::key("f")),
+        )
+        .unwrap();
+        let commands = shared.take_commands();
+        let (reason, shown_reason) = commands
+            .iter()
+            .find_map(|(_, command)| match command {
+                Command::Refused {
+                    reason,
+                    shown_reason,
+                    ..
+                } => Some((reason.clone(), shown_reason.clone())),
+                _ => None,
+            })
+            .expect("the plugin is told");
+        assert_eq!(
+            reason,
+            "Hotkey 'f' of p:t was ignored: it is a key eov already uses."
+        );
+        assert!(
+            shown_reason.contains("'\u{2068}f\u{2069}'"),
+            "{shown_reason:?}"
+        );
+        assert!(commands.iter().any(
+            |(_, command)| matches!(command, Command::Notify(args) if args.message == shown_reason)
+        ));
     }
 
     #[test]

@@ -162,11 +162,13 @@ pub enum Command {
     Post(String),
     /// The plugin's overlay layers changed; redraw.
     OverlaysChanged,
-    /// Tell the plugin that part of a registration was refused.
+    /// Tell the plugin that part of a registration was refused: why, in
+    /// English (`reason`) and in the interface's language (`shown_reason`).
     Refused {
         what: String,
         id: String,
         reason: String,
+        shown_reason: String,
     },
     /// For a headless batch run: how far a slide is.
     BatchProgress(BatchProgressArgs),

@@ -16,19 +16,26 @@
 use abi_stable::prefix_type::PrefixRefTrait;
 use abi_stable::std_types::RStr;
 use eov_plugin_api::abi::{self, HostBox, PluginBox, PluginModuleRef, SlideSourceBox};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::PluginInit;
 use semver::Version;
 use std::path::{Path, PathBuf};
 
+/// Why a plugin library could not be loaded or started. `Display` says it in
+/// English (the session log, the audit log, `eov batch`);
+/// [`LoadError::localized`] in the interface's language, for the Plugins
+/// panel and messages. What the library loader or the plugin said stays as
+/// it is in both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadError {
     /// The library file is missing or outside the package.
-    BadPath(String),
-    /// The library could not be opened or is not an eov plugin.
+    BadPath(BadPath),
+    /// The library could not be opened or is not an eov plugin (the
+    /// loader's words).
     Open(String),
     /// Built against an incompatible plugin API or ABI.
-    Incompatible(String),
-    /// The plugin's `create` failed.
+    Incompatible(Incompatible),
+    /// The plugin's `create` failed (the plugin's words).
     Create(String),
 }
 
@@ -44,6 +51,108 @@ impl std::fmt::Display for LoadError {
 }
 
 impl std::error::Error for LoadError {}
+
+impl LoadError {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            LoadError::BadPath(m) => tr!("invalid library path: {}", m.localized()),
+            LoadError::Open(m) => tr!("could not load the library: {}", m),
+            LoadError::Incompatible(m) => tr!("incompatible plugin: {}", m.localized()),
+            LoadError::Create(m) => tr!("the plugin failed to start: {}", m),
+        }
+    }
+}
+
+/// Why a plugin's library path is refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BadPath {
+    /// The plugin id cannot be a file name.
+    NotAFileName(String),
+    /// A path that cannot be resolved: the path and the file system's
+    /// words.
+    Unresolved(String),
+    /// The library (its file name) resolves outside the package.
+    OutsidePackage(String),
+}
+
+impl std::fmt::Display for BadPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BadPath::NotAFileName(id) => write!(f, "plugin id '{id}' is not a file name"),
+            BadPath::Unresolved(text) => f.write_str(text),
+            BadPath::OutsidePackage(file) => write!(f, "{file} resolves outside the package"),
+        }
+    }
+}
+
+impl BadPath {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            BadPath::NotAFileName(id) => tr!("plugin id '{}' is not a file name", isolate(id)),
+            BadPath::Unresolved(text) => isolate(text),
+            BadPath::OutsidePackage(file) => {
+                tr!("{} resolves outside the package", isolate(file))
+            }
+        }
+    }
+}
+
+/// How a plugin library does not fit this eov.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Incompatible {
+    /// Built for another ABI.
+    Abi { plugin: u32, host: u32 },
+    /// The plugin API version the library gives cannot be read: the version
+    /// and the version library's words.
+    ApiVersion { version: String, error: String },
+    /// Built for another major version of the plugin API.
+    Api { plugin: String, host: String },
+    /// What abi_stable found wrong with the library's layout (its words).
+    Layout(String),
+}
+
+impl std::fmt::Display for Incompatible {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Incompatible::Abi { plugin, host } => {
+                write!(f, "plugin ABI {plugin}, this eov speaks ABI {host}")
+            }
+            Incompatible::ApiVersion { version, error } => {
+                write!(f, "bad API version '{version}': {error}")
+            }
+            Incompatible::Api { plugin, host } => {
+                write!(f, "built for plugin API {plugin}, this eov provides {host}")
+            }
+            Incompatible::Layout(text) => f.write_str(text),
+        }
+    }
+}
+
+impl Incompatible {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            Incompatible::Abi { plugin, host } => tr!(
+                "plugin ABI {plugin}, this eov speaks ABI {host}",
+                plugin = plugin,
+                host = host
+            ),
+            Incompatible::ApiVersion { version, error } => tr!(
+                "bad API version '{version}': {error}",
+                version = isolate(version),
+                error = error
+            ),
+            Incompatible::Api { plugin, host } => tr!(
+                "built for plugin API {plugin}, this eov provides {host}",
+                plugin = isolate(plugin),
+                host = isolate(host)
+            ),
+            Incompatible::Layout(text) => text.clone(),
+        }
+    }
+}
 
 /// A loaded, version-checked root module.
 #[derive(Clone, Copy)]
@@ -119,18 +228,23 @@ impl Module {
 /// Checks the explicit handshake on top of abi_stable's own checks.
 pub fn check_versions(abi_version: u32, api_version: &str) -> Result<(), LoadError> {
     if abi_version != abi::ABI_VERSION {
-        return Err(LoadError::Incompatible(format!(
-            "plugin ABI {abi_version}, this eov speaks ABI {}",
-            abi::ABI_VERSION
-        )));
+        return Err(LoadError::Incompatible(Incompatible::Abi {
+            plugin: abi_version,
+            host: abi::ABI_VERSION,
+        }));
     }
-    let plugin = Version::parse(api_version)
-        .map_err(|e| LoadError::Incompatible(format!("bad API version '{api_version}': {e}")))?;
+    let plugin = Version::parse(api_version).map_err(|e| {
+        LoadError::Incompatible(Incompatible::ApiVersion {
+            version: api_version.to_string(),
+            error: e.to_string(),
+        })
+    })?;
     let host = Version::parse(abi::API_VERSION).expect("valid crate version");
     if plugin.major != host.major {
-        return Err(LoadError::Incompatible(format!(
-            "built for plugin API {plugin}, this eov provides {host}"
-        )));
+        return Err(LoadError::Incompatible(Incompatible::Api {
+            plugin: plugin.to_string(),
+            host: host.to_string(),
+        }));
     }
     if plugin.minor > host.minor {
         // Allowed (newer methods answer "unsupported"), but worth knowing.
@@ -146,18 +260,18 @@ pub fn check_versions(abi_version: u32, api_version: &str) -> Result<(), LoadErr
 pub fn library_path(package_root: &Path, id: &str) -> Result<PathBuf, LoadError> {
     let file_name = abi::plugin_library_filename(id);
     if file_name.contains(['/', '\\', ':']) {
-        return Err(LoadError::BadPath(format!(
-            "plugin id '{id}' is not a file name"
-        )));
+        return Err(LoadError::BadPath(BadPath::NotAFileName(id.to_string())));
     }
-    let root = dunce::canonicalize(package_root)
-        .map_err(|e| LoadError::BadPath(format!("{}: {e}", package_root.display())))?;
+    let root = dunce::canonicalize(package_root).map_err(|e| {
+        LoadError::BadPath(BadPath::Unresolved(format!(
+            "{}: {e}",
+            package_root.display()
+        )))
+    })?;
     let path = dunce::canonicalize(root.join(&file_name))
-        .map_err(|e| LoadError::BadPath(format!("{file_name}: {e}")))?;
+        .map_err(|e| LoadError::BadPath(BadPath::Unresolved(format!("{file_name}: {e}"))))?;
     if !path.starts_with(&root) {
-        return Err(LoadError::BadPath(format!(
-            "{file_name} resolves outside the package"
-        )));
+        return Err(LoadError::BadPath(BadPath::OutsidePackage(file_name)));
     }
     Ok(path)
 }
@@ -169,7 +283,7 @@ pub fn load_library(path: &Path) -> Result<Module, LoadError> {
     let incompatible = |e: abi_stable::library::LibraryError| match e {
         abi_stable::library::LibraryError::IncompatibleVersionNumber { .. }
         | abi_stable::library::LibraryError::AbiInstability(_) => {
-            LoadError::Incompatible(e.to_string())
+            LoadError::Incompatible(Incompatible::Layout(e.to_string()))
         }
         other => LoadError::Open(other.to_string()),
     };

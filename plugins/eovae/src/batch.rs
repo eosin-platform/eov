@@ -22,6 +22,9 @@
 //! parameter overrides them for the run; parameters are never saved.
 //! Memory stays bounded however large the slide: tiles stream through the
 //! pipeline and only one score per tile is kept.
+//!
+//! The command's description is translated; what a run reports (progress,
+//! its message, the files) stays in English, as eov's batch output does.
 
 use crate::config::{Config, max_threads};
 use crate::contract::CONTRACT_VERSION;
@@ -29,7 +32,7 @@ use crate::db::{DbTile, ResultCache, RunWrite, SlideKeys};
 use crate::engine::{Backend, DevicePreference, InferenceEngine};
 use crate::model::{self, ModelInfo};
 use crate::pipeline::{JobControl, JobOutcome, JobSink, JobSpec, Progress, TileOutcome, run_job};
-use crate::plugin::{Core, HostPixels, engine_request_for, format_eta, lock};
+use crate::plugin::{Core, HostPixels, engine_request_for, lock};
 use crate::render;
 use crate::results::{Counts, Need, TileState};
 use crate::run::RunSpec;
@@ -72,48 +75,97 @@ fn resolution_value(resolution: Resolution) -> Value {
 }
 
 /// The command eovae offers. The defaults are the saved settings, so eov's
-/// `batch.json` records what a run used.
+/// `batch.json` records what a run used. The values a parameter takes
+/// (`auto`, `cpu`, `off`, …) are typed as they are, in every language.
 pub fn command_spec(config: &Config) -> BatchCommandSpec {
-    let param = |name: &str, description: &str, default: Value| BatchParam {
+    let param = |name: &str, description: String, default: Value| BatchParam {
         name: name.into(),
-        description: description.into(),
+        description,
         default,
     };
     BatchCommandSpec {
         command_id: ANALYZE.into(),
-        description: "VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and summary.json per slide".into(),
+        description: tr!(
+            "VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and summary.json per slide"
+        ),
         params: vec![
             param(
                 "model",
-                "the ONNX model (default: the one chosen in eov's VAE sidebar)",
-                config.model_path.clone().map(Value::from).unwrap_or(Value::Null),
+                tr!("the ONNX model (default: the one chosen in eov's VAE sidebar)"),
+                config
+                    .model_path
+                    .clone()
+                    .map(Value::from)
+                    .unwrap_or(Value::Null),
             ),
-            param("device", "auto (CUDA, else the CPU), cpu or cuda", json!(device_key(config.device))),
+            param(
+                "device",
+                // Translators: a batch parameter: keep auto, cpu and cuda, the values typed
+                tr!("auto (CUDA, else the CPU), cpu or cuda"),
+                json!(device_key(config.device)),
+            ),
             param(
                 "batch_size",
-                "tiles per inference batch, for models without a fixed batch",
+                tr!("tiles per inference batch, for models without a fixed batch"),
                 json!(config.batch_size),
             ),
-            param("threads", "CPU inference threads (0: every core)", json!(config.threads)),
-            param("tf32", "allow TF32 on CUDA (faster, slightly different results)", json!(config.tf32)),
+            param(
+                "threads",
+                tr!("CPU inference threads (0: every core)"),
+                json!(config.threads),
+            ),
+            param(
+                "tf32",
+                tr!("allow TF32 on CUDA (faster, slightly different results)"),
+                json!(config.tf32),
+            ),
             param(
                 "resolution",
-                "auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that level's own pixels)",
+                // Translators: a batch parameter: keep auto, the value typed
+                tr!(
+                    "auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that level's own pixels)"
+                ),
                 resolution_value(config.resolution),
             ),
-            param("skip_background", "skip glass tiles", json!(config.skip_background)),
+            param(
+                "skip_background",
+                tr!("skip glass tiles"),
+                json!(config.skip_background),
+            ),
             param(
                 "heat_range",
-                "error-map colours: auto (p05-p95 of each slide) or lo,hi (mean absolute error; the same scale for every slide)",
+                // Translators: a batch parameter: keep auto and lo,hi, the values typed;
+                // p05–p95 is the 5th to 95th percentile
+                tr!(
+                    "error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute error; the same scale for every slide)"
+                ),
                 json!("auto"),
             ),
             param(
                 "cache",
-                "off; store (keep the results for eov's viewer); or reuse (also take tiles analysed before with the same model and settings)",
+                // Translators: a batch parameter: keep off, store and reuse, the values typed
+                tr!(
+                    "off; store (keep the results for eov's viewer); or reuse (also take tiles analysed before with the same model and settings)"
+                ),
                 json!("off"),
             ),
         ],
     }
+}
+
+/// The time the rest of the slide takes, in English like the rest of a
+/// run's output (the sidebar's is `plugin::format_eta`).
+fn time_left(progress: &Progress) -> String {
+    let Some(eta) = progress.eta() else {
+        return String::new();
+    };
+    let seconds = eta.as_secs();
+    let duration = match seconds {
+        0..=59 => format!("{seconds} s"),
+        60..=3599 => format!("{}m {:02}s", seconds / 60, seconds % 60),
+        _ => format!("{}h {:02}m", seconds / 3600, seconds / 60 % 60),
+    };
+    format!("about {duration} left")
 }
 
 /// Whether a run uses eovae's result cache.
@@ -367,7 +419,13 @@ fn batch_model<B: Backend>(
     }
     let model = model::inspect(&path, control.stop_flag())
         .map(Arc::new)
-        .map_err(|error| format!("the model {} cannot be used: {error}", path.display()))?;
+        .map_err(|error| {
+            format!(
+                "the model {} cannot be used: {}",
+                path.display(),
+                error.english
+            )
+        })?;
     *lock(&core.batch.model) = Some(Arc::clone(&model));
     Ok(model)
 }
@@ -395,7 +453,7 @@ fn analyze<B: Backend>(
             if control.is_cancelled() {
                 "cancelled".to_string()
             } else {
-                format!("the model cannot run: {error}")
+                format!("the model cannot run: {}", error.english)
             }
         })?;
     let result = catch_unwind(AssertUnwindSafe(|| {
@@ -476,7 +534,7 @@ impl JobSink for BatchSink<'_> {
             }
             *reported = Some(Instant::now());
         }
-        let eta = format_eta(progress);
+        let eta = time_left(progress);
         let message = format!(
             "{} of {} tiles on {}{}",
             thousands(progress.done as f64),
@@ -694,7 +752,7 @@ fn analyze_slide<B: Backend>(
     let (complete, problem) = match &outcome {
         JobOutcome::Completed(_) => (true, None),
         JobOutcome::Cancelled(_) => (false, Some("cancelled".to_string())),
-        JobOutcome::Failed { error, .. } => (false, Some(error.clone())),
+        JobOutcome::Failed { error, .. } => (false, Some(error.english.clone())),
     };
     let (summary_stats, scores) = distribution(&tiles);
     let range = settings
@@ -703,7 +761,7 @@ fn analyze_slide<B: Backend>(
     let mpp_xy = geometry.mpp_xy;
     let (step_x, step_y) = (grid.step_x(), grid.step_y());
 
-    let mut warnings = model.warnings.clone();
+    let mut warnings: Vec<String> = model.warnings.iter().map(|w| w.english()).collect();
     let level_mpp = choice.level_mpp(&geometry);
     if choice.mismatched()
         && let (Some(level_mpp), Some(model_mpp)) = (level_mpp, contract.mpp)
@@ -725,7 +783,7 @@ fn analyze_slide<B: Backend>(
         ));
     }
     if let Some(reason) = &info.fallback {
-        warnings.push(format!("Inference ran on the CPU: {reason}"));
+        warnings.push(format!("Inference ran on the CPU: {}", reason.english));
     }
     if counts.failed > 0 {
         warnings.push(format!("{} tiles could not be read.", counts.failed));
@@ -793,7 +851,7 @@ fn analyze_slide<B: Backend>(
             "used": info.device.key(),
             "label": info.label,
             "precision": info.precision,
-            "fallback": info.fallback,
+            "fallback": info.fallback.as_ref().map(|reason| &reason.english),
             "batch_size": model.fixed_batch.unwrap_or(config.batch_size),
             "threads": config.effective_threads(),
         },

@@ -20,7 +20,9 @@
 
 use crate::AppWindow;
 use crate::state::{AppState, PaneId};
+use crate::ui_update::localized_number;
 use eov_common::TileCache;
+use eov_plugin_api::i18n::{isolate, tr};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Timer};
@@ -81,27 +83,59 @@ impl ViewRequest {
     }
 }
 
-/// An argument that could not be used.
+/// An argument that could not be used. A second eov hands these over to the
+/// running one (SH-8), which may show another language, so why is sent as
+/// data: the eov that shows it says it in its own language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Problem {
     /// The argument, as given.
     pub(crate) subject: String,
+    /// Why, in English: what the command line prints, and what an eov
+    /// shows that does not know `kind` (one from before it was sent).
     pub(crate) reason: String,
+    /// Why, as data ([`Problem::shown_reason`]); `None` from eovs that do
+    /// not send it, or when this eov does not know it (a newer eov's).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "known_reason"
+    )]
+    pub(crate) kind: Option<InputError>,
 }
 
 impl Problem {
-    fn new(subject: impl Into<String>, reason: impl Into<String>) -> Self {
+    fn new(subject: impl Into<String>, reason: InputError) -> Self {
         Self {
             subject: subject.into(),
-            reason: reason.into(),
+            reason: reason.to_string(),
+            kind: Some(reason),
+        }
+    }
+
+    /// Why, in the interface's language (for the window).
+    pub(crate) fn shown_reason(&self) -> String {
+        match &self.kind {
+            Some(kind) => kind.localized(),
+            None => self.reason.clone(),
         }
     }
 }
 
+/// In English, for the command line.
 impl std::fmt::Display for Problem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.subject, self.reason)
     }
+}
+
+/// Reads a problem's `kind`, leaving out one this eov does not know (it
+/// shows the English `reason` then) rather than refusing the request.
+fn known_reason<'de, D>(deserializer: D) -> Result<Option<InputError>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| serde_json::from_value(value).ok()))
 }
 
 /// What to open. Paths are absolute.
@@ -143,33 +177,205 @@ pub(crate) fn find_on_disk(path: &Path) -> Option<Found> {
 
 // -- parsing -----------------------------------------------------------------
 
-fn parse_number(text: &str) -> Result<f64, String> {
+/// Why an argument (a number, coordinate or zoom, an `eov://` link, a
+/// `file://` URI, a path) cannot be used. Scripts and the command line get
+/// the English text ([`std::fmt::Display`]); the window shows it in the
+/// interface's language ([`InputError::localized`]). It is part of what one
+/// eov hands another ([`Problem::kind`]): variants and their names are kept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InputError {
+    /// The text as given, quoted (as the other texts below).
+    NotANumber(String),
+    NotFinite(String),
+    Negative(String),
+    UnknownUnit {
+        unit: String,
+        text: String,
+    },
+    OutOfRange(String),
+    /// A link to a device (Windows).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Device,
+    /// A link to a network folder on a server not listed in
+    /// `trusted_link_servers` (Windows).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    UntrustedServer(String),
+    NotAnEovLink,
+    /// A link's action, quoted, that is not `open`.
+    UnknownAction(String),
+    /// A `%` in a link that is not followed by two hex digits.
+    BadPercentEscape,
+    /// A link's path that is not UTF-8 (where paths must be).
+    #[cfg_attr(unix, allow(dead_code))]
+    NotUtf8,
+    /// Not a URI: the URL library's words.
+    InvalidFileUri(String),
+    NotAFileUri,
+    /// A `file://` URI on another computer (its name).
+    RemoteFile(String),
+    NotLocal,
+    /// A link without `path=…`.
+    NoLinkPath,
+    /// A link's path that is not absolute.
+    RelativeLinkPath(String),
+    /// A link's `x` and `y` in different units.
+    MixedUnits,
+    /// A link with only one of `x` and `y`.
+    OneCoordinate,
+    NoSuchFileOrFolder,
+    /// `--goto` or `--zoom` without a slide to open.
+    NoSlideForView,
+}
+
+impl std::fmt::Display for InputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputError::NotANumber(text) => write!(f, "{text} is not a number"),
+            InputError::NotFinite(text) => write!(f, "{text} is not a finite number"),
+            InputError::Negative(text) => write!(f, "{text} is negative"),
+            InputError::UnknownUnit { unit, text } => {
+                write!(f, "unknown unit {unit} in {text} (use px or um)")
+            }
+            InputError::OutOfRange(text) => write!(
+                f,
+                "{text} is out of range (more than 0, at most {MAX_ZOOM_VALUE})"
+            ),
+            InputError::Device => f.write_str("links cannot open devices"),
+            InputError::UntrustedServer(server) => write!(
+                f,
+                "links to network folders are only followed for servers listed in \
+                 trusted_link_servers in config.toml ({server} is not)"
+            ),
+            InputError::NotAnEovLink => f.write_str("not an eov link"),
+            InputError::UnknownAction(action) => write!(
+                f,
+                "unknown action {action} (links look like eov://open?path=…)"
+            ),
+            InputError::BadPercentEscape => f.write_str("a % is not followed by two hex digits"),
+            InputError::NotUtf8 => f.write_str("the path is not valid UTF-8"),
+            InputError::InvalidFileUri(error) => write!(f, "not a valid file URI ({error})"),
+            InputError::NotAFileUri => f.write_str("not a file URI"),
+            InputError::RemoteFile(host) => write!(f, "the file is on another computer ({host})"),
+            InputError::NotLocal => f.write_str("not a local file"),
+            InputError::NoLinkPath => f.write_str("the link names no slide (path=…)"),
+            InputError::RelativeLinkPath(path) => {
+                write!(f, "the slide's path must be absolute, not {path}")
+            }
+            InputError::MixedUnits => f.write_str("give x and y in the same unit"),
+            InputError::OneCoordinate => f.write_str("the link gives only one of x and y"),
+            InputError::NoSuchFileOrFolder => f.write_str("no such file or folder"),
+            InputError::NoSlideForView => f.write_str("there is no slide to show at that place"),
+        }
+    }
+}
+
+impl InputError {
+    /// The reason in the interface's language, for the window.
+    fn localized(&self) -> String {
+        match self {
+            InputError::NotANumber(text) => tr!("{} is not a number", isolate(text)),
+            InputError::NotFinite(text) => tr!("{} is not a finite number", isolate(text)),
+            InputError::Negative(text) => tr!("{} is negative", isolate(text)),
+            // Translators: "px" (pixels) and "um" (micrometres) are typed as
+            // they are.
+            InputError::UnknownUnit { unit, text } => tr!(
+                "unknown unit {unit} in {text} (use px or um)",
+                unit = isolate(unit),
+                text = isolate(text)
+            ),
+            InputError::OutOfRange(text) => tr!(
+                "{text} is out of range (more than 0, at most {max})",
+                text = isolate(text),
+                max = MAX_ZOOM_VALUE
+            ),
+            InputError::Device => tr!("links cannot open devices"),
+            // Translators: trusted_link_servers and config.toml are names in
+            // eov's settings file; keep them as they are.
+            InputError::UntrustedServer(server) => tr!(
+                "links to network folders are only followed for servers listed in trusted_link_servers in config.toml ({} is not)",
+                isolate(server)
+            ),
+            InputError::NotAnEovLink => tr!("not an eov link"),
+            InputError::UnknownAction(action) => {
+                // Translators: "eov://open?path=…" is how a link looks; keep
+                // it as it is.
+                tr!(
+                    "unknown action {} (links look like eov://open?path=…)",
+                    isolate(action)
+                )
+            }
+            InputError::BadPercentEscape => {
+                // Translators: about a link (eov://…) whose text is broken:
+                // "%" must be followed by two hexadecimal digits.
+                tr!("a % is not followed by two hex digits")
+            }
+            InputError::NotUtf8 => tr!("the path is not valid UTF-8"),
+            InputError::InvalidFileUri(error) => {
+                // Translators: a "file URI" is a "file://…" address, as file
+                // managers pass files.
+                tr!("not a valid file URI ({})", error)
+            }
+            InputError::NotAFileUri => tr!("not a file URI"),
+            InputError::RemoteFile(host) => {
+                tr!("the file is on another computer ({})", isolate(host))
+            }
+            InputError::NotLocal => tr!("not a local file"),
+            InputError::NoLinkPath => {
+                // Translators: "path=…" is the part of the link that names
+                // the slide; keep it as it is.
+                tr!("the link names no slide (path=…)")
+            }
+            InputError::RelativeLinkPath(path) => {
+                tr!("the slide's path must be absolute, not {}", isolate(path))
+            }
+            InputError::MixedUnits => tr!("give x and y in the same unit"),
+            InputError::OneCoordinate => tr!("the link gives only one of x and y"),
+            InputError::NoSuchFileOrFolder => tr!("no such file or folder"),
+            InputError::NoSlideForView => {
+                // Translators: about --goto and --zoom on the command line,
+                // given without a slide to open.
+                tr!("there is no slide to show at that place")
+            }
+        }
+    }
+}
+
+fn number(text: &str) -> Result<f64, InputError> {
+    let quoted = || format!("{:?}", text.trim());
     let value: f64 = text
         .trim()
         .parse()
-        .map_err(|_| format!("{:?} is not a number", text.trim()))?;
+        .map_err(|_| InputError::NotANumber(quoted()))?;
     if value.is_finite() {
         Ok(value)
     } else {
-        Err(format!("{:?} is not a finite number", text.trim()))
+        Err(InputError::NotFinite(quoted()))
     }
 }
 
 /// `1200`, `1200px`, `350um` or `350µm`.
 pub(crate) fn parse_coordinate(text: &str) -> Result<Coordinate, String> {
+    coordinate(text).map_err(|error| error.to_string())
+}
+
+fn coordinate(text: &str) -> Result<Coordinate, InputError> {
     let text = text.trim();
     let end = text
         .find(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '+' | '-' | 'e' | 'E')))
         .unwrap_or(text.len());
-    let (number, unit) = text.split_at(end);
-    let value = parse_number(number)?;
+    let (number_text, unit) = text.split_at(end);
+    let value = number(number_text)?;
     if value < 0.0 {
-        return Err(format!("{text:?} is negative"));
+        return Err(InputError::Negative(format!("{text:?}")));
     }
     match unit.trim().to_lowercase().as_str() {
         "" | "px" => Ok(Coordinate::Px(value)),
         "um" | "\u{b5}m" | "\u{3bc}m" => Ok(Coordinate::Um(value)),
-        other => Err(format!("unknown unit {other:?} in {text:?} (use px or um)")),
+        other => Err(InputError::UnknownUnit {
+            unit: format!("{other:?}"),
+            text: format!("{text:?}"),
+        }),
     }
 }
 
@@ -199,6 +405,10 @@ const MAX_ZOOM_VALUE: f64 = 1000.0;
 /// `--zoom`: `20x` (magnification), `0.5` or `1:1` (screen pixels per
 /// slide pixel), or `fit`.
 pub(crate) fn parse_zoom(text: &str) -> Result<Zoom, String> {
+    zoom(text).map_err(|error| error.to_string())
+}
+
+fn zoom(text: &str) -> Result<Zoom, InputError> {
     let text = text.trim();
     if text.eq_ignore_ascii_case("fit") {
         return Ok(Zoom::Fit);
@@ -206,15 +416,13 @@ pub(crate) fn parse_zoom(text: &str) -> Result<Zoom, String> {
     if text == "1:1" {
         return Ok(Zoom::Factor(1.0));
     }
-    let (number, magnification) = match text.strip_suffix(['x', 'X', '\u{d7}']) {
-        Some(number) => (number, true),
+    let (number_text, magnification) = match text.strip_suffix(['x', 'X', '\u{d7}']) {
+        Some(number_text) => (number_text, true),
         None => (text, false),
     };
-    let value = parse_number(number)?;
+    let value = number(number_text)?;
     if value <= 0.0 || value > MAX_ZOOM_VALUE {
-        return Err(format!(
-            "{text:?} is out of range (more than 0, at most {MAX_ZOOM_VALUE})"
-        ));
+        return Err(InputError::OutOfRange(format!("{text:?}")));
     }
     Ok(if magnification {
         Zoom::Magnification(value)
@@ -224,7 +432,7 @@ pub(crate) fn parse_zoom(text: &str) -> Result<Zoom, String> {
 }
 
 /// Percent-decodes a query component (`+` is a space, as in HTML forms).
-fn percent_decode(text: &str) -> Result<Vec<u8>, String> {
+fn percent_decode(text: &str) -> Result<Vec<u8>, InputError> {
     let bytes = text.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -238,7 +446,7 @@ fn percent_decode(text: &str) -> Result<Vec<u8>, String> {
                 let digits = bytes
                     .get(index + 1..index + 3)
                     .filter(|digits| digits.iter().all(u8::is_ascii_hexdigit))
-                    .ok_or_else(|| "a % is not followed by two hex digits".to_string())?;
+                    .ok_or(InputError::BadPercentEscape)?;
                 let text = std::str::from_utf8(digits).expect("hex digits are ASCII");
                 decoded.push(u8::from_str_radix(text, 16).expect("two hex digits"));
                 index += 3;
@@ -253,16 +461,16 @@ fn percent_decode(text: &str) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(unix)]
-fn path_from_bytes(bytes: Vec<u8>) -> Result<PathBuf, String> {
+fn path_from_bytes(bytes: Vec<u8>) -> Result<PathBuf, InputError> {
     use std::os::unix::ffi::OsStringExt;
     Ok(PathBuf::from(OsString::from_vec(bytes)))
 }
 
 #[cfg(not(unix))]
-fn path_from_bytes(bytes: Vec<u8>) -> Result<PathBuf, String> {
+fn path_from_bytes(bytes: Vec<u8>) -> Result<PathBuf, InputError> {
     String::from_utf8(bytes)
         .map(PathBuf::from)
-        .map_err(|_| "the path is not valid UTF-8".to_string())
+        .map_err(|_| InputError::NotUtf8)
 }
 
 fn has_scheme(text: &str, scheme: &str) -> bool {
@@ -272,32 +480,31 @@ fn has_scheme(text: &str, scheme: &str) -> bool {
 }
 
 /// A `file://` URI's local path.
-pub(crate) fn file_uri_path(text: &str) -> Result<PathBuf, String> {
-    let url = url::Url::parse(text).map_err(|error| format!("not a valid file URI ({error})"))?;
+pub(crate) fn file_uri_path(text: &str) -> Result<PathBuf, InputError> {
+    let url =
+        url::Url::parse(text).map_err(|error| InputError::InvalidFileUri(error.to_string()))?;
     if url.scheme() != "file" {
-        return Err("not a file URI".to_string());
+        return Err(InputError::NotAFileUri);
     }
     url.to_file_path().map_err(|()| match url.host_str() {
-        Some(host) => format!("the file is on another computer ({host})"),
-        None => "not a local file".to_string(),
+        Some(host) => InputError::RemoteFile(host.to_string()),
+        None => InputError::NotLocal,
     })
 }
 
 /// An `eov://open?path=…&x=…&y=…&zoom=…` link's slide and view.
 /// `path` is percent-encoded (`+` is a space); `x`, `y` and `zoom` take
 /// the values of `--goto` and `--zoom`. Unknown parameters are ignored.
-pub(crate) fn parse_link(text: &str) -> Result<(PathBuf, ViewRequest), String> {
+pub(crate) fn parse_link(text: &str) -> Result<(PathBuf, ViewRequest), InputError> {
     if !has_scheme(text, "eov") {
-        return Err("not an eov link".to_string());
+        return Err(InputError::NotAnEovLink);
     }
     let rest = &text[4..];
     let rest = rest.strip_prefix("//").unwrap_or(rest);
     let rest = rest.split('#').next().unwrap_or_default();
     let (action, query) = rest.split_once('?').unwrap_or((rest, ""));
     if !action.trim_end_matches('/').eq_ignore_ascii_case("open") {
-        return Err(format!(
-            "unknown action {action:?} (links look like eov://open?path=…)"
-        ));
+        return Err(InputError::UnknownAction(format!("{action:?}")));
     }
     let mut path = None;
     let (mut x, mut y, mut zoom) = (None, None, None);
@@ -316,28 +523,25 @@ pub(crate) fn parse_link(text: &str) -> Result<(PathBuf, ViewRequest), String> {
                     },
                 )
             }
-            "x" => x = Some(parse_coordinate(&text())?),
-            "y" => y = Some(parse_coordinate(&text())?),
-            "zoom" => zoom = Some(parse_zoom(&text())?),
+            "x" => x = Some(coordinate(&text())?),
+            "y" => y = Some(coordinate(&text())?),
+            "zoom" => zoom = Some(self::zoom(&text())?),
             _ => {}
         }
     }
-    let path = path.ok_or_else(|| "the link names no slide (path=…)".to_string())?;
+    let path = path.ok_or(InputError::NoLinkPath)?;
     if !path.is_absolute() {
-        return Err(format!(
-            "the slide's path must be absolute, not {}",
-            path.display()
-        ));
+        return Err(InputError::RelativeLinkPath(path.display().to_string()));
     }
     let center = match (x, y) {
         (Some(x), Some(y)) => {
             if std::mem::discriminant(&x) != std::mem::discriminant(&y) {
-                return Err("give x and y in the same unit".to_string());
+                return Err(InputError::MixedUnits);
             }
             Some(Point { x, y })
         }
         (None, None) => None,
-        _ => return Err("the link gives only one of x and y".to_string()),
+        _ => return Err(InputError::OneCoordinate),
     };
     Ok((path, ViewRequest { center, zoom }))
 }
@@ -349,8 +553,13 @@ pub(crate) fn parse_link(text: &str) -> Result<(PathBuf, ViewRequest), String> {
 /// could leak them. Links to network paths are therefore only followed for
 /// servers listed in `trusted_link_servers` in `config.toml`; mapped drive
 /// letters work as they are.
-#[cfg_attr(not(windows), allow(unused_variables))]
 pub(crate) fn link_path_refusal(path: &Path, trusted_servers: &[String]) -> Option<String> {
+    link_refusal(path, trusted_servers).map(|refusal| refusal.to_string())
+}
+
+/// [`link_path_refusal`], for the window.
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn link_refusal(path: &Path, trusted_servers: &[String]) -> Option<InputError> {
     #[cfg(windows)]
     {
         use std::path::{Component, Prefix};
@@ -359,7 +568,7 @@ pub(crate) fn link_path_refusal(path: &Path, trusted_servers: &[String]) -> Opti
                 Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _) => {
                     Some(server.to_string_lossy().into_owned())
                 }
-                Prefix::DeviceNS(_) => return Some("links cannot open devices".to_string()),
+                Prefix::DeviceNS(_) => return Some(InputError::Device),
                 _ => None,
             },
             _ => None,
@@ -369,10 +578,7 @@ pub(crate) fn link_path_refusal(path: &Path, trusted_servers: &[String]) -> Opti
                 .iter()
                 .any(|trusted| trusted.eq_ignore_ascii_case(&server))
         {
-            return Some(format!(
-                "links to network folders are only followed for servers listed in \
-                 trusted_link_servers in config.toml ({server} is not)"
-            ));
+            return Some(InputError::UntrustedServer(server));
         }
     }
     None
@@ -423,7 +629,7 @@ fn classify(
     if let Some(text) = argument.to_str() {
         if has_scheme(text, "eov") {
             match parse_link(text) {
-                Ok((path, view)) => match link_path_refusal(&path, trusted_servers) {
+                Ok((path, view)) => match link_refusal(&path, trusted_servers) {
                     Some(reason) => problems.push(Problem::new(shown, reason)),
                     None => {
                         classified.paths.push(path);
@@ -468,12 +674,12 @@ fn classify(
             if lookup(&path).is_some() {
                 classified.paths.push(path);
             } else {
-                problems.push(Problem::new(shown, "no such file or folder"));
+                problems.push(Problem::new(shown, InputError::NoSuchFileOrFolder));
             }
         }
         return classified;
     }
-    problems.push(Problem::new(shown, "no such file or folder"));
+    problems.push(Problem::new(shown, InputError::NoSuchFileOrFolder));
     classified
 }
 
@@ -535,10 +741,9 @@ pub(crate) fn request_from_arguments(
                 };
                 request.views.push((path, view));
             }
-            None => request.problems.push(Problem::new(
-                "--goto/--zoom",
-                "there is no slide to show at that place",
-            )),
+            None => request
+                .problems
+                .push(Problem::new("--goto/--zoom", InputError::NoSlideForView)),
         }
     }
     request.views.extend(link_views);
@@ -607,15 +812,78 @@ pub(crate) struct ResolvedView {
     pub(crate) center_x: f64,
     pub(crate) center_y: f64,
     pub(crate) zoom: f64,
-    /// What could not be applied, for the user.
+    /// What could not be applied, in English (for scripts).
     pub(crate) warnings: Vec<String>,
+    /// The same, in the interface's language (for the window).
+    pub(crate) shown_warnings: Vec<String>,
 }
 
-fn describe_zoom(zoom: Zoom) -> String {
-    match zoom {
-        Zoom::Fit => "fit".to_string(),
-        Zoom::Magnification(value) => format!("{}x", eov_common::format_decimal(value)),
-        Zoom::Factor(value) => eov_common::format_decimal(value),
+/// Something of a requested view that could not be applied.
+enum ViewWarning {
+    NoPixelSize,
+    Outside {
+        x: f64,
+        y: f64,
+        width: u64,
+        height: u64,
+    },
+    NoMagnification(f64),
+}
+
+impl ViewWarning {
+    fn english(&self) -> String {
+        match self {
+            ViewWarning::NoPixelSize => "The slide records no pixel size, so a position in \
+                                         micrometres cannot be found."
+                .to_string(),
+            ViewWarning::Outside {
+                x,
+                y,
+                width,
+                height,
+            } => format!(
+                "{}, {} is outside the slide ({} × {} pixels).",
+                eov_common::format_decimal(x.round()),
+                eov_common::format_decimal(y.round()),
+                eov_common::format_u64(*width),
+                eov_common::format_u64(*height),
+            ),
+            ViewWarning::NoMagnification(target) => format!(
+                "The slide records neither its objective nor its pixel size, so it cannot \
+                 be shown at {}x.",
+                eov_common::format_decimal(*target)
+            ),
+        }
+    }
+
+    fn localized(&self) -> String {
+        match self {
+            ViewWarning::NoPixelSize => tr!(
+                "The slide records no pixel size, so a position in micrometres cannot be found."
+            ),
+            ViewWarning::Outside {
+                x,
+                y,
+                width,
+                height,
+            } => tr!(
+                // Translators: a position (x, y) on the slide, then the
+                // slide's size.
+                "{x}, {y} is outside the slide ({width} × {height} pixels).",
+                x = isolate(localized_number(&eov_common::format_decimal(x.round()))),
+                y = isolate(localized_number(&eov_common::format_decimal(y.round()))),
+                width = localized_number(&eov_common::format_u64(*width)),
+                height = localized_number(&eov_common::format_u64(*height))
+            ),
+            // Translators: a magnification such as "20x" follows "at".
+            ViewWarning::NoMagnification(target) => tr!(
+                "The slide records neither its objective nor its pixel size, so it cannot be shown at {}.",
+                isolate(format!(
+                    "{}x",
+                    localized_number(&eov_common::format_decimal(*target))
+                ))
+            ),
+        }
     }
 }
 
@@ -637,18 +905,16 @@ pub(crate) fn resolve_view(
         center_y: start.1,
         zoom: start.2,
         warnings: Vec::new(),
+        shown_warnings: Vec::new(),
     };
+    let mut warnings = Vec::new();
     if let Some(point) = request.center {
         let center = match (point.x, point.y) {
             (Coordinate::Px(x), Coordinate::Px(y)) => Some((x, y)),
             (Coordinate::Um(x), Coordinate::Um(y)) => match (slide.mpp_x, slide.mpp_y) {
                 (Some(mpp_x), Some(mpp_y)) => Some((x / mpp_x, y / mpp_y)),
                 _ => {
-                    view.warnings.push(
-                        "The slide records no pixel size, so a position in micrometres \
-                         cannot be found."
-                            .to_string(),
-                    );
+                    warnings.push(ViewWarning::NoPixelSize);
                     None
                 }
             },
@@ -656,13 +922,12 @@ pub(crate) fn resolve_view(
         };
         if let Some((x, y)) = center {
             if x > slide.width || y > slide.height {
-                view.warnings.push(format!(
-                    "{}, {} is outside the slide ({} × {} pixels).",
-                    eov_common::format_decimal(x.round()),
-                    eov_common::format_decimal(y.round()),
-                    eov_common::format_u64(slide.width as u64),
-                    eov_common::format_u64(slide.height as u64),
-                ));
+                warnings.push(ViewWarning::Outside {
+                    x,
+                    y,
+                    width: slide.width as u64,
+                    height: slide.height as u64,
+                });
             }
             view.center_x = x;
             view.center_y = y;
@@ -673,31 +938,44 @@ pub(crate) fn resolve_view(
         Some(Zoom::Factor(factor)) => view.zoom = factor,
         Some(Zoom::Magnification(target)) => match slide.native_magnification {
             Some(native) => view.zoom = target / native,
-            None => view.warnings.push(format!(
-                "The slide records neither its objective nor its pixel size, so it cannot \
-                 be shown at {}.",
-                describe_zoom(Zoom::Magnification(target))
-            )),
+            None => warnings.push(ViewWarning::NoMagnification(target)),
         },
     }
+    view.warnings = warnings.iter().map(ViewWarning::english).collect();
+    view.shown_warnings = warnings.iter().map(ViewWarning::localized).collect();
     view
 }
 
 // -- opening (UI thread) -----------------------------------------------------------
 
-/// Tells the user which arguments could not be used.
+/// Tells the user which arguments could not be used (in the interface's
+/// language, also when another eov handed them over).
 pub(crate) fn report_problems(problems: &[Problem]) {
     let (title, detail) = match problems {
         [] => return,
         [problem] => (
-            format!("Could not open {}", problem.subject),
-            problem.reason.clone(),
+            tr!("Could not open {}", isolate(&problem.subject)),
+            problem.shown_reason(),
         ),
         _ => (
-            format!("Could not open {} of the given files", problems.len()),
+            tr!(
+                // Translators: {n} (2 or more) of the files given on the
+                // command line or handed over could not be opened.
+                "Could not open {n} of the given files"
+                    | "Could not open {n} of the given files" % problems.len()
+            ),
             problems
                 .iter()
-                .map(Problem::to_string)
+                .map(|problem| {
+                    // Translators: a line of the list of files (or links)
+                    // that could not be opened: the file as it was given,
+                    // then why.
+                    tr!(
+                        "{file}: {reason}",
+                        file = isolate(&problem.subject),
+                        reason = problem.shown_reason()
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n"),
         ),

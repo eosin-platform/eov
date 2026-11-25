@@ -4,6 +4,7 @@
 use super::UiHost;
 use crate::overlay::store::Owner;
 use crate::state::PaneId;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{FileId, LayerSpec, OverlayObject, Rgba, Shape, SizeUnit, Style};
 
 /// Above measurements, below plugin overlays drawn on top.
@@ -32,7 +33,7 @@ impl UiHost {
                         crate::slide_link::set_landmark(&mut state, file_id, index, point);
                     }
                 }
-                self.status(&format!(
+                self.status(&tr!(
                     "Landmark {} placed; place both landmarks on the other slide too, then Align from Landmarks",
                     index + 1
                 ));
@@ -43,7 +44,7 @@ impl UiHost {
             }
             "clear-landmarks" => {
                 crate::slide_link::clear_landmarks(&mut self.state.write());
-                self.status("Landmarks cleared");
+                self.status(&tr!("Landmarks cleared"));
             }
             "reset" => {
                 self.state.write().set_focused_pane(PaneId(pane));
@@ -105,7 +106,7 @@ impl UiHost {
                     mark.map(|[x, y]| {
                         OverlayObject::new(format!("landmark-{}", index + 1), Shape::Point { x, y })
                             .with_label(format!("{}", index + 1))
-                            .with_tooltip(format!("Alignment landmark {}", index + 1))
+                            .with_tooltip(tr!("Alignment landmark {}", index + 1))
                     })
                 })
                 .collect();

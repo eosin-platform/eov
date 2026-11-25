@@ -33,6 +33,7 @@ mod models;
 mod notices;
 mod overlays;
 mod panel;
+pub(crate) mod plugin_i18n;
 pub(crate) mod publish;
 mod qc;
 mod stain_targets;
@@ -47,10 +48,12 @@ use crate::plugin_runtime::loader::{self, Module};
 use crate::plugin_runtime::settings::SettingsStore;
 use crate::plugin_runtime::shared::HostShared;
 use crate::plugin_runtime::undo::UndoStack;
-use crate::plugin_runtime::{EventTarget, PluginInfo, PluginRuntime, PluginStatus};
+use crate::plugin_runtime::{EventTarget, FailReason, PluginInfo, PluginRuntime, PluginStatus};
 use crate::state::AppState;
+use crate::update::policy::ThirdPartyUse;
 use eov_common::TileCache;
 use eov_plugin_api::abi::FfiErrorKind;
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{HostEvent, NotifyLevel};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, Timer};
@@ -61,6 +64,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub(crate) use annotations::HostEdit;
+#[cfg(test)]
+pub(crate) use annotations::measurement_object;
 pub(crate) use input::modifiers_from_slint;
 pub(crate) use overlays::PaneOverlayFields;
 pub(crate) use publish::{calibration, finish_alpha};
@@ -89,6 +94,26 @@ pub(crate) fn window_focus_changed() {
     Timer::single_shot(std::time::Duration::ZERO, || {
         with_host(|host| host.publish_now());
     });
+}
+
+/// The interface changed language (see [`crate::i18n::switch_to`]). The
+/// window's `@tr` texts and the plugins' surfaces follow by themselves;
+/// texts made in Rust that the window keeps showing are made again, and the
+/// plugins are told, so that they hand over theirs again.
+pub(crate) fn language_changed(ui: &AppWindow, language: &'static eov_plugin_api::i18n::Language) {
+    with_host(|host| {
+        host.surfaces.borrow().language_changed();
+        host.post(
+            EventTarget::All,
+            eov_plugin_api::protocol::HostEvent::LanguageChanged {
+                language: language.tag.to_string(),
+            },
+        );
+        // Numbers eov wrote into fields, in the new language's notation.
+        host.heatmap_language_changed();
+        host.refresh_translated_texts();
+    });
+    crate::refresh_translated_texts(ui);
 }
 
 /// Options for [`init`].
@@ -139,6 +164,8 @@ pub(crate) struct UiHost {
     /// Newer versions found by the Plugins panel's Check for Updates, by
     /// plugin id.
     plugin_updates: RefCell<HashMap<String, String>>,
+    /// What that check found, for its note.
+    plugin_update_check: Cell<Option<panel::UpdateCheck>>,
     /// The update of eov started from the Home screen.
     app_update: RefCell<Option<app_update::AppUpdate>>,
     /// Its status-bar job while it applies.
@@ -216,6 +243,7 @@ pub(crate) fn init(
         last_pointer: Cell::new(None),
         measurements_panel: Cell::new(None),
         plugin_updates: RefCell::new(HashMap::new()),
+        plugin_update_check: Cell::new(None),
         app_update: RefCell::new(None),
         app_update_job: RefCell::new(None),
         plugin_usage_timer: Timer::default(),
@@ -228,8 +256,19 @@ pub(crate) fn init(
     host.refresh_toolbar();
     host.refresh_undo_ui();
     host.refresh_plugin_panel();
-    ui.set_measure_mode_label(host.measure_mode.get().label().into());
+    ui.set_measure_mode_label(annotations::measure_mode_label(host.measure_mode.get()).into());
     host
+}
+
+/// A text of a plugin's manifest (its name, its description) in the
+/// language of the interface, when the plugin's catalogs translate it. A
+/// package that could not be unpacked has no catalogs to read.
+pub(crate) fn plugin_text(info: &PluginInfo, text: &str) -> String {
+    if info.root.as_os_str().is_empty() {
+        text.to_string()
+    } else {
+        plugin_i18n::manifest_text(&info.root, text)
+    }
 }
 
 /// Panel information for a package that is not started.
@@ -265,11 +304,14 @@ impl UiHost {
         ) {
             Ok(inventory) => inventory,
             Err(error) => {
+                // The log in English; the window says why in its language
+                // (the registry could not be read).
                 tracing::error!("Could not list plugins: {error:#}");
+                let detail = crate::update::registry::shown_error(&error);
                 self.notices.borrow_mut().push(
                     NotifyLevel::Error,
-                    "Plugins could not be loaded",
-                    Some(&format!("{error:#}")),
+                    &tr!("Plugins could not be loaded"),
+                    Some(&detail),
                     None,
                 );
                 return;
@@ -289,9 +331,11 @@ impl UiHost {
             {
                 Ok(descriptor) => descriptor,
                 Err(error) => {
+                    // In English for the audit log; the panel shows it in
+                    // the interface's language of the moment.
                     runtime.add_inactive(
                         inactive_info(package),
-                        PluginStatus::Failed(format!("could not unpack the package: {error}")),
+                        PluginStatus::Failed(FailReason::Unpack(error.reason())),
                     );
                     continue;
                 }
@@ -313,11 +357,25 @@ impl UiHost {
             }
             // Packages from the policy's own directories are provisioned by
             // the administrator; anything else must be official.
+            // (The refusal is kept as data: its message is made when it is
+            // shown, in the language of the moment, and in English for the
+            // audit log.)
             if !package.system
                 && package.provenance.kind != "official"
-                && let Err(error) = policy.ensure_third_party_allowed("Loading this plugin")
+                && policy
+                    .ensure_third_party_allowed(ThirdPartyUse::LoadPlugin)
+                    .is_err()
             {
-                runtime.add_inactive(info, PluginStatus::Failed(error.to_string()));
+                runtime.add_inactive(
+                    info,
+                    PluginStatus::Failed(FailReason::NotAllowed {
+                        source: policy.source.clone(),
+                        // Worded in English for the audit log, in the
+                        // interface's language when shown.
+                        invalid: policy.error.clone(),
+                        contact: policy.message.clone(),
+                    }),
+                );
                 continue;
             }
             if let Some(requirement) = &manifest.ui.slint {
@@ -329,11 +387,15 @@ impl UiHost {
                     );
                     self.notices.borrow_mut().push(
                         NotifyLevel::Warning,
-                        &format!(
-                            "needs Slint {requirement} but this eov uses {slint}; its panels may not display"
+                        // Translators: {requirement} is a range of Slint versions
+                        // (">=1.20"), {slint} a version of Slint ("1.19.0").
+                        &tr!(
+                            "This plugin needs Slint {requirement}, but this eov uses Slint {slint}; its panels may not display.",
+                            requirement = isolate(requirement),
+                            slint = isolate(&slint),
                         ),
                         None,
-                        Some(&manifest.name),
+                        Some(&plugin_i18n::manifest_text(&descriptor.root, &manifest.name)),
                     );
                 }
             }
@@ -347,10 +409,10 @@ impl UiHost {
             if !manifest.accepts_api(&api) {
                 runtime.add_inactive(
                     info,
-                    PluginStatus::Failed(format!(
-                        "requires plugin API {}, this eov provides {api}",
-                        manifest.api.as_deref().unwrap_or("?")
-                    )),
+                    PluginStatus::Failed(FailReason::Api {
+                        required: manifest.api.as_deref().unwrap_or("?").to_string(),
+                        provided: api.to_string(),
+                    }),
                 );
                 continue;
             }
@@ -364,11 +426,16 @@ impl UiHost {
         }
         for package in &inventory.packages {
             if listed.insert(package.id.clone()) {
-                let reason = package
-                    .incompatibility
-                    .clone()
-                    .unwrap_or_else(|| "not compatible with this eov".to_string());
-                runtime.add_inactive(inactive_info(package), PluginStatus::Failed(reason));
+                // What the inventory found, as data.
+                let reason = crate::update::compat::package_incompatibility(
+                    &package.environment,
+                    &package.raw_manifest,
+                    &host_version,
+                );
+                runtime.add_inactive(
+                    inactive_info(package),
+                    PluginStatus::Failed(FailReason::Incompatible(reason)),
+                );
             }
         }
         runtime.rebuild_filters();
@@ -381,7 +448,7 @@ impl UiHost {
                 serde_json::json!({
                     "plugin": slot.info.id,
                     "version": slot.info.version,
-                    "state": slot.status.label(),
+                    "state": slot.status.audit_text(),
                     "sha256": package.map(|package| package.sha256.clone()),
                     "origin": package.map(|package| package.provenance.describe()),
                 })
@@ -423,14 +490,16 @@ impl UiHost {
             .slots()
             .iter()
             .filter_map(|slot| match &slot.status {
-                PluginStatus::Failed(reason) => Some((slot.info.name.clone(), reason.clone())),
+                PluginStatus::Failed(reason) => {
+                    Some((plugin_text(&slot.info, &slot.info.name), reason.localized()))
+                }
                 _ => None,
             })
             .collect();
         for (name, reason) in failed {
             self.notify(
                 NotifyLevel::Error,
-                &format!("Plugin {name} could not be started"),
+                &tr!("Plugin {} could not be started", isolate(&name)),
                 Some(&reason),
                 Some(&name),
             );
@@ -444,13 +513,13 @@ impl UiHost {
             return;
         };
         let (level, title) = if report.applied() {
-            (NotifyLevel::Success, "eov was updated")
+            (NotifyLevel::Success, tr!("eov was updated"))
         } else if report.left_damage() {
-            (NotifyLevel::Error, "The last update failed")
+            (NotifyLevel::Error, tr!("The last update failed"))
         } else {
-            (NotifyLevel::Warning, "The last update was rolled back")
+            (NotifyLevel::Warning, tr!("The last update was rolled back"))
         };
-        self.notify(level, title, Some(&report.summary()), None);
+        self.notify(level, &title, Some(&report.localized_summary()), None);
     }
 
     /// Sends `Ready` (after the window is shown).
@@ -460,10 +529,10 @@ impl UiHost {
         if let Some(report) = crate::logging::take_crash_report() {
             self.notify(
                 NotifyLevel::Error,
-                "eov closed unexpectedly last time",
-                Some(&format!(
+                &tr!("eov closed unexpectedly last time"),
+                Some(&tr!(
                     "A crash report was saved to {} (Open Log Folder in Messages).",
-                    report.display()
+                    isolate(report.display())
                 )),
                 None,
             );
@@ -499,6 +568,31 @@ impl UiHost {
 
     pub(crate) fn ui(&self) -> Option<AppWindow> {
         self.ui.upgrade()
+    }
+
+    /// Makes again the texts of the host's own UI that are made in Rust
+    /// (the Plugins panel's rows, the notices' summary, the open panels,
+    /// the undo tooltips, the tooltips of the host's overlays) after the
+    /// language changed.
+    pub(crate) fn refresh_translated_texts(&self) {
+        self.refresh_notices();
+        self.refresh_toolbar();
+        self.refresh_plugin_panel();
+        self.refresh_plugin_update_note();
+        self.refresh_undo_ui();
+        self.refresh_measurements_panel();
+        self.refresh_heatmap_panel();
+        if let Some(ui) = self.ui() {
+            ui.set_measure_mode_label(
+                annotations::measure_mode_label(self.measure_mode.get()).into(),
+            );
+            if ui.get_shortcuts_panel_visible() {
+                self.open_shortcuts_panel();
+            }
+        }
+        // Tooltips of the region, measurements and landmarks.
+        self.resync_all_host_layers();
+        self.sync_landmark_layers();
     }
 
     pub(crate) fn request_render(&self) {
@@ -610,11 +704,13 @@ impl UiHost {
             .map(|(_, value)| value)
     }
 
+    /// A plugin's name as the user reads it: in the language of the
+    /// interface when the plugin translates it.
     fn plugin_name(&self, plugin_id: &str) -> String {
         self.runtime
             .borrow()
             .slot(plugin_id)
-            .map(|slot| slot.info.name.clone())
+            .map(|slot| plugin_text(&slot.info, &slot.info.name))
             .unwrap_or_else(|| plugin_id.to_string())
     }
 
@@ -629,7 +725,7 @@ impl UiHost {
                 self.on_plugin_stopped(plugin_id);
                 self.notify(
                     NotifyLevel::Error,
-                    &format!("Plugin {name} crashed and was stopped"),
+                    &tr!("Plugin {} crashed and was stopped", isolate(&name)),
                     Some(message),
                     Some(&name),
                 );
@@ -707,9 +803,9 @@ impl UiHost {
                 }
                 self.notify(
                     NotifyLevel::Warning,
-                    &format!(
+                    &tr!(
                         "Filter {} was turned off after repeated errors",
-                        failure.filter_id
+                        isolate(&failure.filter_id)
                     ),
                     Some(&failure.message),
                     Some(&name),
@@ -915,6 +1011,102 @@ mod tests {
         });
     }
 
+    /// A plugin that cannot run is recorded in the audit log in English and
+    /// without isolation marks, whatever the interface's language; the
+    /// Plugins panel says why in that language.
+    #[test]
+    fn plugin_failures_are_audited_in_english() {
+        use eov_plugin_api::i18n;
+        run_on_slint_ui_test_thread(|| {
+            let _clear = ClearHost;
+            struct English;
+            impl Drop for English {
+                fn drop(&mut self) {
+                    i18n::set_catalog(i18n::source(), None);
+                }
+            }
+            let _english = English;
+            let arabic = i18n::by_tag("ar").unwrap();
+            let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+                None,
+                "requires eov {required} (bounded to {bounded}); this is eov {version}",
+                &["يتطلب eov {required} (أي {bounded})؛ هذا eov {version}"],
+            )];
+            i18n::set_catalog(
+                arabic,
+                Some(i18n::Catalog::from_messages(arabic, "", messages).unwrap()),
+            );
+            // A package for an eov of the far future.
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let package = std::fs::File::create(plugin_dir.path().join("future.eop")).unwrap();
+            let mut builder = tar::Builder::new(package);
+            let files: [(&str, &[u8]); 2] = [
+                (
+                    "plugin.toml",
+                    b"id = \"future_audit\"\nname = \"Future\"\nversion = \"1.0.0\"\n\
+                      entry_ui = \"ui/panel.slint\"\nentry_component = \"Panel\"\n\n\
+                      [environment]\nversion = \">=99.0.0\"\n",
+                ),
+                (
+                    "ui/panel.slint",
+                    b"export component Panel inherits Window {}",
+                ),
+            ];
+            for (name, contents) in files {
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::file());
+                header.set_size(contents.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder.append_data(&mut header, name, contents).unwrap();
+            }
+            builder.finish().unwrap();
+            drop(builder);
+
+            let ui = AppWindow::new().unwrap();
+            let state = Arc::new(RwLock::new(AppState::new()));
+            let tile_cache = Arc::new(TileCache::with_limits(16, 16 << 20));
+            let timer = Rc::new(Timer::default());
+            let host = init(
+                &ui,
+                &state,
+                &tile_cache,
+                &timer,
+                InitOptions {
+                    plugin_dir: plugin_dir.path().to_path_buf(),
+                    safe_mode: false,
+                },
+            );
+            let english = format!(
+                "Failed: requires eov >=99.0.0 (bounded to >=99.0.0, <100.0.0); this is eov {}",
+                crate::version::BUILD_VERSION
+            );
+            let audit =
+                std::fs::read_to_string(crate::paths::data_dir().join("audit.jsonl")).unwrap();
+            let recorded = audit
+                .lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .filter(|line| line["event"] == "session_started")
+                .flat_map(|line| line["plugins"].as_array().cloned().unwrap_or_default())
+                .find(|plugin| plugin["plugin"] == "future_audit")
+                .expect("the session's plugins are recorded");
+            assert_eq!(recorded["state"], english.as_str());
+
+            host.refresh_plugin_panel();
+            let row = ui
+                .get_plugin_rows()
+                .iter()
+                .find(|row| row.id == "future_audit")
+                .expect("the package is listed");
+            assert!(
+                row.status.contains("يتطلب eov \u{2068}>=99.0.0\u{2069}"),
+                "{}",
+                row.status
+            );
+            host.shutdown();
+        });
+    }
+
     /// The viewport menu's landmark commands place numbered markers and
     /// align the linked panes.
     #[test]
@@ -983,6 +1175,61 @@ mod tests {
                     .is_none()
             );
             host.shutdown();
+        });
+    }
+
+    /// A change of language makes the host's own texts again (the open
+    /// panels, the undo tooltip, the overlays' tooltips, the note of the
+    /// last update check) without borrowing anything twice. The texts are
+    /// those of whatever catalogs are compiled in, so only their presence
+    /// is checked.
+    #[test]
+    fn a_language_change_makes_the_host_texts_again() {
+        use crate::overlay::store::Owner;
+        use eov_plugin_api::i18n;
+        run_on_slint_ui_test_thread(|| {
+            /// Back to English however the test ends.
+            struct English<'a>(&'a AppWindow);
+            impl Drop for English<'_> {
+                fn drop(&mut self) {
+                    crate::i18n::switch_to(self.0, i18n::source());
+                }
+            }
+            let setup = crate::test_support::HostWithSlide::new();
+            let (host, ui) = (&setup.host, &setup.ui);
+            let file = eov_plugin_api::protocol::FileId::from(setup.file_id);
+            let roi = eov_plugin_api::protocol::Rect {
+                x: 10.0,
+                y: 20.0,
+                width: 100.0,
+                height: 50.0,
+            };
+            host.apply_host_edit(file, HostEdit::SetRoi(Some(roi)), true);
+            host.open_measurements_panel();
+            host.open_shortcuts_panel();
+            host.plugin_update_check
+                .set(Some(panel::UpdateCheck::Found(2)));
+            let _english = English(ui);
+            crate::i18n::switch_to(ui, i18n::by_tag("de").unwrap());
+
+            assert!(!ui.get_plugins_update_note().is_empty());
+            assert!(!ui.get_undo_label().is_empty());
+            assert!(!ui.get_measure_mode_label().is_empty());
+            assert!(ui.get_measurements_panel_visible());
+            assert_eq!(ui.get_measurement_rows().row_count(), 1);
+            assert!(ui.get_shortcuts_panel_visible());
+            assert!(ui.get_shortcut_rows().row_count() > 0);
+            let layer = host
+                .store
+                .layer(
+                    &Owner::Host,
+                    &crate::interaction::measure::roi_layer_id(file),
+                )
+                .expect("the region's layer");
+            let tooltip = layer
+                .object(crate::interaction::measure::ROI_OBJECT)
+                .and_then(|object| object.object.tooltip.clone());
+            assert!(tooltip.is_some_and(|tooltip| !tooltip.is_empty()));
         });
     }
 

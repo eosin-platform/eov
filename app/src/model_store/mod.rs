@@ -33,6 +33,7 @@ pub(crate) mod test_server;
 pub(crate) use fetch::{FetchError, FetchProgress, ModelClient};
 
 use crate::update::policy::{Policy, redacted_url};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{
     ModelCompanion, ModelFetchArgs, ModelRecord, check_model_file_name, is_sha256_hex,
 };
@@ -262,19 +263,33 @@ impl ModelRequest {
         self.name
             .clone()
             .or_else(|| self.main.file_name.clone())
-            .unwrap_or_else(|| format!("the model {}", &self.main.sha256[..12]))
+            .unwrap_or_else(|| {
+                // Translators: a model that has no name, by the start of
+                // its SHA-256. It takes the place of a model's name in other
+                // messages, always after a verb or a preposition: "Download
+                // {}?", "Cannot download {}", "no download address is set
+                // for {}"; write it so that it fits there as it is.
+                tr!("the model {}", &self.main.sha256[..12])
+            })
     }
 }
 
-/// A file name the store accepts (not its own record).
+/// A file name the store accepts (not its own record); why not in the
+/// interface's language.
 fn check_store_file_name(name: &str) -> Result<(), String> {
     check_model_file_name(name)?;
-    if name.eq_ignore_ascii_case(RECORD_FILE) {
-        return Err(format!(
-            "'{name}' is reserved for eov's record of the model"
+    if is_record_file(name) {
+        return Err(tr!(
+            "'{}' is reserved for eov's record of the model",
+            isolate(name)
         ));
     }
     Ok(())
+}
+
+/// Whether `name` is the store's own record of a model.
+fn is_record_file(name: &str) -> bool {
+    name.eq_ignore_ascii_case(RECORD_FILE)
 }
 
 /// The last path segment of a URL, percent-decoded.
@@ -341,20 +356,22 @@ pub(crate) fn check_url(url: &Url, policy: &Policy) -> Result<(), FetchError> {
                 .is_some_and(crate::update::transport::is_loopback_host)
                 || policy.allows_plain_http(url) => {}
         "http" => {
-            return Err(refused(format!(
+            // Translators: model_url_prefixes is the name of a setting.
+            return Err(refused(tr!(
                 "{} uses plain HTTP; models are downloaded over HTTPS (or from a server the administrator's model_url_prefixes names)",
-                redacted_url(url)
+                isolate(redacted_url(url))
             )));
         }
         other => {
-            return Err(refused(format!(
-                "{} is not an http(s) URL ({other})",
-                redacted_url(url)
+            return Err(refused(tr!(
+                "{url} is not an http(s) URL ({scheme})",
+                url = isolate(redacted_url(url)),
+                scheme = other
             )));
         }
     }
     if url.host_str().is_none_or(str::is_empty) {
-        return Err(refused(format!("{url} names no server")));
+        return Err(refused(tr!("{} names no server", isolate(url))));
     }
     policy
         .ensure_model_download_allowed(url)
@@ -391,8 +408,13 @@ pub(crate) fn plan_download(
     stored: Option<&StoredModel>,
 ) -> Result<DownloadPlan, FetchError> {
     let parse = |text: &str| {
-        Url::parse(text)
-            .map_err(|error| FetchError::Invalid(format!("'{text}' is not a URL: {error}")))
+        Url::parse(text).map_err(|error| {
+            FetchError::Invalid(tr!(
+                "'{text}' is not a URL: {error}",
+                text = isolate(text),
+                error = error
+            ))
+        })
     };
     let given_main = request.main.url.as_deref().map(parse).transpose()?;
     let (main_url, main_from_policy) = match (policy.model_url(&request.main.sha256), &given_main) {
@@ -411,11 +433,13 @@ pub(crate) fn plan_download(
                 .iter()
                 .find_map(|url| url_file_name(url))
                 .ok_or_else(|| {
-                    FetchError::Invalid(format!(
+                    FetchError::Invalid(tr!(
                         "{} does not end in a file name; give the file's name",
-                        urls.first()
-                            .map(|url| redacted_url(url))
-                            .unwrap_or_default()
+                        isolate(
+                            urls.first()
+                                .map(|url| redacted_url(url))
+                                .unwrap_or_default()
+                        )
                     ))
                 })?,
         };
@@ -448,22 +472,27 @@ pub(crate) fn plan_download(
             (Some(url), _) => url.clone(),
             (None, Some(name)) => percent_encoding::utf8_percent_encode(name, SEGMENT).to_string(),
             (None, None) => {
-                return Err(FetchError::Invalid(
-                    "a companion file needs a URL or a file name".to_string(),
-                ));
+                return Err(FetchError::Invalid(tr!(
+                    "a companion file needs a URL or a file name"
+                )));
             }
         };
-        let given = main_url
-            .join(&reference)
-            .map_err(|error| FetchError::Invalid(format!("'{reference}' is not a URL: {error}")))?;
+        let given = main_url.join(&reference).map_err(|error| {
+            FetchError::Invalid(tr!(
+                "'{text}' is not a URL: {error}",
+                text = isolate(&reference),
+                error = error
+            ))
+        })?;
         let (url, from_policy) = match policy.model_url(&companion.sha256) {
             Some(url) => (parse(url)?, true),
             None => (given.clone(), false),
         };
         let file_name = name_of(&companion.file_name, &[&given, &url])?;
         if names.contains(&file_name.to_ascii_lowercase()) {
-            return Err(FetchError::Invalid(format!(
-                "two files of the model are named '{file_name}'"
+            return Err(FetchError::Invalid(tr!(
+                "two files of the model are named '{}'",
+                isolate(&file_name)
             )));
         }
         names.push(file_name.to_ascii_lowercase());
@@ -607,7 +636,8 @@ impl ModelStore {
         self.root.join(PARTIAL_DIR)
     }
 
-    /// The model in the folder `dir`, if its record is readable and names it.
+    /// The model in the folder `dir`, if its record is readable and names it
+    /// (why not in English: the log and `eov model verify` say it).
     fn read_entry(dir: &Path, read_only: bool) -> Result<StoredModel, String> {
         let name = dir
             .file_name()
@@ -626,7 +656,12 @@ impl ModelStore {
         for file_name in
             std::iter::once(&record.file_name).chain(record.companions.iter().map(|c| &c.file_name))
         {
-            check_store_file_name(file_name)?;
+            check_model_file_name(file_name)?;
+            if is_record_file(file_name) {
+                return Err(format!(
+                    "'{file_name}' is reserved for eov's record of the model"
+                ));
+            }
         }
         Ok(StoredModel {
             record,
@@ -1030,12 +1065,12 @@ impl ModelStore {
                     Some(have) => {
                         let all: Vec<&StagedFile> = main.iter().chain(&companions).collect();
                         cleanup(&all);
-                        return Err(FetchError::Conflict(format!(
-                            "the stored model {} has a different {} (SHA-256 {}); remove it first (eov model remove {})",
-                            model.record.sha256,
-                            have.file_name,
-                            have.sha256,
-                            &model.record.sha256[..12]
+                        return Err(FetchError::Conflict(tr!(
+                            "the stored model {model} has a different {file} (SHA-256 {sha256}); remove it first (eov model remove {id})",
+                            model = isolate(&model.record.sha256),
+                            file = isolate(&have.file_name),
+                            sha256 = isolate(&have.sha256),
+                            id = &model.record.sha256[..12]
                         )));
                     }
                     None => {
@@ -1070,7 +1105,7 @@ impl ModelStore {
             cleanup(&all);
             return Err(FetchError::Local {
                 path: target,
-                message: "the model's main file went missing from the store".to_string(),
+                message: tr!("the model's main file went missing from the store"),
             });
         };
         // A folder without a readable record is a leftover: replace it.

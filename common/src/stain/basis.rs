@@ -399,30 +399,48 @@ pub fn classify_stain_label(label: Option<&str>) -> StainLabelKind {
     if IHC_TOKENS.iter().any(|t| has(t)) || lower.contains("immunohisto") {
         return StainLabelKind::Immunohistochemistry;
     }
-    for (needle, name) in [
-        ("trichrome", "Masson trichrome"),
-        ("masson", "Masson trichrome"),
-        ("giemsa", "Giemsa"),
-        ("reticulin", "Reticulin"),
-        ("congo", "Congo red"),
-        ("gieson", "Van Gieson"),
-        ("elastic", "Elastic"),
-        ("alcian", "Alcian blue"),
-        ("perls", "Perls' Prussian blue"),
-        ("gram", "Gram"),
-        ("grocott", "Grocott methenamine silver"),
-        ("gms", "Grocott methenamine silver"),
-        ("mucicarmine", "Mucicarmine"),
-        ("ziehl", "Ziehl–Neelsen"),
-    ] {
+    for (needle, name) in SPECIAL_STAINS {
         if lower.contains(needle) {
             return StainLabelKind::Special(name.to_string());
         }
     }
     if has("pas") || lower.contains("periodic acid") {
-        return StainLabelKind::Special("PAS".to_string());
+        return StainLabelKind::Special(PAS.to_string());
     }
     StainLabelKind::Unknown
+}
+
+/// Special stains a label names: a word in the label, and the stain's name.
+const SPECIAL_STAINS: [(&str, &str); 14] = [
+    ("trichrome", "Masson trichrome"),
+    ("masson", "Masson trichrome"),
+    ("giemsa", "Giemsa"),
+    ("reticulin", "Reticulin"),
+    ("congo", "Congo red"),
+    ("gieson", "Van Gieson"),
+    ("elastic", "Elastic"),
+    ("alcian", "Alcian blue"),
+    ("perls", "Perls' Prussian blue"),
+    ("gram", "Gram"),
+    ("grocott", "Grocott methenamine silver"),
+    ("gms", "Grocott methenamine silver"),
+    ("mucicarmine", "Mucicarmine"),
+    ("ziehl", "Ziehl–Neelsen"),
+];
+
+/// Periodic acid–Schiff, named by its abbreviation.
+const PAS: &str = "PAS";
+
+/// The names [`StainLabelKind::Special`] can hold (in English, without
+/// repeats): for interfaces that show them in another language.
+pub fn special_stain_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = Vec::new();
+    for name in SPECIAL_STAINS.iter().map(|(_, name)| *name).chain([PAS]) {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
 }
 
 /// The preset that best matches a slide's stain label, if any.
@@ -438,30 +456,66 @@ pub fn suggested_preset(label: Option<&str>) -> Option<StainPreset> {
     }
 }
 
-/// A user-facing warning when the selected stain model does not fit the
-/// slide's stain label (CLR-8), e.g. H&E normalisation on an IHC slide,
-/// which would turn DAB brown into eosin pink.
+/// The H&E stain model is used on a slide whose stain label names another
+/// stain (CLR-8): what [`stain_model_warning`] warns about, as data for
+/// interfaces that word it in another language. Its `Display` is the
+/// warning in English.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StainModelMismatch {
+    /// The label (as written, trimmed) names immunohistochemistry: DAB and
+    /// other chromogens show in the wrong colours.
+    Immunohistochemistry { label: String },
+    /// The label names a special stain (its name in English, one of
+    /// [`special_stain_names`]), which hematoxylin and eosin cannot
+    /// represent.
+    Special(String),
+}
+
+impl std::fmt::Display for StainModelMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Immunohistochemistry { label } => write!(
+                f,
+                "This slide is labelled \"{label}\" (immunohistochemistry), but the H&E stain \
+                 model is selected; DAB and other chromogens will be shown in the wrong \
+                 colours. Use the H-DAB stain preset instead."
+            ),
+            Self::Special(name) => write!(
+                f,
+                "This slide is labelled as a {name} stain, but the H&E stain model is \
+                 selected; its colours cannot be represented by hematoxylin and eosin."
+            ),
+        }
+    }
+}
+
+/// Whether the selected stain model does not fit the slide's stain label
+/// (CLR-8), e.g. H&E normalisation on an IHC slide, which would turn DAB
+/// brown into eosin pink; [`stain_model_warning`] says it in English.
 ///
 /// `uses_he_model` is `true` when H&E normalisation or the H&E deconvolution
 /// preset is active. Returns `None` when there is nothing to warn about
 /// (including unlabelled slides).
-pub fn stain_model_warning(label: Option<&str>, uses_he_model: bool) -> Option<String> {
+pub fn stain_model_mismatch(
+    label: Option<&str>,
+    uses_he_model: bool,
+) -> Option<StainModelMismatch> {
     if !uses_he_model {
         return None;
     }
     match classify_stain_label(label) {
-        StainLabelKind::Immunohistochemistry => Some(format!(
-            "This slide is labelled \"{}\" (immunohistochemistry), but the H&E stain model \
-             is selected; DAB and other chromogens will be shown in the wrong colours. \
-             Use the H-DAB stain preset instead.",
-            label.unwrap_or_default().trim()
-        )),
-        StainLabelKind::Special(name) => Some(format!(
-            "This slide is labelled as a {name} stain, but the H&E stain model is selected; \
-             its colours cannot be represented by hematoxylin and eosin."
-        )),
+        StainLabelKind::Immunohistochemistry => Some(StainModelMismatch::Immunohistochemistry {
+            label: label.unwrap_or_default().trim().to_string(),
+        }),
+        StainLabelKind::Special(name) => Some(StainModelMismatch::Special(name)),
         StainLabelKind::HematoxylinEosin | StainLabelKind::Unknown => None,
     }
+}
+
+/// A user-facing warning (in English) when the selected stain model does
+/// not fit the slide's stain label: [`stain_model_mismatch`] as text.
+pub fn stain_model_warning(label: Option<&str>, uses_he_model: bool) -> Option<String> {
+    stain_model_mismatch(label, uses_he_model).map(|mismatch| mismatch.to_string())
 }
 
 #[cfg(test)]
@@ -562,6 +616,57 @@ mod tests {
             StainLabelKind::Unknown
         );
         assert_eq!(classify_stain_label(Some("theme")), StainLabelKind::Unknown);
+    }
+
+    /// The warnings' English is what it was before they were data too.
+    #[test]
+    fn stain_model_warnings_keep_their_english() {
+        assert_eq!(
+            stain_model_warning(Some("  Ki-67 "), true).as_deref(),
+            Some(
+                "This slide is labelled \"Ki-67\" (immunohistochemistry), but the H&E stain \
+                 model is selected; DAB and other chromogens will be shown in the wrong \
+                 colours. Use the H-DAB stain preset instead."
+            )
+        );
+        assert_eq!(
+            stain_model_mismatch(Some("  Ki-67 "), true),
+            Some(StainModelMismatch::Immunohistochemistry {
+                label: "Ki-67".into()
+            })
+        );
+        assert_eq!(
+            stain_model_warning(Some("Congo red"), true).as_deref(),
+            Some(
+                "This slide is labelled as a Congo red stain, but the H&E stain model is \
+                 selected; its colours cannot be represented by hematoxylin and eosin."
+            )
+        );
+        assert_eq!(stain_model_mismatch(Some("IHC"), false), None);
+        // Every name a label can be classified as is listed, once.
+        let names = special_stain_names();
+        assert_eq!(names.len(), 13, "{names:?}");
+        for label in [
+            "trichrome",
+            "giemsa",
+            "reticulin",
+            "congo",
+            "van gieson",
+            "elastic",
+            "alcian",
+            "perls",
+            "gram",
+            "gms",
+            "mucicarmine",
+            "ziehl",
+            "periodic acid",
+        ] {
+            let Some(StainModelMismatch::Special(name)) = stain_model_mismatch(Some(label), true)
+            else {
+                panic!("{label} is a special stain");
+            };
+            assert!(names.contains(&name.as_str()), "{name}");
+        }
     }
 
     #[test]

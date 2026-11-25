@@ -1,5 +1,6 @@
 // Small controls shared by the floating panels (Quantify Stain, Heat Map).
 
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 
 export component Chip inherits Rectangle {
@@ -60,6 +61,7 @@ export component NumberField inherits Rectangle {
             text: root.label;
             color: Theme.text-secondary;
             font-size: 10px;
+            horizontal-alignment: Locale.start;
             accessible-role: none;
         }
 

@@ -1,0 +1,122 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"ツールバーボタン、サイドバー、オーバーレイレイヤー、元に戻せるポイントツー"
+"ル、フィルター、バックグラウンドジョブのサンプルです。"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "サンプルプラグイン"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "サンプルのチェッカーボードスライド"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "サンプルのサイドバー"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "マーカーを配置"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "色を反転"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "反転"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "各スライドの組織の割合と組織の平均色"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "ピクセル数がこの値以下の最も細かいレベルを読み込む"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "マーカー"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "マーカー {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "マーカーを追加"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "10 までカウント"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step}/{total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "ここにマーカーを追加"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "開いているスライドのマーカー：{n} 個"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "サンプルプラグイン"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "スライドなし"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "マーカー {n} 個"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "マーカーをクリア"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "色を反転"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "バックグラウンドジョブを実行"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "概要を表示"

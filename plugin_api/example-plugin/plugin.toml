@@ -21,3 +21,8 @@ extensions = ["excheck"]
 
 [ui]
 slint = ">=1.17"
+
+# The plugin is translated: gettext catalogs in
+# translations/<tag>/LC_MESSAGES/example_plugin.po (the domain is the id).
+[i18n]
+catalogs = "translations"

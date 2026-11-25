@@ -51,7 +51,7 @@ FEATURES = [
   ("Managed deployment", "F", "53fa2fc", "`policy.toml`, system plugin directories, `eov plugin lock` / `sync`."),
   ("Single instance and multi-instance safety", "F", "3b5904d 53fa2fc 2cedb1b", ""),
   ("Accessibility", "F", "cd7bc2d 8db0f7b 558fa52 e5af868 c634b7b", "Accessible roles, names, states and default actions on the window's controls (checked through Slint's testing backend; no screen reader was run), keyboard access to every dialog and panel, and light and high-contrast themes (contrast tested)."),
-  ("Localisation", "P", "260686e", "The window's texts are marked for translation and catalogs under app/translations are compiled in; no translations ship yet, and texts made in Rust (status messages, menus built in Rust) stay English."),
+  ("Localisation", "F", "260686e", "31 languages (English and 30 machine-drafted translations awaiting native review): the window's `@tr` texts and the texts made in Rust (`tr!`) are translated from gettext catalogs compiled in; the language follows `--language`, the Language dialog (`language` in config.toml) or the system's, and switches at runtime; plugins ship their own catalogs (`[i18n]`) and follow; RTL text is aligned and isolated (layouts are not mirrored, Slint 1.19 cannot); CLI output, logs, files and text burned into exports stay English. See docs/translating.md."),
   ("Diagnostics", "F", "3620def", "Session log, crash reports, Open Log Folder."),
  ]),
  ("14.5 Analysis and research workflows", [

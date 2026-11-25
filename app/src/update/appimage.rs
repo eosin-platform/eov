@@ -9,6 +9,7 @@
 
 use super::registry::sync_directory;
 use anyhow::{Context, Result};
+use eov_plugin_api::i18n::{isolate, tr};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +34,7 @@ pub fn replace(current: &Path, staged: tempfile::TempPath) -> Result<Option<Path
     staged
         .persist(current)
         .map_err(|error| error.error)
-        .with_context(|| format!("could not replace {}", current.display()))?;
+        .with_context(|| tr!("could not replace {}", isolate(current.display())))?;
     if let Some(parent) = current.parent() {
         sync_directory(parent);
     }

@@ -1,0 +1,264 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Do celów badawczych i edukacyjnych. Nie jest wyrobem medycznym; nie jest przeznaczony do diagnostyki pierwotnej.	Safety text of the Home screen: translate in full, never shorten or soften.
+not a medical device	nie jest wyrobem medycznym	Regulatory term „wyrób medyczny” (MDR; ustawa o wyrobach medycznych). Never „urządzenie medyczne”.
+primary diagnosis	diagnostyka pierwotna	The first, final diagnosis of a case: „nie jest przeznaczony do diagnostyki pierwotnej”.
+not for diagnosis	nie do celów diagnostycznych	Never weaken to „niezalecany” or „nie powinien”.
+research use only (RUO)	wyłącznie do użytku badawczego (RUO)	The phrase printed on RUO reagents; keep RUO.
+synthetic (image, channel, stain)	syntetyczny	Computed by an algorithm. Never „sztuczny”, „fałszywy” or „symulowany”.
+predicted	przewidywany; predykcja	A prediction is not a measurement: „kanał przewidywany przez model”.
+generated	wygenerowany	Computed by a model or an algorithm.
+slide	preparat	Histological slide and its scan („preparat histologiczny”). Never „slajd”. The glass itself: „szkiełko”.
+whole-slide image (WSI)	obraz całego preparatu (WSI)	Keep the abbreviation WSI: „pliki WSI”.
+slide viewer, viewer	przeglądarka preparatów, przeglądarka	
+tab	karta	One open slide in a pane, as in a browser („nowa karta”). Not „zakładka” (that is a bookmark).
+pane	okienko	One of the side-by-side viewing areas (the Windows term for a pane): „podziel widok”, „połącz okienka”, „aktywne okienko”. Plural „okienka”, genitive „okienek”.
+panel	panel	A section of the window (Kanały, Wtyczki, Pomiary…).
+view	widok	What a pane shows (position, magnification, rotation): „poprzedni widok”.
+viewport	obszar widoku	The area of a pane where the slide is drawn.
+viewport lock	Synchronizacja widoków	Toolbar toggle that links the views of panes showing the same slide.
+minimap	minimapa	
+scale bar	pasek skali	The bar showing a physical length (µm, mm).
+HUD	panel pływający	Panels floating over the slide: „pływający panel metadanych”.
+toolbar	pasek narzędzi	
+sidebar	panel boczny	
+status bar	pasek stanu	
+series bar	pasek serii	The bar listing the slides and folders of the current folder.
+Home screen	ekran startowy	The Home tab itself: „Start”.
+zoom	powiększenie	Screen scale (100% = one slide pixel per screen pixel). Zoom in/out: „Powiększ”/„Pomniejsz”; digital zoom: „powiększenie cyfrowe”.
+magnification (20×)	powiększenie (20×)	Objective-equivalent optical magnification; 20× stays 20×.
+objective, objective power	obiektyw, powiększenie obiektywu	
+pixel size	rozmiar piksela	
+MPP (µm per pixel)	MPP (µm na piksel)	MPP stays.
+calibration	kalibracja	
+level, pyramid level	poziom, poziom piramidy	„piksele poziomu 0”.
+tile	kafelek	Plural „kafelki”, genitive „kafelków”. Also a dataset patch.
+patch (dataset)	kafelek	Patch extraction: „wycinanie kafelków”. Not „wycinek” (a biopsy specimen) and not „łatka”.
+grid cell (tissue QC)	pole siatki	A cell of the QC grid, not a biological cell: „345 pól siatki z tkanką”.
+downsample	współczynnik zmniejszenia	Level-0 pixels per heat-map pixel.
+cache	pamięć podręczna	
+region of interest (ROI)	obszar zainteresowania (ROI)	Keep ROI as the abbreviation.
+region (annotation)	obszar	A drawn area.
+measurement	pomiar	„wszystkie pomiary”, „zaznaczony pomiar”.
+Measure (tool)	Pomiar	Tool name; verbs „mierzyć”, „zmierzyć”.
+distance	odległość	
+path length	długość linii łamanej	Measure mode of a polyline.
+area	powierzchnia	„powierzchnia wielokąta”. Not „pole”, which is kept for fields of view.
+angle	kąt	
+polygon	wielokąt	
+polyline	linia łamana	
+rectangle	prostokąt	
+ellipse	elipsa	
+outline	kontur	
+annotation	adnotacja	A drawn mark with a meaning; a free-text comment is „komentarz”.
+class (annotation class)	klasa	E.g. „Nowotwór”, „Podścielisko”; „klasa adnotacji”.
+layer	warstwa	
+overlay	nakładka	Graphics drawn over the slide.
+cell count, counting	liczba komórek, zliczanie komórek	
+high-power field (HPF)	pole widzenia dużego powiększenia (HPF)	Keep HPF as the abbreviation: „pole HPF” (a placed field), „mitozy na 10 HPF”.
+field number (FN)	numer pola widzenia (FN)	Eyepiece field number in mm.
+density	gęstość	E.g. cells per mm².
+H&E	H&E	Hematoksylina i eozyna; keep the abbreviation H&E.
+hematoxylin	hematoksylina	One-letter abbreviation H.
+eosin	eozyna	One-letter abbreviation E.
+IHC	IHC	Immunohistochemia; keep the abbreviation.
+DAB	DAB	Chromogen: „DAB-dodatni”.
+stain (staining, stain type)	barwienie	The method or type: „barwienie H&E”, „normalizacja barwienia”.
+stain (one dye of a stain model)	barwnik	„wyodrębniony barwnik”, „wektory barwników”, „model barwienia ma 2 barwniki”.
+stain normalization	normalizacja barwienia	Macenko and Vahadane stay undeclined: „normalizacja barwienia metodą Macenko”.
+stain target	wzorzec barwienia	The appearance normalisation maps slides onto.
+stain model	model barwienia	E.g. H&E, H-DAB.
+stain vectors	wektory barwników	
+stain fit	dopasowanie barwników	Estimating a slide's stain vectors.
+color deconvolution	dekonwolucja barw	Ruifrok–Johnston stays.
+colour management	zarządzanie kolorami	
+colour profile (ICC)	profil kolorów (ICC)	
+colours as scanned	kolory ze skanu	Shown without colour management.
+H-score	H-score	Kept as in Polish pathology reports.
+weak / moderate / strong (1+, 2+, 3+)	słabe / umiarkowane / silne (1+, 2+, 3+)	Staining intensity classes (agree with „barwienie”).
+optical density	gęstość optyczna	
+quantify, quantification	analizować ilościowo, analiza ilościowa	Panel and menu: „Analiza ilościowa barwienia”; button: „Analizuj”.
+threshold	próg	„wartość progowa” where clearer.
+histogram	histogram	
+channel	kanał	
+display window (of a channel), lower / upper end	okno, dolna / górna granica	The range of sample values mapped from black to full colour.
+colour-blind safe (palette)	dla daltonistów	
+multiplex immunofluorescence (mIF)	multipleksowa immunofluorescencja (mIF)	
+marker	marker	Marker names (CD3, Ki-67, PanCK…) are never translated.
+focal plane (Z)	płaszczyzna ogniskowa (Z)	The stack of planes: „stos Z”.
+time point (T), time series	punkt czasowy (T), seria czasowa	
+heat map	mapa cieplna	
+opacity	krycie	0–100%, as in image editors.
+tissue	tkanka	
+tissue QC	kontrola jakości tkanki (QC)	
+pen marks	ślady pisaka	Marks of a marker pen on the glass. Not „ślady markera” (a marker is a protein).
+folds	fałdy	„fałdy tkanki”.
+blur, out of focus	rozmycie, nieostry	
+tissue detection, tissue mask	wykrywanie tkanki, maska tkanki	
+background	tło	
+dataset	zbiór danych	
+stride	krok	The step between patches.
+export	eksportuj; eksport	Menu item „Eksportuj obraz…”; dialog title „Eksport obrazu”.
+figure (export section)	rycina	As in scientific publications.
+stroke, caps (line style)	linia, zakończenia	„Ciągła / Kreskowa / Kropkowa”; „Zaokrąglone / Kwadratowe / Płaskie”.
+save a copy	zapisz kopię	
+convert	konwertuj	„Konwertuj kolory do sRGB”.
+de-identify	usuń dane identyfikujące	Remove patient-identifying data (label, macro image, metadata). Adjective: „bez danych identyfikujących”. Not „anonimizuj”, which promises more.
+label image	obraz etykiety	Caption: „Etykieta”.
+macro image	obraz makro	Photo of the whole glass slide. Caption: „Makro”.
+overview image	obraz przeglądowy	Caption: „Przegląd”.
+thumbnail	miniatura	
+bookmark	zakładka	A saved view of a slide.
+session	sesja	
+case	przypadek	The patient case slides belong to.
+vendor, scanner	producent, skaner	
+property (of a slide)	właściwość	
+metadata	metadane	
+plugin	wtyczka	Plural „wtyczki”, genitive plural „wtyczek”.
+package (.eop)	pakiet (.eop)	„pakiet wtyczki”.
+model, model store	model, magazyn modeli	Machine-learning model files.
+inference	inferencja	Running a model on images.
+batch	partia	
+thread	wątek	Processor core: „rdzeń”.
+render	renderować, renderowanie	
+renderer (CPU, GPU)	renderer (CPU, GPU)	„renderer GPU”, „renderer programowy” (software). CPU and GPU stay.
+graphics adapter	adapter graficzny	„programowe adaptery graficzne” for software rasterisers.
+filtering (bilinear, trilinear, Lanczos)	filtrowanie (dwuliniowe, trójliniowe, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	ostrość, gamma, jasność, kontrast	Gamma symbol γ.
+image adjustments	korekty obrazu	
+theme (dark, light, high contrast)	motyw (ciemny, jasny, wysoki kontrast)	
+Check for Updates…	Sprawdź aktualizacje…	Asks before going online; never imply automatic background updates.
+update	aktualizacja; aktualizuj	
+self-update	aktualizacja z poziomu aplikacji	eov updating itself when asked; never „automatyczna aktualizacja”.
+release, prerelease, release notes	wydanie, wersja przedpremierowa, informacje o wydaniu	„manifest wydania”.
+release manifest, artifact	manifest wydania, artefakt	
+build (of eov)	kompilacja	„ta kompilacja eov”, „kompilacja deweloperska”.
+update helper	program pomocniczy aktualizacji	eov-update-helper stays as it is.
+staged (update)	przygotowany; oczekuje na instalację	Installed by the update helper after eov exits.
+cask (Homebrew)	pakiet cask	„tap” and „Caskroom” stay.
+lock file	plik blokady	
+signature	podpis	„podpisany”, „weryfikacja podpisu”.
+checksum	suma kontrolna	SHA-256 stays.
+hash, hashing	skrót, obliczanie skrótu	„funkcja skrótu”; SHA-256 stays.
+administrator policy	zasady administratora	„wyłączone przez zasady administratora {}”.
+safe mode	tryb awaryjny	
+log, log folder	dziennik, folder dzienników	
+messages	komunikaty	The notification list in the status bar.
+crash, crashed	awaria, uległa awarii	„Wtyczka {} uległa awarii i została zatrzymana”.
+link (eov://…)	łącze	„łącze eov”.
+landmark (alignment)	punkt orientacyjny	
+align, alignment	wyrównać, wyrównanie	Of linked slides.
+link / unlink panes	połącz / rozłącz okienka	
+rotate, rotation	obróć, obrót	„Obróć w prawo o 90°”.
+flip horizontally	odbij w poziomie	
+pan	przesuń; przesuwanie	Moving the view.
+point, line, arrow, text	punkt, linia, strzałka, tekst	
+brush, eraser	pędzel, gumka	
+hole (of a polygon)	otwór	
+comment, author	komentarz, autor	
+nucleus, nuclei	jądro, jądra	Cell nuclei: „jądra komórkowe”.
+tumour cells	komórki nowotworowe	
+reader (of annotations)	oceniający	Another pathologist reading the same slide.
+blinded copy	kopia zaślepiona	
+gamepad	kontroler do gier	
+Annotations (plugin name)	Adnotacje	Descriptive plugin name: translated.
+Gamepad (plugin name)	Kontroler do gier	Descriptive plugin name: translated.
+Example Plugin (plugin name)	Przykładowa wtyczka	Descriptive plugin name: translated.
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	Coined product names: never translated.
+eov	eov	Lowercase and undeclined; „program eov” where Polish needs a case ending („nie udało się uruchomić programu eov”), or rephrase.
+Open	Otwórz	Buttons and menu items use the imperative, sentence case; dialog titles are nouns („Eksport obrazu”).
+Close	Zamknij	
+Cancel	Anuluj	
+OK	OK	
+Save, Save…	Zapisz, Zapisz…	
+Delete	Usuń	
+Remove	Usuń	A plugin, an input, a heat map.
+Clear	Wyczyść	„Wyczyść pomiary”, „Wyczyść listę ostatnich plików”, „Wyczyść komunikaty”; a region of interest or landmarks are removed: „Usuń obszar zainteresowania”.
+Settings	Ustawienia	
+Apply	Zastosuj	
+Reset, Reset to Defaults	Resetuj, Przywróć domyślne	Reset Rotation: „Resetuj obrót”.
+Show / Hide	Pokaż / Ukryj	
+Toggle …	Pokaż/ukryj …; Włącz/wyłącz …	Toolbar toggles of panels / of features.
+Import	Importuj	
+Copy	Kopiuj	Status messages: „Skopiowano: {}”.
+Undo / Redo	Cofnij / Ponów	„Cofnij: {}”; undo-step labels are verbal nouns („Dodanie pomiaru”).
+Zoom in / Zoom out	Powiększ / Pomniejsz	
+Fit	Dopasuj	„Dopasuj preparat do okienka”.
+Enable / Disable	Włącz / Wyłącz	States: „Włączone” / „Wyłączone”.
+Confirm	Potwierdź	
+Done	Gotowe	
+Add	Dodaj	
+Edit	Edytuj	
+Rename	Zmień nazwę	
+Filter	Filtruj; filtr	
+Back / Forward / Up	Wstecz / Dalej / W górę	
+Next / Previous	Następny / Poprzedni	
+Browse…	Przeglądaj…	
+Download	Pobierz	
+Install / Uninstall	Zainstaluj / Odinstaluj	
+Restart	Uruchom ponownie	
+Quit	Zakończ	
+Retry	Ponów próbę	
+Lock / Unlock	Zablokuj / Odblokuj	
+Merge	Scal	
+Split Right	Podziel w prawo	Opens a second pane.
+Open Containing Folder	Otwórz lokalizację pliku	As in Windows Explorer.
+Select	Zaznacz; Wybierz	„Zaznacz” for objects on the slide, „Wybierz” for choosing an option or a file.
+Search	Szukaj	
+Help	Pomoc	
+Loading…	Wczytywanie…	
+Ready	Gotowe	
+Unknown / N/A (slide property)	Nieznane / Brak danych	Values of properties the file does not record.
+Could not …	Nie udało się …	Failures: „Nie udało się otworzyć {}”; „Nie można …” for what is impossible.
+Opened / Saved / Exported {}	Otwarto / Zapisano / Wyeksportowano {}	Status messages use impersonal past forms (-no/-to), which need no agreement with numbers or gender.
+Error / Warning / Information	Błąd / Ostrzeżenie / Informacja	
+Language	Język	Language names are capitalised list entries: „Niemiecki”.
+colour	kolor	Colour names agree with „kolor”: „Ciemnoniebieski”.
+keyboard shortcut, hotkey	skrót klawiaturowy	
+key	klawisz	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) stay as they are.
+tooltip	etykietka narzędzia	
+clipboard	schowek	
+folder, file manager	folder, menedżer plików	
+path	ścieżka	
+addressing the user	2nd person singular imperative, no pronouns	„Otwórz preparat, aby…”, or impersonal forms („Można…”, „Należy…”). Never „Pan/Pani”; never a capitalised „Ty”.
+ellipsis …	…	Kept at the end of items that open a dialog.
+quotation marks “ ”	„ ”	Polish quotes (U+201E, U+201D).
+number and unit	12 MB, 50%, 90°, 20×, 1024 × 768 px	Space before units; none before % or the ° of an angle.
+interval (0, 1]	(0; 1]	Polish interval notation uses a semicolon, as the decimal separator is a comma.
+PREDICTED — research use only, not for diagnosis	PREDYKCJA — wyłącznie do użytku badawczego, nie do celów diagnostycznych	Cellaris safety label over predicted colours: translate in full, never shorten.
+annotation database	baza danych adnotacji	Annotations plugin; its state under „BAZA DANYCH”: „Gotowa”, „Tylko do odczytu”.
+count point	punkt zliczania	A point placed with the Count tool: „punkty zliczania”, „Wyczyść zliczenia”.
+Count (tool, tab)	Zliczanie	„narzędzie Zliczanie (C)”, „karta Zliczanie”.
+HPF field	pole HPF	A placed high-power field: „Umieść tutaj pole HPF”, „{} /pole HPF”.
+review status: Draft / Verified / Rejected	Szkic / Zweryfikowana / Odrzucona	Status of an annotation (feminine); undo labels „Oznaczenie jako szkic / zweryfikowane / odrzucone”.
+Unclassified	Bez klasy	Annotations without a class.
+Unnamed, Untitled	Bez nazwy	
+second reader	drugi oceniający	Section „DRUGI OCENIAJĄCY”; „Porównaj z innym oceniającym…”.
+DICOM bulk annotations	adnotacje zbiorcze DICOM	Microscopy Bulk Simple Annotations stays as the DICOM name.
+even-odd rule	reguła parzystości (even-odd)	Area of self-crossing outlines.
+freehand outline	kontur odręczny	
+perimeter	obwód	
+Feret diameter, min caliper	maks. / min. średnica (Fereta)	
+combined positive score (CPS)	złożony wskaźnik pozytywności (CPS)	PD-L1 scoring; immune cells: „komórki immunologiczne”.
+region readout (Cellaris)	odczyt obszaru	Tool name „Odczyt obszaru Cellaris”.
+window (model input)	okno; okno predykcji	A square image the model predicts from: „{n} okien”.
+cell (Cellaris grid cell)	pole	A square of the slide predicted at once, not a biological cell: „{done} z {n} pól”.
+tissue block (5 µm square)	kwadrat tkanki	Not „blok”/„bloczek” (a paraffin block).
+display window (of a predicted marker)	okno wyświetlania	Ends: „Czerń” / „Biel”.
+spread (readout column)	rozrzut	Columns: „marker”, „średnia”, „rozrzut”, „r² gęstości”.
+bright-field	jasne pole	„obraz w jasnym polu”.
+reconstruction error	błąd rekonstrukcji	eovae; error map „mapa błędu”; MAE stays MAE.
+result cache	pamięć podręczna wyników	
+sidecar file	plik towarzyszący	A model's <model>.eovae.json.
+runtime (ONNX Runtime)	środowisko uruchomieniowe	ONNX Runtime stays and is neuter: „ONNX Runtime zostanie wczytane”.
+reference model; your site's model	model referencyjny; model placówki	„Kopia modelu udostępniona w placówce”.
+embeddings	wektory osadzeń	
+stick, trigger, D-pad	drążek, spust, krzyżak	Game controller parts: „Lewy drążek X”, „Lewy spust”, „Krzyżak w lewo”.
+shoulder button; face buttons (South/East/North/West)	przycisk ramienny; przycisk dolny / prawy / górny / lewy	
+dead zone, response curve	martwa strefa, krzywa odpowiedzi	
+mappings	przypisania	Gamepad actions assigned to controls: „przypisz drążek do akcji „Przesuń wskaźnik””.
+profile (gamepad)	profil	Plural genitive „profili”.
+marker (placed point, example plugin)	znacznik	Not „marker” (a protein).
+On / Off (small switch)	Wł. / Wył.	
+Not now	Nie teraz	
+Bring them in (import old annotations)	Zaimportuj	
+Back up…	Kopia zapasowa…	„Utwórz kopię zapasową bazy danych…”.

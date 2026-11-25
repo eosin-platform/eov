@@ -7,6 +7,7 @@
 use super::{NotifyLevel, UiHost, with_host};
 use crate::overlay::store::{Owner, StoredRaster};
 use eov_common::qc::{self, BLUR, FOLD, PEN, QcOptions, QcResult};
+use eov_plugin_api::i18n::{format_decimal, tr};
 use eov_plugin_api::protocol::{FileId, LayerSpec, Rect};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -60,24 +61,44 @@ fn overlay_pixels(result: &QcResult) -> Vec<u8> {
 /// One line for people: what share of the tissue each mark covers.
 pub(crate) fn summary_text(result: &QcResult) -> String {
     let s = &result.summary;
-    let percent = |share: f32| format!("{:.1} %", share * 100.0);
-    let tissue = s
-        .tissue_mm2
-        .map(|mm2| format!("{mm2:.1} mm² of tissue"))
-        .unwrap_or_else(|| format!("{} tissue cells", s.tissue_cells));
-    let pen = if s.pen_skipped {
-        "pen not checked (the stain looks like ink)".to_string()
-    } else {
-        format!("pen marks {}", percent(s.pen))
+    // Translators: a percentage, e.g. "25 %" or "0.4 %".
+    let percent = |share: f32| tr!("{} %", format_decimal(f64::from(share) * 100.0, 1));
+    let tissue = match s.tissue_mm2 {
+        // Translators: the area of tissue a check looked at.
+        Some(mm2) => tr!("{} mm² of tissue", format_decimal(mm2, 1)),
+        None => {
+            // Translators: how much tissue a check looked at when the slide has
+            // no pixel size: squares of the check's grid that hold tissue.
+            tr!("{n} grid square with tissue" | "{n} grid squares with tissue" % s.tissue_cells)
+        }
     };
-    let blur = s
-        .blur
-        .map(|share| format!(", possibly out of focus {}", percent(share)))
-        .unwrap_or_default();
-    format!(
-        "Tissue QC: {pen}, possible folds {}{blur} ({tissue})",
-        percent(s.fold)
-    )
+    let folds = percent(s.fold);
+    match (s.pen_skipped, s.blur) {
+        (false, Some(blur)) => tr!(
+            "Tissue QC: pen marks {pen}, possible folds {folds}, possibly out of focus {blur} ({tissue})",
+            pen = percent(s.pen),
+            folds = folds,
+            blur = percent(blur),
+            tissue = tissue
+        ),
+        (false, None) => tr!(
+            "Tissue QC: pen marks {pen}, possible folds {folds} ({tissue})",
+            pen = percent(s.pen),
+            folds = folds,
+            tissue = tissue
+        ),
+        (true, Some(blur)) => tr!(
+            "Tissue QC: pen not checked (the stain looks like ink), possible folds {folds}, possibly out of focus {blur} ({tissue})",
+            folds = folds,
+            blur = percent(blur),
+            tissue = tissue
+        ),
+        (true, None) => tr!(
+            "Tissue QC: pen not checked (the stain looks like ink), possible folds {folds} ({tissue})",
+            folds = folds,
+            tissue = tissue
+        ),
+    }
 }
 
 impl UiHost {
@@ -115,7 +136,7 @@ impl UiHost {
         });
         let stop = Arc::clone(&cancel);
         let job = self.start_host_job(
-            "Checking tissue quality",
+            &tr!("Checking tissue quality"),
             Some(Box::new(move || stop.store(true, Ordering::Relaxed))),
         );
         let spawned = std::thread::Builder::new()
@@ -159,7 +180,7 @@ impl UiHost {
             Err(error) => {
                 self.notify(
                     NotifyLevel::Error,
-                    "Tissue QC could not check this slide",
+                    &tr!("Tissue QC could not check this slide"),
                     Some(&error),
                     None,
                 );
@@ -170,12 +191,12 @@ impl UiHost {
         self.notify(
             NotifyLevel::Info,
             &summary_text(&result),
-            Some(
+            Some(&tr!(
                 "Blue: pen marks. Orange: possible folds (tissue much darker than the rest). \
                  Yellow: possibly out of focus (tissue without fine detail, such as fibrin or \
                  necrosis, can be marked too). The thresholds are relative to this slide; the \
-                 marks are for review, not measurements.",
-            ),
+                 marks are for review, not measurements."
+            )),
             None,
         );
         CHECKS.with(|checks| checks.borrow_mut().insert(file_id, Check::Done(result)));

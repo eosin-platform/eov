@@ -15,9 +15,11 @@
 
 use crate::engine::{
     Backend, Device, DevicePreference, EngineError, EngineInfo, EngineOutput, EngineRequest,
-    InferenceEngine,
+    InferenceEngine, no_cuda_support, reason_text,
 };
+use crate::message::{Message, cancelled};
 use crate::model::{ModelInfo, TensorType};
+use eov_plugin_api::i18n::{self, tr};
 use ort::ep::{self, ExecutionProvider};
 use ort::session::{RunOptions, Session, builder::GraphOptimizationLevel};
 use ort::value::{DynValue, TensorRef};
@@ -140,23 +142,25 @@ fn resolve_like_ort(path: &Path) -> PathBuf {
 /// load only once per process and keeps a failed load as if it had
 /// succeeded (with an empty library), so it is only ever given a library
 /// that passed this check.
-fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), String> {
+fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), Message> {
     let path = resolve_like_ort(path);
     // SAFETY: opening a library runs its initialisers, as loading it would;
     // `OrtGetApiBase` and `GetVersionString` are ONNX Runtime's stable C API,
     // take no arguments, and the version string is static and copied before
     // the handle is released.
     let version = unsafe {
-        let library =
-            libloading::Library::new(&path).map_err(|e| format!("it could not be opened: {e}"))?;
+        let library = libloading::Library::new(&path)
+            .map_err(|e| Message::new(|| tr!("it could not be opened: {}", e)))?;
         let get_api_base: libloading::Symbol<
             unsafe extern "system" fn() -> *const ort::sys::OrtApiBase,
-        > = library
-            .get(b"OrtGetApiBase")
-            .map_err(|_| "it is not ONNX Runtime (it has no OrtGetApiBase)".to_string())?;
+        > = library.get(b"OrtGetApiBase").map_err(|_| {
+            Message::new(|| tr!("it is not ONNX Runtime (it has no OrtGetApiBase)"))
+        })?;
         let base = get_api_base();
         if base.is_null() {
-            return Err("it is not ONNX Runtime (OrtGetApiBase returned nothing)".to_string());
+            return Err(Message::new(|| {
+                tr!("it is not ONNX Runtime (OrtGetApiBase returned nothing)")
+            }));
         }
         let version = ((*base).GetVersionString)();
         (!version.is_null()).then(|| {
@@ -168,9 +172,13 @@ fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), String> {
     if let Some(version) = &version
         && runtime_too_old(version)
     {
-        return Err(format!(
-            "it is ONNX Runtime {version}, older than 1.{MIN_RUNTIME_MINOR}"
-        ));
+        return Err(Message::new(|| {
+            tr!(
+                "it is ONNX Runtime {version}, older than {oldest}",
+                version = i18n::isolate(version),
+                oldest = i18n::isolate(format!("1.{MIN_RUNTIME_MINOR}"))
+            )
+        }));
     }
     Ok((path, version))
 }
@@ -238,8 +246,13 @@ pub struct OrtBackend {
     runtime: Mutex<Option<Runtime>>,
     /// Why `ort` itself failed to load a checked library: it cannot try
     /// again in this process.
-    spent: Mutex<Option<String>>,
-    cuda_notes: Mutex<Option<Vec<String>>>,
+    spent: Mutex<Option<Message>>,
+    cuda_notes: Mutex<Option<Vec<Message>>>,
+}
+
+/// A reason ONNX Runtime (or another library) gives, as it is: English.
+fn library_reason(error: impl std::fmt::Display) -> Message {
+    Message::plain(error.to_string())
 }
 
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
@@ -252,7 +265,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 
 impl OrtBackend {
     /// Opens ONNX Runtime once per process.
-    fn ensure_runtime(&self, configured: Option<&Path>) -> Result<Runtime, String> {
+    fn ensure_runtime(&self, configured: Option<&Path>) -> Result<Runtime, Message> {
         let mut slot = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(runtime) = slot.as_ref() {
             return Ok(runtime.clone());
@@ -261,21 +274,26 @@ impl OrtBackend {
         if let Some(reason) = spent.as_ref() {
             return Err(reason.clone());
         }
-        let mut attempts = Vec::new();
+        let mut attempts: Vec<Message> = Vec::new();
         for candidate in runtime_candidates(&self.plugin_root, configured) {
             let (path, checked_version) =
                 match catch_unwind(AssertUnwindSafe(|| check_runtime(&candidate))) {
                     Ok(Ok(checked)) => checked,
                     Ok(Err(reason)) => {
-                        attempts.push(format!("{}: {reason}", candidate.display()));
+                        attempts.push(Message::new(|| {
+                            format!("{}: {reason}", candidate.display())
+                        }));
                         continue;
                     }
                     Err(payload) => {
-                        attempts.push(format!(
-                            "{}: opening it crashed ({})",
-                            candidate.display(),
-                            panic_text(payload.as_ref())
-                        ));
+                        let error = panic_text(payload.as_ref());
+                        attempts.push(Message::new(|| {
+                            tr!(
+                                "{path}: opening it crashed ({error})",
+                                path = i18n::isolate(candidate.display()),
+                                error = &error
+                            )
+                        }));
                         continue;
                     }
                 };
@@ -294,31 +312,43 @@ impl OrtBackend {
                     *slot = Some(runtime.clone());
                     return Ok(runtime);
                 }
-                Ok(Err(error)) => error.to_string(),
-                Err(payload) => format!("loading it crashed ({})", panic_text(payload.as_ref())),
+                Ok(Err(error)) => library_reason(error),
+                Err(payload) => {
+                    let error = panic_text(payload.as_ref());
+                    Message::new(|| tr!("loading it crashed ({})", error))
+                }
             };
-            let reason = format!(
-                "ONNX Runtime at {} could not be loaded: {failure}. Restart eov to try again.",
-                path.display()
-            );
+            let reason = Message::new(|| {
+                tr!(
+                    "ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try again.",
+                    path = i18n::isolate(path.display()),
+                    error = &failure
+                )
+            });
             *spent = Some(reason.clone());
             return Err(reason);
         }
-        Err(format!(
-            "ONNX Runtime (1.22 or newer) was not found. Install it, set {ORT_LIB_ENV} to the library, or choose it under Model → Runtime. Tried: {}",
-            attempts
+        Err(Message::new(|| {
+            let tried = attempts
                 .iter()
                 .rev()
                 .take(4)
-                .cloned()
+                .map(Message::to_string)
                 .collect::<Vec<_>>()
-                .join("; ")
-        ))
+                .join("; ");
+            // Translators: {variable} is an environment variable; "Model →
+            // Runtime" is the Runtime… button in the sidebar's Model section
+            tr!(
+                "ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to the library, or choose it under Model → Runtime. Tried: {tried}",
+                variable = i18n::isolate(ORT_LIB_ENV),
+                tried
+            )
+        }))
     }
 
     /// Preloads CUDA and cuDNN from configured directories, once. Missing
     /// directories are fine: the system loader may still find the libraries.
-    fn prepare_cuda(&self) -> Vec<String> {
+    fn prepare_cuda(&self) -> Vec<Message> {
         let mut notes = self.cuda_notes.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(notes) = notes.as_ref() {
             return notes.clone();
@@ -346,8 +376,13 @@ impl OrtBackend {
                 let path = dir.join(name);
                 if path.is_file() {
                     match ort::util::preload_dylib(&path) {
-                        Ok(()) => found.push(format!("loaded {}", path.display())),
-                        Err(error) => found.push(format!("{}: {error}", path.display())),
+                        Ok(()) => found.push(Message::new(|| {
+                            // Translators: a library that was loaded, as a note after an error
+                            tr!("loaded {}", i18n::isolate(path.display()))
+                        })),
+                        Err(error) => {
+                            found.push(Message::plain(format!("{}: {error}", path.display())))
+                        }
                     }
                 }
             }
@@ -363,10 +398,10 @@ impl OrtBackend {
         threads: usize,
         tf32: bool,
         stop: &[Arc<AtomicBool>],
-    ) -> Result<Session, String> {
-        let error = |e: ort::Error<_>| e.to_string();
+    ) -> Result<Session, Message> {
+        let error = |e: ort::Error<_>| library_reason(e);
         let mut builder = Session::builder()
-            .map_err(|e| e.to_string())?
+            .map_err(library_reason)?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(error)?
             .with_intra_threads(threads.max(1))
@@ -411,14 +446,16 @@ impl OrtBackend {
         let _ = watchdog.join();
         result.map_err(|e| {
             if any_set(stop) {
-                "cancelled".to_string()
+                cancelled()
             } else if e.to_ascii_lowercase().contains("cancel") {
-                format!(
-                    "building the session took longer than {} s",
-                    timeout.as_secs()
-                )
+                Message::new(|| {
+                    tr!(
+                        "building the session took longer than {} s",
+                        timeout.as_secs()
+                    )
+                })
             } else {
-                e
+                Message::plain(e)
             }
         })
     }
@@ -429,11 +466,11 @@ impl OrtBackend {
         device: Device,
         status: &dyn Fn(&str),
         stop: &[Arc<AtomicBool>],
-    ) -> Result<OrtEngine, String> {
+    ) -> Result<OrtEngine, Message> {
         let model = &request.model;
-        status(match device {
-            Device::Cpu => "Building CPU session…",
-            Device::Cuda => "Building CUDA session…",
+        status(&match device {
+            Device::Cpu => tr!("Building CPU session…"),
+            Device::Cuda => tr!("Building CUDA session…"),
         });
         let session = self.build_session(model, device, request.threads, request.tf32, stop)?;
         if !session
@@ -441,20 +478,26 @@ impl OrtBackend {
             .iter()
             .any(|outlet| outlet.name() == model.input.name)
         {
-            return Err(format!(
-                "ONNX Runtime does not see input '{}'",
-                model.input.name
-            ));
+            return Err(Message::new(|| {
+                tr!(
+                    "ONNX Runtime does not see input '{}'",
+                    i18n::isolate(&model.input.name)
+                )
+            }));
         }
         let output = model
             .output(&request.output)
-            .ok_or_else(|| format!("unknown output '{}'", request.output))?
+            .ok_or_else(|| {
+                Message::new(|| tr!("unknown output '{}'", i18n::isolate(&request.output)))
+            })?
             .clone();
         if !session.outputs().iter().any(|o| o.name() == output.name) {
-            return Err(format!(
-                "ONNX Runtime does not see output '{}'",
-                output.name
-            ));
+            return Err(Message::new(|| {
+                tr!(
+                    "ONNX Runtime does not see output '{}'",
+                    i18n::isolate(&output.name)
+                )
+            }));
         }
         let latent = request.latent.as_ref().and_then(|name| {
             let latent = model.latent.as_ref().filter(|l| &l.name == name)?;
@@ -474,8 +517,14 @@ impl OrtBackend {
             (Device::Cuda, TensorType::F32, true) => "tf32",
             _ => "fp32",
         };
+        // In English, for batch summaries (`EngineInfo::text` is the
+        // sidebar's).
+        let threads = match device {
+            Device::Cpu => request.threads.max(1),
+            Device::Cuda => 0,
+        };
         let label = match device {
-            Device::Cpu => format!("CPU · {} threads", request.threads.max(1)),
+            Device::Cpu => format!("CPU · {threads} threads"),
             Device::Cuda if precision == "tf32" => "CUDA · TF32".to_string(),
             Device::Cuda => "CUDA".to_string(),
         };
@@ -485,6 +534,7 @@ impl OrtBackend {
                 device,
                 precision: precision.to_string(),
                 label,
+                threads,
                 fallback: None,
                 fixed_batch: model.fixed_batch,
                 item_len: model.item_len(),
@@ -499,24 +549,30 @@ impl OrtBackend {
         };
         // A real run validates shapes and types and warms up the device
         // (cuDNN algorithm selection happens here, not in the first job).
-        status(match device {
-            Device::Cpu => "Checking the model…",
-            Device::Cuda => "Warming up CUDA…",
+        status(&match device {
+            Device::Cpu => tr!("Checking the model…"),
+            Device::Cuda => tr!("Warming up CUDA…"),
         });
         let batch = model.fixed_batch.unwrap_or(request.batch_size.clamp(1, 4));
         let probe = vec![0.25f32; batch * model.item_len()];
         engine
             .run_watched(&probe, batch, stop)
-            .map_err(|e| format!("test run failed: {e}"))
+            .map_err(|e| Message::new(|| tr!("test run failed: {}", e)))
             .and_then(|output| {
                 if output.recon.len() == batch * model.item_len() {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "the model returned {} values for {batch} tiles of {} values",
-                        output.recon.len(),
-                        model.item_len()
-                    ))
+                    Err(Message::new(|| {
+                        tr!(
+                            // Translators: the model's output has the wrong size;
+                            // {returned} and {expected} are bare numbers of values.
+                            "the model returned the wrong number of values for {n} tile: {returned} instead of {expected}"
+                                | "the model returned the wrong number of values for {n} tiles: {returned} instead of {expected}"
+                                % batch,
+                            returned = output.recon.len(),
+                            expected = batch * model.item_len()
+                        )
+                    }))
                 }
             })?;
         Ok(engine)
@@ -538,8 +594,8 @@ impl Backend for OrtBackend {
         request: &EngineRequest,
         status: &dyn Fn(&str),
         stop: &[Arc<AtomicBool>],
-    ) -> Result<Box<dyn InferenceEngine>, String> {
-        status("Loading ONNX Runtime…");
+    ) -> Result<Box<dyn InferenceEngine>, Message> {
+        status(&tr!("Loading ONNX Runtime…"));
         self.ensure_runtime(request.runtime_path.as_deref())?;
         let wants_cuda = request.device != DevicePreference::Cpu;
         let mut fallback = None;
@@ -547,12 +603,9 @@ impl Backend for OrtBackend {
             let cuda_problem =
                 match catch_unwind(AssertUnwindSafe(|| ep::CUDA::default().is_available())) {
                     Ok(Ok(true)) => None,
-                    Ok(Ok(false)) => Some(
-                        "this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
-                            .to_string(),
-                    ),
-                    Ok(Err(error)) => Some(error.to_string()),
-                    Err(payload) => Some(panic_text(payload.as_ref())),
+                    Ok(Ok(false)) => Some(no_cuda_support()),
+                    Ok(Err(error)) => Some(library_reason(error)),
+                    Err(payload) => Some(Message::plain(panic_text(payload.as_ref()))),
                 };
             let attempt = match cuda_problem {
                 Some(problem) => Err(problem),
@@ -561,12 +614,19 @@ impl Backend for OrtBackend {
                     catch_unwind(AssertUnwindSafe(|| {
                         self.engine_for(request, Device::Cuda, status, stop)
                     }))
-                    .unwrap_or_else(|payload| Err(panic_text(payload.as_ref())))
+                    .unwrap_or_else(|payload| Err(Message::plain(panic_text(payload.as_ref()))))
                     .map_err(|error| {
                         if notes.is_empty() {
                             error
                         } else {
-                            format!("{error} ({})", notes.join(", "))
+                            Message::new(|| {
+                                let notes = notes
+                                    .iter()
+                                    .map(Message::to_string)
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                format!("{error} ({notes})")
+                            })
                         }
                     })
                 }
@@ -574,7 +634,9 @@ impl Backend for OrtBackend {
             match attempt {
                 Ok(engine) => return Ok(Box::new(engine)),
                 Err(error) if request.device == DevicePreference::Cuda => {
-                    return Err(format!("CUDA is unavailable: {error}"));
+                    return Err(Message::new(|| {
+                        tr!("CUDA is unavailable: {}", reason_text(&error))
+                    }));
                 }
                 Err(error) if any_set(stop) => return Err(error),
                 Err(error) => fallback = Some(error),
@@ -583,7 +645,7 @@ impl Backend for OrtBackend {
         let mut engine = catch_unwind(AssertUnwindSafe(|| {
             self.engine_for(request, Device::Cpu, status, stop)
         }))
-        .unwrap_or_else(|payload| Err(panic_text(payload.as_ref())))?;
+        .unwrap_or_else(|payload| Err(Message::plain(panic_text(payload.as_ref()))))?;
         engine.info.fallback = fallback;
         Ok(Box::new(engine))
     }
@@ -595,8 +657,8 @@ impl Backend for OrtBackend {
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
         {
-            Some(runtime) => format!("ONNX Runtime: {}", runtime.path.display()),
-            None => "ONNX Runtime is loaded with the first model.".to_string(),
+            Some(runtime) => tr!("ONNX Runtime: {}", i18n::isolate(runtime.path.display())),
+            None => tr!("ONNX Runtime is loaded with the first model."),
         }
     }
 
@@ -655,16 +717,16 @@ impl Watcher {
     }
 }
 
-fn extract(value: &DynValue, elem: TensorType) -> Result<Vec<f32>, String> {
+fn extract(value: &DynValue, elem: TensorType) -> Result<Vec<f32>, Message> {
     match elem {
         TensorType::F32 => value
             .try_extract_tensor::<f32>()
             .map(|(_, data)| data.to_vec())
-            .map_err(|e| e.to_string()),
+            .map_err(library_reason),
         TensorType::F16 => value
             .try_extract_tensor::<half::f16>()
             .map(|(_, data)| data.iter().map(|v| v.to_f32()).collect())
-            .map_err(|e| e.to_string()),
+            .map_err(library_reason),
     }
 }
 
@@ -693,13 +755,14 @@ impl OrtEngine {
         if any_set(stop) {
             return Err(EngineError::Stopped);
         }
-        let failed = |e: String| {
+        let failed = |e: Message| {
             if any_set(stop) {
                 EngineError::Stopped
             } else {
                 EngineError::Failed(e)
             }
         };
+
         let Self {
             session,
             input_name,
@@ -716,29 +779,29 @@ impl OrtEngine {
             item_dims[1] as i64,
             item_dims[2] as i64,
         ];
-        let options = Arc::new(RunOptions::new().map_err(|e| failed(e.to_string()))?);
+        let options = Arc::new(RunOptions::new().map_err(|e| failed(library_reason(e)))?);
         let watcher = Watcher::start(stop.to_vec(), Arc::clone(&options));
         let collect_outputs = |outputs: ort::session::SessionOutputs<'_>| {
             collect(&outputs, output_name, *output_elem, latent.as_ref())
         };
         let result = match input_elem {
             TensorType::F32 => TensorRef::from_array_view((shape, input))
-                .map_err(|e| e.to_string())
+                .map_err(library_reason)
                 .and_then(|tensor| {
                     session
                         .run_with_options(ort::inputs![input_name.as_str() => tensor], &options)
-                        .map_err(|e| e.to_string())
+                        .map_err(library_reason)
                         .and_then(collect_outputs)
                 }),
             TensorType::F16 => {
                 let converted: Vec<half::f16> =
                     input.iter().map(|v| half::f16::from_f32(*v)).collect();
                 TensorRef::from_array_view((shape, converted.as_slice()))
-                    .map_err(|e| e.to_string())
+                    .map_err(library_reason)
                     .and_then(|tensor| {
                         session
                             .run_with_options(ort::inputs![input_name.as_str() => tensor], &options)
-                            .map_err(|e| e.to_string())
+                            .map_err(library_reason)
                             .and_then(collect_outputs)
                     })
             }
@@ -753,10 +816,10 @@ fn collect(
     output_name: &str,
     output_elem: TensorType,
     latent: Option<&(String, TensorType)>,
-) -> Result<EngineOutput, String> {
-    let recon = outputs
-        .get(output_name)
-        .ok_or_else(|| format!("the model produced no '{output_name}'"))?;
+) -> Result<EngineOutput, Message> {
+    let recon = outputs.get(output_name).ok_or_else(|| {
+        Message::new(|| tr!("the model produced no '{}'", i18n::isolate(output_name)))
+    })?;
     let recon = extract(recon, output_elem)?;
     let latent = latent.and_then(|(name, elem)| {
         outputs
@@ -800,7 +863,7 @@ mod tests {
         let not_a_library = dir.path().join("libonnxruntime.so");
         std::fs::write(&not_a_library, b"not a library").unwrap();
         let reason = check_runtime(&not_a_library).unwrap_err();
-        assert!(reason.contains("could not be opened"), "{reason}");
+        assert!(reason.english.contains("could not be opened"), "{reason}");
         assert!(check_runtime(&dir.path().join("missing.so")).is_err());
         assert!(runtime_too_old("1.21.1"));
         assert!(!runtime_too_old("1.22.0"));

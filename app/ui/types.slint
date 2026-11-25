@@ -236,6 +236,21 @@ export struct PluginRowData {
     can-remove: bool,
 }
 
+/// A choice of the Language dialog: a language, or following the system
+/// (`tag` empty).
+export struct LanguageEntry {
+    tag: string,
+    /// The name in the language itself ("Deutsch"); for the automatic
+    /// choice, what it is ("Automatic (System Default)").
+    native-name: string,
+    /// The name in the language of the interface ("German"), or for the
+    /// automatic choice the language it gives now; empty when it would
+    /// repeat `native-name`.
+    detail: string,
+    selected: bool,
+    rtl: bool,
+}
+
 export struct MetadataItem {
     label: string,
     value: string,

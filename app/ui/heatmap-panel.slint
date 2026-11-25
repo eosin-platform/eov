@@ -3,6 +3,7 @@
 // the top-right corner without dimming the slide, so changes are seen as
 // they are made.
 
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { ChoiceItem } from "types.slint";
 import { Chip, NumberField, PanelButton, PanelSlider, PanelCheck } from "panel-controls.slint";
@@ -74,6 +75,7 @@ export component HeatMapPanelView inherits Rectangle {
                     font-size: 13px;
                     font-weight: 600;
                     horizontal-stretch: 1;
+                    horizontal-alignment: Locale.start;
                     vertical-alignment: center;
                     overflow: elide;
                 }
@@ -110,12 +112,14 @@ export component HeatMapPanelView inherits Rectangle {
                 color: Theme.text-secondary;
                 font-size: 11px;
                 wrap: word-wrap;
+                horizontal-alignment: Locale.start;
             }
 
             Text {
                 text: @tr("Placement");
                 color: Theme.text-secondary;
                 font-size: 11px;
+                horizontal-alignment: Locale.start;
             }
 
             HorizontalLayout {
@@ -145,12 +149,14 @@ export component HeatMapPanelView inherits Rectangle {
                 color: HeatMapPanel.placement-ok ? Theme.text-secondary : Theme.warning;
                 font-size: 10px;
                 wrap: word-wrap;
+                horizontal-alignment: Locale.start;
             }
 
             if HeatMapPanel.scalar: Text {
                 text: @tr("Colours");
                 color: Theme.text-secondary;
                 font-size: 11px;
+                horizontal-alignment: Locale.start;
             }
 
             if HeatMapPanel.scalar: HorizontalLayout {

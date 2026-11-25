@@ -32,15 +32,21 @@ component HudSlider inherits Rectangle {
         root.changed(min(root.max-value, max(root.min-value, root.value - root.step)));
     }
 
+    /// The width of the label column (the panel makes it fit its longest
+    /// label: translations are longer than the English).
+    in property <length> label-width: 68px;
+    /// What the label needs.
+    out property <length> label-preferred-width: label-text.preferred-width;
+
     property <float> normalized: (value - min-value) / max(max-value - min-value, 0.001);
-    property <length> track-left: 80px;
+    property <length> track-left: root.label-width + 12px;
     property <length> track-right: 42px;
     property <length> track-width: self.width - track-left - track-right;
 
-    Text {
+    label-text := Text {
         x: 8px;
         y: (parent.height - self.height) / 2;
-        width: 68px;
+        width: root.label-width;
         text: root.label;
         color: Theme.text-label;
         font-size: 11px;
@@ -138,7 +144,13 @@ export component HudSettingsPanel inherits Rectangle {
     /// Escape was pressed.
     callback close-requested();
 
-    width: 260px;
+    // The labels' column fits the longest label (68 px in English, at most
+    // 150 px), and the panel grows with it.
+    property <length> label-width: min(150px, max(68px, sharpness-slider.label-preferred-width,
+        gamma-slider.label-preferred-width, brightness-slider.label-preferred-width,
+        contrast-slider.label-preferred-width, units-label.preferred-width,
+        stain-label.preferred-width));
+    width: 260px + root.label-width - 68px;
     height: layout.preferred-height + 33px;
     background: Theme.hud-panel-bg;
     border-radius: 8px;
@@ -186,8 +198,9 @@ export component HudSettingsPanel inherits Rectangle {
             background: Theme.divider;
         }
 
-        HudSlider {
+        sharpness-slider := HudSlider {
             label: @tr("Sharpness");
+            label-width: root.label-width;
             value: root.sharpness;
             min-value: 0.0;
             max-value: 1.0;
@@ -202,8 +215,9 @@ export component HudSettingsPanel inherits Rectangle {
             background: Theme.divider;
         }
 
-        HudSlider {
+        gamma-slider := HudSlider {
             label: @tr("Gamma");
+            label-width: root.label-width;
             value: root.gamma;
             min-value: 0.2;
             max-value: 3.0;
@@ -214,8 +228,9 @@ export component HudSettingsPanel inherits Rectangle {
             }
         }
 
-        HudSlider {
+        brightness-slider := HudSlider {
             label: @tr("Brightness");
+            label-width: root.label-width;
             value: root.brightness;
             min-value: -1.0;
             max-value: 1.0;
@@ -225,8 +240,9 @@ export component HudSettingsPanel inherits Rectangle {
             }
         }
 
-        HudSlider {
+        contrast-slider := HudSlider {
             label: @tr("Contrast");
+            label-width: root.label-width;
             value: root.contrast;
             min-value: 0.2;
             max-value: 3.0;
@@ -246,8 +262,9 @@ export component HudSettingsPanel inherits Rectangle {
         Rectangle {
             height: 28px;
 
-            Text {
+            units-label := Text {
                 x: 8px;
+                width: root.label-width;
                 text: @tr("Units");
                 color: Theme.text-label;
                 font-size: 11px;
@@ -256,9 +273,9 @@ export component HudSettingsPanel inherits Rectangle {
             }
 
             HorizontalLayout {
-                x: 80px;
+                x: root.label-width + 12px;
                 y: (parent.height - self.height) / 2;
-                width: parent.width - 88px;
+                width: parent.width - root.label-width - 20px;
                 height: 22px;
                 spacing: 2px;
 
@@ -332,7 +349,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.measurement-unit == MeasurementUnit.inches ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: @tr("Inches and mils");
+                    accessible-label: @tr("Inches (in)");
                     accessible-checkable: true;
                     accessible-checked: root.measurement-unit == MeasurementUnit.inches;
                     accessible-action-default => {
@@ -346,7 +363,8 @@ export component HudSettingsPanel inherits Rectangle {
                     }
 
                     Text {
-                        text: @tr("in/mil");
+                        // Translators: the unit symbol of inches, as in "1.00 in".
+                        text: @tr("in");
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.inches ? Theme.text-selected : Theme.text-primary;
                         font-size: 10px;
@@ -366,8 +384,10 @@ export component HudSettingsPanel inherits Rectangle {
         Rectangle {
             height: 28px;
 
-            Text {
+            stain-label := Text {
                 x: 8px;
+                width: root.label-width;
+                // Translators: row label for stain normalisation, at most 68 px wide (about 11 characters): abbreviate as needed.
                 text: @tr("Stain Norm");
                 color: Theme.text-label;
                 font-size: 11px;
@@ -376,9 +396,9 @@ export component HudSettingsPanel inherits Rectangle {
             }
 
             HorizontalLayout {
-                x: 80px;
+                x: root.label-width + 12px;
                 y: (parent.height - self.height) / 2;
-                width: parent.width - 88px;
+                width: parent.width - root.label-width - 20px;
                 height: 22px;
                 spacing: 2px;
 
@@ -390,7 +410,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.none ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: @tr("Stain normalization: none");
+                    accessible-label: @tr("Stain normalisation: none");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.none;
                     accessible-action-default => {
@@ -421,7 +441,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.macenko ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: @tr("Stain normalization: Macenko");
+                    accessible-label: @tr("Stain normalisation: Macenko");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.macenko;
                     accessible-action-default => {
@@ -452,7 +472,7 @@ export component HudSettingsPanel inherits Rectangle {
                     border-width: root.stain-normalization == StainNormalization.vahadane ? Theme.selected-width : 0px;
                     border-color: Theme.accent-bright;
                     accessible-role: radio-button;
-                    accessible-label: @tr("Stain normalization: Vahadane");
+                    accessible-label: @tr("Stain normalisation: Vahadane");
                     accessible-checkable: true;
                     accessible-checked: root.stain-normalization == StainNormalization.vahadane;
                     accessible-action-default => {
@@ -488,7 +508,7 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
-                text: @tr("Color Deconvolution");
+                text: @tr("Colour Deconvolution");
                 color: Theme.text-strong;
                 font-size: 11px;
                 font-weight: 700;

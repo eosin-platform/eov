@@ -15,6 +15,7 @@
 //! shell's `PATH`; a Mac without Homebrew is simply a manual installation.
 
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::Version;
 use serde::Deserialize;
 use serde_json::Value;
@@ -135,7 +136,8 @@ pub fn is_eov_token(token: &str) -> bool {
 
 /// Parses `brew info --cask --json=v2` output, keeping installed eov casks.
 pub fn parse_info_v2(json: &str) -> Result<Vec<CaskRecord>> {
-    let info: InfoV2 = serde_json::from_str(json).context("brew returned invalid JSON")?;
+    let info: InfoV2 =
+        serde_json::from_str(json).with_context(|| tr!("brew returned invalid JSON"))?;
     Ok(info
         .casks
         .into_iter()
@@ -278,7 +280,8 @@ pub fn probe_with(
         }
         Ok(_) | Err(_) if running_bundle.to_string_lossy().contains("/Caskroom/") => {
             return MacosInstallation::Ambiguous(
-                "brew could not list installed casks, but eov runs from the Caskroom".into(),
+                // Translators: casks are Homebrew packages; the Caskroom is where Homebrew keeps them.
+                tr!("brew could not list installed casks, but eov runs from the Caskroom"),
             );
         }
         // No usable brew: nothing can own the bundle.
@@ -321,14 +324,17 @@ pub fn probe_with(
     match matches.len() {
         0 => MacosInstallation::ManualBundle,
         1 => MacosInstallation::Homebrew(matches.remove(0)),
-        _ => MacosInstallation::Ambiguous(format!(
-            "several Homebrew casks claim {}: {}",
-            running_bundle.display(),
-            matches
-                .iter()
-                .map(|entry| entry.cask.full_token.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+        // Translators: casks are Homebrew packages; {app} is the eov application, {casks} the names of the casks.
+        _ => MacosInstallation::Ambiguous(tr!(
+            "several Homebrew casks claim {app}: {casks}",
+            app = isolate(running_bundle.display()),
+            casks = isolate(
+                matches
+                    .iter()
+                    .map(|entry| entry.cask.full_token.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         )),
     }
 }
@@ -337,18 +343,32 @@ pub fn probe_with(
 pub fn check_target(target: &Version) -> Result<()> {
     if !target.pre.is_empty() || !target.build.is_empty() {
         bail!(
-            "Homebrew casks are only published for stable eov releases; {target} is a prerelease. Install it manually from GitHub Releases, or uninstall the cask first."
+            "{}",
+            // Translators: casks are Homebrew packages; {} is a version of eov.
+            tr!(
+                "Homebrew casks are only published for stable eov releases; {} is a prerelease. Install it manually from GitHub Releases, or uninstall the cask first.",
+                isolate(target)
+            )
         );
     }
     Ok(())
 }
 
 fn run(runner: &dyn CommandRunner, brew: &Path, args: &[&str]) -> Result<()> {
+    let command = format!("brew {}", args.join(" "));
     let status = runner
         .status(brew, args)
-        .with_context(|| format!("could not run brew {}", args.join(" ")))?;
+        .with_context(|| tr!("could not run {}", isolate(&command)))?;
     if !status.success() {
-        bail!("brew {} failed with {status}", args.join(" "));
+        bail!(
+            "{}",
+            // Translators: {command} is a command; {status} how it ended ("exit status: 1").
+            tr!(
+                "{command} failed with {status}",
+                command = isolate(&command),
+                status = status
+            )
+        );
     }
     Ok(())
 }
@@ -407,7 +427,13 @@ pub fn update(
             .is_ok_and(|output| output.status.success());
         if !exists {
             bail!(
-                "Homebrew has no cask {target_full}. Nothing was changed. (Run `brew update`, or check that eov {target} was released.)"
+                "{}",
+                // Translators: a cask is a Homebrew package. "brew update" is a command: keep it as it is.
+                tr!(
+                    "Homebrew has no cask {cask}. Nothing was changed. (Run `brew update`, or check that eov {version} was released.)",
+                    cask = isolate(&target_full),
+                    version = isolate(target)
+                )
             );
         }
         run(
@@ -426,13 +452,21 @@ pub fn update(
                 &["install", "--cask", &installation.cask.full_token],
             );
             return Err(error).context(match restored {
-                Ok(()) => format!(
-                    "Homebrew could not install {target_full}; {} was reinstalled",
-                    installation.cask.full_token
+                // Translators: {target} and {installed} are Homebrew packages (casks).
+                Ok(()) => tr!(
+                    "Homebrew could not install {target}; {installed} was reinstalled",
+                    target = isolate(&target_full),
+                    installed = isolate(&installation.cask.full_token)
                 ),
-                Err(_) => format!(
-                    "Homebrew could not install {target_full}, and reinstalling {} failed too; run `brew install --cask {}`",
-                    installation.cask.full_token, installation.cask.full_token
+                // Translators: {target} and {installed} are Homebrew packages (casks); {command} is a command.
+                Err(_) => tr!(
+                    "Homebrew could not install {target}, and reinstalling {installed} failed too; run `{command}`",
+                    target = isolate(&target_full),
+                    installed = isolate(&installation.cask.full_token),
+                    command = isolate(format!(
+                        "brew install --cask {}",
+                        installation.cask.full_token
+                    ))
                 ),
             });
         }
@@ -443,7 +477,8 @@ pub fn update(
         after.cask.full_token = target_full;
     }
     installed_version(runner, &after, env)?
-        .context("Homebrew no longer reports an eov cask for this bundle")
+        // Translators: a cask is a Homebrew package.
+        .with_context(|| tr!("Homebrew no longer reports an eov cask for this bundle"))
 }
 
 /// Helpers for tests elsewhere in the updater.

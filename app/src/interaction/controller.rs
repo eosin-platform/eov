@@ -2176,7 +2176,7 @@ impl Controller {
                 }
                 if let Some(mode) = label_mode {
                     let value = measure::measure(mode, &shape, &view.calibration);
-                    transient.label = Some(measure::label(mode, &value, view.unit));
+                    transient.label = Some(measure::display_label(mode, &value, view.unit));
                 }
                 transients.push(transient);
             }
@@ -2205,7 +2205,7 @@ impl Controller {
                     let mode = self.measurement_mode(file_id, &key.object_id);
                     let value = measure::measure(mode, current, &view.calibration);
                     let mut transient = Transient::new(current.clone(), preview.clone());
-                    transient.label = Some(measure::label(mode, &value, view.unit));
+                    transient.label = Some(measure::display_label(mode, &value, view.unit));
                     transients.push(transient);
                 }
             }
@@ -2246,7 +2246,7 @@ impl Controller {
                 };
                 if let Some(mode) = mode {
                     let value = measure::measure(mode, &shape, &view.calibration);
-                    transient.label = Some(measure::label(mode, &value, view.unit));
+                    transient.label = Some(measure::display_label(mode, &value, view.unit));
                 }
                 transients.push(transient);
             }

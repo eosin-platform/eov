@@ -16,6 +16,7 @@
 //! - plugin releases carry `[plugin]` metadata (id, name, environment).
 
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -139,7 +140,8 @@ pub struct PluginReleaseManifest {
 impl EovReleaseManifest {
     pub fn parse(text: &str, expected_version: Option<&Version>) -> Result<Self> {
         validate_platform_keys(text)?;
-        let raw: RawReleaseManifest = toml::from_str(text).context("invalid release.toml")?;
+        let raw: RawReleaseManifest =
+            toml::from_str(text).with_context(|| tr!("invalid release.toml"))?;
         let artifacts = raw.platform.into_artifacts();
         let version = infer_version(&artifacts, expected_version)?;
         validate_manifest_metadata(raw.manifest.as_ref(), "eov", &version, EOV_REPOSITORY)?;
@@ -148,7 +150,7 @@ impl EovReleaseManifest {
         let mut plugins = BTreeMap::new();
         for (id, raw_entry) in raw.plugins {
             let entry = parse_catalog_entry(&id, raw_entry)
-                .with_context(|| format!("invalid official plugin catalog entry '{id}'"))?;
+                .with_context(|| tr!("invalid official plugin catalog entry '{}'", isolate(&id)))?;
             plugins.insert(id, entry);
         }
 
@@ -164,7 +166,8 @@ impl EovReleaseManifest {
     pub fn artifact(&self, key: &str) -> Result<&PlatformArtifact> {
         self.artifacts
             .get(key)
-            .with_context(|| format!("release.toml has no artifact [{key}]"))
+            // Translators: [{key}] is a table of release.toml, such as [platform.linux.x86_64].
+            .with_context(|| tr!("release.toml has no artifact [{key}]", key = isolate(key)))
     }
 
     /// Whether the manifest declares a published signature.
@@ -176,17 +179,21 @@ impl EovReleaseManifest {
 }
 
 fn parse_catalog_entry(id: &str, raw: RawCatalogEntry) -> Result<OfficialPluginCatalogEntry> {
-    let version =
-        Version::parse(&raw.version).with_context(|| format!("invalid version {}", raw.version))?;
-    let repository = canonical_repository(&raw.repository).context("invalid repository")?;
+    let version = Version::parse(&raw.version)
+        .with_context(|| tr!("invalid version {}", isolate(&raw.version)))?;
+    let repository =
+        canonical_repository(&raw.repository).with_context(|| tr!("invalid repository"))?;
     if let Some(environment) = &raw.environment {
         VersionReq::parse(environment)
-            .with_context(|| format!("invalid environment requirement {environment}"))?;
+            .with_context(|| tr!("invalid environment requirement {}", isolate(environment)))?;
     }
     if let Some(tag) = &raw.release_tag
         && !valid_tag(tag)
     {
-        bail!("invalid release tag {tag:?}");
+        bail!(
+            "{}",
+            tr!("invalid release tag {}", isolate(format!("{tag:?}")))
+        );
     }
     let tag = raw
         .release_tag
@@ -195,16 +202,35 @@ fn parse_catalog_entry(id: &str, raw: RawCatalogEntry) -> Result<OfficialPluginC
     let artifacts = raw.platform.into_artifacts();
     for (key, artifact) in &artifacts {
         if key.starts_with("platform.linux.appimage") || key.starts_with("platform.linux.flatpak") {
-            bail!("plugin artifacts cannot use the [{key}] application namespace");
+            bail!(
+                "{}",
+                // Translators: [{}] is a table of release.toml, such as [platform.linux.appimage.x86_64].
+                tr!(
+                    "plugin artifacts cannot use the [{}] application namespace",
+                    isolate(key)
+                )
+            );
         }
         if normalize_version(&artifact.version)? != version {
-            bail!("artifact [{key}] has a mismatched version");
+            bail!(
+                "{}",
+                tr!("artifact [{}] has a mismatched version", isolate(key))
+            );
         }
-        validate_sha256(&artifact.sha256).with_context(|| format!("artifact [{key}]"))?;
+        validate_sha256(&artifact.sha256).with_context(|| tr!("artifact [{}]", isolate(key)))?;
         let artifact_tag = validate_artifact_url(&artifact.url, &repository)
-            .with_context(|| format!("invalid URL for artifact [{key}]"))?;
+            .with_context(|| tr!("invalid URL for artifact [{}]", isolate(key)))?;
         if artifact_tag != tag {
-            bail!("artifact [{key}] belongs to release {artifact_tag}, expected {tag}");
+            bail!(
+                "{}",
+                // Translators: {release} and {expected} are release tags, such as v1.2.0.
+                tr!(
+                    "artifact [{key}] belongs to release {release}, expected {expected}",
+                    key = isolate(key),
+                    release = isolate(&artifact_tag),
+                    expected = isolate(&tag)
+                )
+            );
         }
     }
     Ok(OfficialPluginCatalogEntry {
@@ -221,38 +247,55 @@ fn parse_catalog_entry(id: &str, raw: RawCatalogEntry) -> Result<OfficialPluginC
 impl PluginReleaseManifest {
     pub fn parse(text: &str, expected_repository: &str) -> Result<Self> {
         validate_platform_keys(text)?;
-        let raw: RawReleaseManifest = toml::from_str(text).context("invalid release.toml")?;
+        let raw: RawReleaseManifest =
+            toml::from_str(text).with_context(|| tr!("invalid release.toml"))?;
         let artifacts = raw.platform.into_artifacts();
         let version = infer_version(&artifacts, None)?;
         let repository = canonical_repository(expected_repository)?;
         validate_manifest_metadata(raw.manifest.as_ref(), "plugin", &version, &repository)?;
         if raw.manifest.is_some() && raw.plugin.is_none() {
-            bail!("schema-1 plugin release.toml is missing its [plugin] metadata");
+            bail!(
+                "{}",
+                // Translators: [plugin] is a table of release.toml: keep it as it is.
+                tr!("schema-1 plugin release.toml is missing its [plugin] metadata")
+            );
         }
         validate_artifacts(&artifacts, &repository, &version)?;
 
         if let Some(plugin) = &raw.plugin {
             let plugin_version = Version::parse(&plugin.version).with_context(|| {
-                format!("plugin metadata has invalid version {}", plugin.version)
+                tr!(
+                    "plugin metadata has invalid version {}",
+                    isolate(&plugin.version)
+                )
             })?;
             if plugin_version != version {
                 bail!(
-                    "plugin metadata version {} does not match artifact version {}",
-                    plugin.version,
-                    version
+                    "{}",
+                    tr!(
+                        "plugin metadata version {metadata} does not match artifact version {artifacts}",
+                        metadata = isolate(&plugin.version),
+                        artifacts = isolate(&version)
+                    )
                 );
             }
             let plugin_repository = canonical_repository(&plugin.repository)?;
             if plugin_repository != repository {
                 bail!(
-                    "plugin metadata repository {} does not match expected repository {}",
-                    plugin.repository,
-                    expected_repository
+                    "{}",
+                    tr!(
+                        "plugin metadata repository {metadata} does not match expected repository {expected}",
+                        metadata = isolate(&plugin.repository),
+                        expected = isolate(expected_repository)
+                    )
                 );
             }
             if let Some(environment) = &plugin.environment {
                 VersionReq::parse(environment).with_context(|| {
-                    format!("plugin environment is not a valid SemVer requirement: {environment}")
+                    tr!(
+                        "plugin environment is not a valid SemVer requirement: {}",
+                        isolate(environment)
+                    )
                 })?;
             }
         }
@@ -260,13 +303,19 @@ impl PluginReleaseManifest {
         for artifact in artifacts.values() {
             if let Some(environment) = &artifact.environment {
                 VersionReq::parse(environment).with_context(|| {
-                    format!("plugin environment is not a valid SemVer requirement: {environment}")
+                    tr!(
+                        "plugin environment is not a valid SemVer requirement: {}",
+                        isolate(environment)
+                    )
                 })?;
             }
         }
 
         if self_environment(&raw.plugin, &artifacts).is_none() {
-            bail!("plugin release.toml has no EOV environment requirement");
+            bail!(
+                "{}",
+                tr!("plugin release.toml has no EOV environment requirement")
+            );
         }
 
         Ok(Self {
@@ -292,7 +341,8 @@ impl PluginReleaseManifest {
     pub fn artifact(&self, key: &str) -> Result<&PlatformArtifact> {
         self.artifacts
             .get(key)
-            .with_context(|| format!("plugin release.toml has no artifact [{key}]"))
+            // Translators: [{}] is a table of release.toml, such as [platform.linux.x86_64].
+            .with_context(|| tr!("plugin release.toml has no artifact [{}]", isolate(key)))
     }
 
     pub fn plugin_id(&self) -> Option<&str> {
@@ -316,7 +366,7 @@ fn self_environment<'a>(
 
 pub fn normalize_version(value: &str) -> Result<Version> {
     let normalized = value.strip_prefix('v').unwrap_or(value);
-    Version::parse(normalized).with_context(|| format!("invalid semantic version '{value}'"))
+    Version::parse(normalized).with_context(|| tr!("invalid semantic version '{}'", isolate(value)))
 }
 
 pub fn release_tag(version: &Version) -> String {
@@ -327,7 +377,13 @@ pub fn validate_self_update_target(version: &Version) -> Result<()> {
     let minimum = Version::parse(MIN_SELF_UPDATE_RELEASE).expect("valid self-update floor");
     if version < &minimum {
         bail!(
-            "EOV self-update metadata is supported beginning with v{minimum}.\nInstall v{version} manually from GitHub Releases."
+            "{}",
+            // Translators: {minimum} and {version} are versions of eov, such as v1.2.0.
+            tr!(
+                "EOV self-update metadata is supported beginning with {minimum}.\nInstall {version} manually from GitHub Releases.",
+                minimum = isolate(release_tag(&minimum)),
+                version = isolate(release_tag(version))
+            )
         );
     }
     Ok(())
@@ -336,24 +392,45 @@ pub fn validate_self_update_target(version: &Version) -> Result<()> {
 /// Normalises a GitHub repository URL to `https://github.com/<owner>/<repo>`
 /// (a trailing `/` or `.git` is removed).
 pub fn canonical_repository(repository: &str) -> Result<String> {
-    let url =
-        Url::parse(repository).with_context(|| format!("invalid repository URL '{repository}'"))?;
+    let url = Url::parse(repository)
+        .with_context(|| tr!("invalid repository URL '{}'", isolate(repository)))?;
     if url.scheme() != "https" || url.host_str() != Some("github.com") {
-        bail!("repository must be an HTTPS GitHub URL: {repository}");
+        bail!(
+            "{}",
+            tr!(
+                "repository must be an HTTPS GitHub URL: {}",
+                isolate(repository)
+            )
+        );
     }
     if url.query().is_some() || url.fragment().is_some() {
-        bail!("repository URL must not contain a query or fragment: {repository}");
+        bail!(
+            "{}",
+            tr!(
+                "repository URL must not contain a query or fragment: {}",
+                isolate(repository)
+            )
+        );
     }
     let mut segments: Vec<_> = url.path_segments().into_iter().flatten().collect();
     if segments.last() == Some(&"") {
         segments.pop();
     }
+    let not_one = || {
+        anyhow::anyhow!(
+            "{}",
+            tr!(
+                "repository must identify exactly one GitHub repository: {}",
+                isolate(repository)
+            )
+        )
+    };
     if segments.len() != 2 || segments.iter().any(|segment| segment.is_empty()) {
-        bail!("repository must identify exactly one GitHub repository: {repository}");
+        return Err(not_one());
     }
     let name = segments[1].strip_suffix(".git").unwrap_or(segments[1]);
     if name.is_empty() {
-        bail!("repository must identify exactly one GitHub repository: {repository}");
+        return Err(not_one());
     }
     Ok(format!("https://github.com/{}/{name}", segments[0]))
 }
@@ -382,7 +459,10 @@ fn valid_tag(tag: &str) -> bool {
 
 fn validate_sha256(value: &str) -> Result<()> {
     if value.len() != 64 || !value.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        bail!("invalid SHA-256 digest {value:?}");
+        bail!(
+            "{}",
+            tr!("invalid SHA-256 digest {}", isolate(format!("{value:?}")))
+        );
     }
     Ok(())
 }
@@ -392,12 +472,24 @@ fn validate_sha256(value: &str) -> Result<()> {
 /// `/` (for example `plugin/v1.0.0`).
 pub fn validate_artifact_url(url: &str, repository: &str) -> Result<String> {
     let expected_repository = canonical_repository(repository)?;
-    let actual = Url::parse(url).with_context(|| format!("invalid artifact URL '{url}'"))?;
+    let actual = Url::parse(url).with_context(|| tr!("invalid artifact URL '{}'", isolate(url)))?;
     if actual.scheme() != "https" || actual.host_str() != Some("github.com") {
-        bail!("artifact URL must use HTTPS GitHub releases: {url}");
+        bail!(
+            "{}",
+            tr!(
+                "artifact URL must use HTTPS GitHub releases: {}",
+                isolate(url)
+            )
+        );
     }
     if actual.query().is_some() || actual.fragment().is_some() {
-        bail!("artifact URL must not contain a query or fragment: {url}");
+        bail!(
+            "{}",
+            tr!(
+                "artifact URL must not contain a query or fragment: {}",
+                isolate(url)
+            )
+        );
     }
     let segments: Vec<_> = actual.path_segments().into_iter().flatten().collect();
     if segments.len() < 6
@@ -406,13 +498,26 @@ pub fn validate_artifact_url(url: &str, repository: &str) -> Result<String> {
             &expected_repository,
         )
     {
-        bail!("artifact URL does not belong to repository {expected_repository}: {url}");
+        bail!(
+            "{}",
+            tr!(
+                "artifact URL does not belong to repository {repository}: {url}",
+                repository = isolate(&expected_repository),
+                url = isolate(url)
+            )
+        );
     }
     let file = segments[segments.len() - 1];
     let tag = segments[4..segments.len() - 1].join("/");
     if segments[2] != "releases" || segments[3] != "download" || file.is_empty() || !valid_tag(&tag)
     {
-        bail!("artifact URL is not an immutable GitHub release asset URL: {url}");
+        bail!(
+            "{}",
+            tr!(
+                "artifact URL is not an immutable GitHub release asset URL: {}",
+                isolate(url)
+            )
+        );
     }
     Ok(tag)
 }
@@ -465,7 +570,10 @@ impl Architecture {
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
-            bail!("unsupported CPU architecture; EOV supports x86_64 and arm64")
+            bail!(
+                "{}",
+                tr!("unsupported CPU architecture; EOV supports x86_64 and arm64")
+            )
         }
     }
 }
@@ -477,23 +585,29 @@ fn infer_version(
     let first = artifacts
         .values()
         .next()
-        .context("release.toml contains no platform artifacts")?;
+        .with_context(|| tr!("release.toml contains no platform artifacts"))?;
     let version = Version::parse(&first.version)
-        .with_context(|| format!("invalid artifact version {}", first.version))?;
+        .with_context(|| tr!("invalid artifact version {}", isolate(&first.version)))?;
     for artifact in artifacts.values() {
         let parsed = Version::parse(&artifact.version)
-            .with_context(|| format!("invalid artifact version {}", artifact.version))?;
+            .with_context(|| tr!("invalid artifact version {}", isolate(&artifact.version)))?;
         if parsed != version {
-            bail!("release.toml contains platform artifacts with different versions");
+            bail!(
+                "{}",
+                tr!("release.toml contains platform artifacts with different versions")
+            );
         }
     }
     if let Some(expected) = expected_version
         && expected != &version
     {
         bail!(
-            "release.toml version {} does not match requested version {}",
-            version,
-            expected
+            "{}",
+            tr!(
+                "release.toml version {version} does not match requested version {expected}",
+                version = isolate(&version),
+                expected = isolate(expected)
+            )
         );
     }
     Ok(version)
@@ -509,20 +623,34 @@ fn validate_manifest_metadata(
         return Ok(());
     };
     if metadata.schema != 1 {
-        bail!("unsupported release manifest schema {}", metadata.schema);
+        bail!(
+            "{}",
+            // Translators: {} is the number of the file's format.
+            tr!("unsupported release manifest schema {}", metadata.schema)
+        );
     }
     if metadata.kind != expected_kind {
         bail!(
-            "release manifest kind '{}' does not match expected '{}',",
-            metadata.kind,
-            expected_kind
+            "{}",
+            // Translators: {kind} and {expected} are kinds of release manifest ("eov" or "plugin"): keep them as they are.
+            tr!(
+                "release manifest kind '{kind}' does not match expected '{expected}'",
+                kind = isolate(&metadata.kind),
+                expected = isolate(expected_kind)
+            )
         );
     }
     if normalize_version(&metadata.version)? != *version {
-        bail!("manifest metadata version does not match platform artifacts");
+        bail!(
+            "{}",
+            tr!("manifest metadata version does not match platform artifacts")
+        );
     }
     if canonical_repository(&metadata.repository)? != canonical_repository(repository)? {
-        bail!("manifest metadata repository does not match the expected repository");
+        bail!(
+            "{}",
+            tr!("manifest metadata repository does not match the expected repository")
+        );
     }
     Ok(())
 }
@@ -533,16 +661,19 @@ fn validate_artifacts(
     version: &Version,
 ) -> Result<()> {
     if artifacts.is_empty() {
-        bail!("release.toml contains no platform artifacts");
+        bail!("{}", tr!("release.toml contains no platform artifacts"));
     }
     for (key, artifact) in artifacts {
         if normalize_version(&artifact.version)? != *version {
-            bail!("artifact [{key}] has a mismatched version");
+            bail!(
+                "{}",
+                tr!("artifact [{}] has a mismatched version", isolate(key))
+            );
         }
         validate_sha256(&artifact.sha256)
-            .with_context(|| format!("artifact [{key}] has an invalid SHA-256 digest"))?;
+            .with_context(|| tr!("artifact [{}] has an invalid SHA-256 digest", isolate(key)))?;
         validate_artifact_url(&artifact.url, repository)
-            .with_context(|| format!("invalid URL for artifact [{key}]"))?;
+            .with_context(|| tr!("invalid URL for artifact [{}]", isolate(key)))?;
     }
     Ok(())
 }
@@ -616,23 +747,37 @@ impl RawPlatform {
 }
 
 fn validate_platform_keys(text: &str) -> Result<()> {
-    let value: toml::Value = toml::from_str(text).context("invalid release.toml")?;
+    let value: toml::Value = toml::from_str(text).with_context(|| tr!("invalid release.toml"))?;
     let Some(platform) = value.get("platform").and_then(toml::Value::as_table) else {
         return Ok(());
     };
     for (platform_name, platform_value) in platform {
         let Some(table) = platform_value.as_table() else {
-            bail!("platform.{platform_name} must be a table");
+            bail!(
+                "{}",
+                // Translators: {} is a key of release.toml, such as platform.linux.
+                tr!(
+                    "{} must be a table",
+                    isolate(format!("platform.{platform_name}"))
+                )
+            );
         };
         let allowed = match platform_name.as_str() {
             "windows" | "macos" => &["x86_64", "arm64", "aarch64"][..],
             "linux" => &["x86_64", "arm64", "aarch64", "appimage", "flatpak"][..],
-            other => bail!("unsupported release platform '{other}'"),
+            other => bail!(
+                "{}",
+                tr!("unsupported release platform '{}'", isolate(other))
+            ),
         };
         for key in table.keys() {
             if !allowed.contains(&key.as_str()) {
                 bail!(
-                    "unsupported architecture or platform entry 'platform.{platform_name}.{key}'"
+                    "{}",
+                    tr!(
+                        "unsupported architecture or platform entry '{}'",
+                        isolate(format!("platform.{platform_name}.{key}"))
+                    )
                 );
             }
         }
@@ -642,7 +787,11 @@ fn validate_platform_keys(text: &str) -> Result<()> {
                     for key in variant_table.keys() {
                         if !["x86_64", "arm64", "aarch64"].contains(&key.as_str()) {
                             bail!(
-                                "unsupported architecture entry 'platform.linux.{variant}.{key}'"
+                                "{}",
+                                tr!(
+                                    "unsupported architecture entry '{}'",
+                                    isolate(format!("platform.linux.{variant}.{key}"))
+                                )
                             );
                         }
                     }

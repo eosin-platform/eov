@@ -24,6 +24,7 @@ mod file_types;
 mod gpu;
 mod history;
 mod host_ui;
+mod i18n;
 mod instance;
 mod interaction;
 mod launch;
@@ -38,6 +39,7 @@ mod paths;
 mod plugin_runtime;
 mod plugins;
 mod probe;
+mod processing_text;
 mod qc_cli;
 mod quantify_panel;
 mod recent;
@@ -118,6 +120,23 @@ const TARGET_FPS: f64 = 60.0;
 const FRAME_DURATION_MS: u64 = (1000.0 / TARGET_FPS) as u64;
 const APP_XDG_ID: &str = "io.eosin.eov";
 
+/// The warning about an unknown `--language` for standard error: in
+/// English, as all command-line output, whatever the interface's language
+/// (the window says it in that language, see
+/// [`i18n::unknown_language_message`]). The interface's language is named
+/// in English.
+fn unknown_language_english(value: &str) -> String {
+    let tags: Vec<&str> = eov_plugin_api::i18n::LANGUAGES
+        .iter()
+        .map(|language| language.tag)
+        .collect();
+    format!(
+        "Unknown language '{value}' given with --language: it is not one of eov's languages ({}). The interface is in {}.",
+        tags.join(", "),
+        eov_plugin_api::i18n::current().english_name
+    )
+}
+
 /// Refreshes tabs and panes after tabs moved, closed or panes changed; the
 /// per-pane caches follow the panes, so nothing goes blank (UI-16).
 fn refresh_tab_ui(ui: &AppWindow, state: &AppState) {
@@ -196,6 +215,21 @@ fn main() -> Result<()> {
     if launch_options.launches_ui() {
         logging::install_panic_hook();
     }
+    // The interface language (`--language`, then config.toml, then the
+    // system's), before the window's texts are made. Subcommands stay in
+    // English: their output is read by scripts and pasted into reports
+    // (and `eov batch` runs its plugins in English). An unknown
+    // `--language` is reported on standard error and, below, in the window.
+    let unknown_language = if launch_options.launches_ui() {
+        i18n::init(launch_options.language.as_deref())
+    } else {
+        None
+    };
+    if let Some(value) = &unknown_language {
+        // In English, as all command-line output.
+        eprintln!("eov: {}", unknown_language_english(value));
+    }
+    let unknown_language = unknown_language.map(|value| i18n::unknown_language_message(&value));
 
     if maybe_run_cli_command(&launch_options)? {
         return Ok(());
@@ -289,6 +323,9 @@ fn main() -> Result<()> {
         .map_err(anyhow::Error::from)
         .inspect_err(backend::report_startup_error)?;
     info!("Application window created");
+    // Slint selects the bundled translation after the first component.
+    i18n::apply_to_window(&ui);
+    i18n::setup_callbacks(&ui);
     ui.set_use_native_window_controls(cfg!(target_os = "macos"));
     theme::apply_saved(&ui);
 
@@ -311,11 +348,13 @@ fn main() -> Result<()> {
     let gpu_renderer = Rc::new(RefCell::new(GpuRenderer::new()));
     info!("Installing GPU renderer");
     // Slides can be drawn on the GPU only when the window is drawn with wgpu.
-    let gpu_unavailable = match &ui_renderer {
+    // Why not: in English for the log, in the interface's language for the
+    // window.
+    let gpu_unavailable: Option<(String, String)> = match &ui_renderer {
         backend::UiRenderer::Gpu => GpuRenderer::install(&ui, Rc::clone(&gpu_renderer))
             .err()
-            .map(|err| format!("the window does not support GPU rendering ({err})")),
-        backend::UiRenderer::Software(reason) => Some(reason.clone()),
+            .map(|failure| (failure.to_string(), failure.localized())),
+        backend::UiRenderer::Software(reason) => Some((reason.to_string(), reason.localized())),
     };
     set_gpu_renderer_handle(Rc::clone(&gpu_renderer));
     info!("GPU renderer installed");
@@ -354,15 +393,17 @@ fn main() -> Result<()> {
         }
         update_render_backend(&ui, &state);
         update_filtering_mode(&ui, &state);
-        if let Some(reason) = &gpu_unavailable {
+        if let Some((reason, localized_reason)) = &gpu_unavailable {
             tracing::warn!("GPU renderer unavailable: {reason}");
-            let message = "GPU renderer unavailable; slides are drawn by the CPU renderer";
-            ui.set_status_text(SharedString::from(message));
+            let message = eov_plugin_api::i18n::tr!(
+                "GPU renderer unavailable; slides are drawn by the CPU renderer"
+            );
+            ui.set_status_text(SharedString::from(message.as_str()));
             host_ui::with_host(|host| {
                 host.notify(
                     eov_plugin_api::protocol::NotifyLevel::Warning,
-                    message,
-                    Some(reason),
+                    &message,
+                    Some(localized_reason),
                     None,
                 )
             });
@@ -411,6 +452,14 @@ fn main() -> Result<()> {
 
     host.ready();
     launch::report_problems(&problems);
+    if let Some(message) = &unknown_language {
+        host.notify(
+            eov_plugin_api::protocol::NotifyLevel::Warning,
+            &eov_plugin_api::i18n::tr!("Unknown language"),
+            Some(message),
+            None,
+        );
+    }
 
     // Files handed over by eovs started from now on open here, and scripts'
     // calls are answered (the listener only queues them; the event loop
@@ -607,4 +656,65 @@ fn update_render_backend(ui: &AppWindow, state: &AppState) {
 
 fn update_filtering_mode(ui: &AppWindow, state: &AppState) {
     ui_update::update_filtering_mode(ui, state)
+}
+
+/// Makes again the texts made in Rust that the window keeps showing, after
+/// the interface changed language ([`i18n::switch_to`]).
+pub(crate) fn refresh_translated_texts(ui: &AppWindow) {
+    host_ui::key_help::apply_labels(ui);
+    host_ui::with_host(|host| {
+        ui_update::refresh_translated_texts(ui, host);
+        let state = host.state.read();
+        update_tabs(ui, &state);
+        update_recent_files(ui, &state);
+        update_render_backend(ui, &state);
+        update_filtering_mode(ui, &state);
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An unknown `--language` is reported on standard error in English,
+    /// whatever the interface's language, and without the marks that keep
+    /// text in order in right-to-left languages.
+    #[test]
+    fn the_unknown_language_warning_on_standard_error_is_english() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        for tag in ["de", "fa"] {
+            let language = i18n::by_tag(tag).unwrap();
+            let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+                None,
+                "Unknown language '{value}' given with --language: it is not one of eov's languages ({languages}). The interface is in {current}.",
+                &["Unbekannte Sprache „{value}“ ({languages}): {current}."],
+            )];
+            i18n::set_catalog(
+                language,
+                Some(i18n::Catalog::from_messages(language, "", messages).unwrap()),
+            );
+            let warning = unknown_language_english("xx");
+            assert!(
+                warning.starts_with("Unknown language 'xx' given with --language: it is not one of eov's languages (en, "),
+                "{warning}"
+            );
+            assert!(
+                warning.ends_with(&format!(
+                    "). The interface is in {}.",
+                    language.english_name
+                )),
+                "{warning}"
+            );
+            assert!(!warning.contains(['\u{2068}', '\u{2069}']), "{warning}");
+            // The window says it in the interface's language.
+            assert!(crate::i18n::unknown_language_message("xx").starts_with("Unbekannte Sprache"));
+        }
+    }
 }

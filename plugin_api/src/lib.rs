@@ -34,6 +34,7 @@
 //! [`testing`] for unit-testing plugins without eov.
 
 pub mod abi;
+pub mod i18n;
 pub mod manifest;
 pub mod protocol;
 pub mod sdk;
@@ -44,6 +45,7 @@ pub use manifest::PluginManifest;
 /// Everything a plugin usually needs: `use eov_plugin_api::prelude::*;`.
 pub mod prelude {
     pub use crate::abi::{FfiErrorKind, FilterView, RegionRequest, SlideRegion};
+    pub use crate::i18n::tr;
     pub use crate::protocol::*;
     pub use crate::sdk::{
         Frame, Host, HostError, HostResult, Image, Job, Layer, Plugin, SlideReader, Surface,

@@ -12,6 +12,8 @@
 //! - [`pipeline`] runs a job; [`engine`] is the inference interface and
 //!   `ort_backend` its ONNX Runtime implementation (feature `onnx`).
 //! - [`batch`] is the headless `analyze` command (`eov batch run`).
+//! - [`message`] keeps errors in the interface's language and in English
+//!   (eov's log and batch output are English).
 //! - [`tiling`], [`contract`], [`model`], [`onnx_scan`], [`run`], [`slide`],
 //!   [`results`], [`db`], [`render`], [`resample`], [`png`] and [`stats`]
 //!   are host-independent.
@@ -21,6 +23,7 @@ pub mod config;
 pub mod contract;
 pub mod db;
 pub mod engine;
+pub mod message;
 pub mod model;
 pub mod onnx_scan;
 #[cfg(feature = "onnx")]
@@ -83,15 +86,14 @@ impl Backend for NoRuntime {
         _request: &engine::EngineRequest,
         _status: &dyn Fn(&str),
         _stop: &[Arc<std::sync::atomic::AtomicBool>],
-    ) -> Result<Box<dyn engine::InferenceEngine>, String> {
-        Err(
-            "this eovae build has no ONNX Runtime support (built without the `onnx` feature)"
-                .into(),
-        )
+    ) -> Result<Box<dyn engine::InferenceEngine>, message::Message> {
+        Err(message::Message::new(|| {
+            tr!("this eovae build has no ONNX Runtime support (built without the `onnx` feature)")
+        }))
     }
 
     fn runtime_label(&self) -> String {
-        "no inference runtime in this build".into()
+        tr!("no inference runtime in this build")
     }
 }
 

@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { ContextMenuItem, TabData } from "types.slint";
 
@@ -646,7 +647,7 @@ component Tab inherits Rectangle {
     border-color: transparent;
     opacity: is-dragging ? 0.35 : 1.0;
     accessible-role: tab;
-    accessible-label: root.data.is-modified ? @tr("{} (modified)", root.data.title) : root.data.title;
+    accessible-label: root.data.is-modified ? @tr("{} (modified)", Locale.isolate(root.data.title)) : root.data.title;
     accessible-description: root.data.path;
     accessible-item-selectable: true;
     accessible-item-selected: root.data.is-active;
@@ -767,7 +768,7 @@ component Tab inherits Rectangle {
         Rectangle {
             width: self.height;
             accessible-role: button;
-            accessible-label: @tr("Close {}", data.title);
+            accessible-label: @tr("Close {}", Locale.isolate(data.title));
             accessible-action-default => {
                 root.close-requested(data.id);
             }
@@ -1099,6 +1100,7 @@ export component ContextMenu inherits Rectangle {
                         text: item.label;
                         color: item.enabled ? Theme.text-primary : Theme.text-secondary;
                         font-size: 12px;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                         overflow: elide;

@@ -8,6 +8,7 @@
 //! eov's own in one process, so they are not shown.
 
 use crate::overlay::store::OwnerUsage;
+use eov_plugin_api::i18n::{self, format_decimal, tr};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -124,64 +125,100 @@ impl UsageSnapshot {
             } else {
                 100.0 * self.event_time.as_secs_f64() / self.running_for.as_secs_f64()
             };
-            let mut part = format!(
-                "UI thread {} in {} {} ({}",
+            let (time, events, share) = (
                 duration(self.event_time),
                 count(self.events),
-                plural(self.events, "event", "events"),
-                percent(share)
+                percent(share),
             );
-            if let Some((time, event)) = &self.slowest_event
-                && *time >= Duration::from_millis(10)
-            {
-                part.push_str(&format!("; slowest {}, {event}", duration(*time)));
-            }
-            part.push(')');
-            parts.push(part);
+            let slowest = self
+                .slowest_event
+                .as_ref()
+                .filter(|(slowest, _)| *slowest >= Duration::from_millis(10));
+            parts.push(match slowest {
+                // Translators: the time a plugin's handlers took on the UI
+                // thread, how many events they handled, that time's share
+                // of the time since the plugin started, and the slowest
+                // handler with its event (an id such as view_changed).
+                Some((slowest, event)) => tr!(
+                    "UI thread {time} in {count} event ({share}; slowest {slowest}, {event})"
+                        | "UI thread {time} in {count} events ({share}; slowest {slowest}, {event})"
+                            % self.events,
+                    time = time,
+                    count = events,
+                    share = share,
+                    slowest = duration(*slowest),
+                    event = event
+                ),
+                // Translators: the time a plugin's handlers took on the UI
+                // thread, how many events they handled, and that time's
+                // share of the time since the plugin started.
+                None => tr!(
+                    "UI thread {time} in {count} event ({share})"
+                        | "UI thread {time} in {count} events ({share})" % self.events,
+                    time = time,
+                    count = events,
+                    share = share
+                ),
+            });
         }
         if self.filter_calls > 0 {
-            parts.push(format!(
-                "filters {} over {} {}",
-                duration(self.filter_time),
-                count(self.filter_calls),
-                plural(self.filter_calls, "frame", "frames")
+            parts.push(tr!(
+                "filters {time} over {count} frame"
+                    | "filters {time} over {count} frames" % self.filter_calls,
+                time = duration(self.filter_time),
+                count = count(self.filter_calls)
             ));
         }
         if self.region_reads > 0 {
-            parts.push(format!("read {} of slide pixels", bytes(self.region_bytes)));
+            parts.push(tr!("read {} of slide pixels", bytes(self.region_bytes)));
         }
         if overlays.objects > 0 || overlays.rasters > 0 {
-            let mut part = format!(
-                "{} {} in {} {}",
-                count(overlays.objects as u64),
-                plural(overlays.objects as u64, "object", "objects"),
-                count(overlays.layers as u64),
-                plural(overlays.layers as u64, "layer", "layers"),
+            // Translators: inserted into "{count} objects in {layers}".
+            let layers = tr!(
+                "Plugin usage" => "{count} layer" | "{count} layers" % overlays.layers,
+                count = count(overlays.layers as u64)
             );
-            if overlays.raster_bytes > 0 {
-                part.push_str(&format!(", {} of rasters", bytes(overlays.raster_bytes)));
-            }
-            parts.push(part);
+            let objects = tr!(
+                "{count} object in {layers}" | "{count} objects in {layers}" % overlays.objects,
+                count = count(overlays.objects as u64),
+                layers = layers
+            );
+            parts.push(if overlays.raster_bytes > 0 {
+                // Translators: what a plugin's overlays hold, then the
+                // memory of their images.
+                tr!(
+                    "{objects}, {bytes} of rasters",
+                    objects = objects,
+                    bytes = bytes(overlays.raster_bytes)
+                )
+            } else {
+                objects
+            });
         }
         if parts.is_empty() {
-            "Nothing measured yet".to_string()
+            // Translators: in the Plugins panel: no resource use of the plugin
+            // (memory, overlays) has been recorded yet.
+            tr!("No usage recorded yet")
         } else {
             parts.join(" · ")
         }
     }
 }
 
-fn plural<'a>(n: u64, one: &'a str, many: &'a str) -> &'a str {
-    if n == 1 { one } else { many }
-}
-
-/// "1,234,567".
+/// "1,234,567": digits in groups of three, with "," in languages whose
+/// decimal separator is "." and a narrow no-break space in the others
+/// (where "," or "." would read as a decimal separator).
 fn count(n: u64) -> String {
+    let separator = if i18n::current().decimal_separator == '.' {
+        ','
+    } else {
+        '\u{202F}'
+    };
     let digits = n.to_string();
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3 * 3);
     for (i, digit) in digits.chars().enumerate() {
         if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
+            out.push(separator);
         }
         out.push(digit);
     }
@@ -196,7 +233,7 @@ fn duration(time: Duration) -> String {
     } else if secs < 1.0 {
         format!("{} ms", time.as_millis())
     } else if secs < 60.0 {
-        format!("{secs:.1} s")
+        format!("{} s", format_decimal(secs, 1))
     } else {
         let whole = time.as_secs();
         format!("{} min {} s", whole / 60, whole % 60)
@@ -205,12 +242,14 @@ fn duration(time: Duration) -> String {
 
 /// "0.4 %", "<0.1 %", "12 %".
 fn percent(share: f64) -> String {
+    // Translators: a percentage, e.g. "25 %" or "0.4 %".
+    let percent = |number: String| tr!("{} %", number);
     if share > 0.0 && share < 0.1 {
-        "<0.1 %".to_string()
+        format!("<{}", percent(format_decimal(0.1, 1)))
     } else if share < 10.0 {
-        format!("{share:.1} %")
+        percent(format_decimal(share, 1))
     } else {
-        format!("{share:.0} %")
+        percent(format_decimal(share, 0))
     }
 }
 
@@ -218,11 +257,11 @@ fn percent(share: f64) -> String {
 fn bytes(n: u64) -> String {
     let n = n as f64;
     if n < 1e6 {
-        format!("{:.0} KB", (n / 1e3).max(1.0))
+        format!("{} KB", format_decimal((n / 1e3).max(1.0), 0))
     } else if n < 1e9 {
-        format!("{:.0} MB", n / 1e6)
+        format!("{} MB", format_decimal(n / 1e6, 0))
     } else {
-        format!("{:.1} GB", n / 1e9)
+        format!("{} GB", format_decimal(n / 1e9, 1))
     }
 }
 
@@ -297,7 +336,7 @@ mod tests {
         );
         assert_eq!(
             UsageSnapshot::default().summary(&OwnerUsage::default()),
-            "Nothing measured yet"
+            "No usage recorded yet"
         );
     }
 }

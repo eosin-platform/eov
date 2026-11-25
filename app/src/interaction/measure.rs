@@ -3,6 +3,7 @@
 
 use crate::overlay::geometry;
 use eov_common::MeasurementUnit;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{Dash, Rect, Rgba, Shape, Style};
 use serde::{Deserialize, Serialize};
 
@@ -190,12 +191,28 @@ fn significant(value: f64, digits: i32) -> f64 {
     (value * factor).round() / factor
 }
 
+/// Who reads a value: programs (CSV, scripts) get `.` decimals and English
+/// unit names; people get the interface's language.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reader {
+    Program,
+    Person,
+}
+
+/// `value` with `count` decimals, for `reader`.
+fn with_decimals(value: f64, count: usize, reader: Reader) -> String {
+    match reader {
+        Reader::Program => format!("{value:.count$}"),
+        Reader::Person => eov_plugin_api::i18n::format_decimal(value, count),
+    }
+}
+
 /// Formats with three significant digits, but never in scientific notation
 /// and without trailing zeros beyond what precision needs.
-fn format_sig(value: f64) -> String {
+fn format_sig(value: f64, reader: Reader) -> String {
     let rounded = significant(value, 3);
     let abs = rounded.abs();
-    let decimals = if abs == 0.0 || abs >= 100.0 {
+    let count = if abs == 0.0 || abs >= 100.0 {
         0
     } else if abs >= 10.0 {
         1
@@ -205,57 +222,104 @@ fn format_sig(value: f64) -> String {
         // 0.0123 → 4 decimals for three significant digits.
         (2 - abs.log10().floor() as i32).clamp(0, 6) as usize
     };
-    format!("{rounded:.decimals$}")
+    with_decimals(rounded, count, reader)
 }
 
-/// A length for display in the user's unit. In µm mode values from 1 mm
-/// upwards are shown in mm.
-pub fn format_length(um: f64, unit: MeasurementUnit) -> String {
+fn length_text(um: f64, unit: MeasurementUnit, reader: Reader) -> String {
+    let value = |v: f64| format_sig(v, reader);
     match unit {
-        MeasurementUnit::Um if um.abs() >= 1000.0 => format!("{} mm", format_sig(um / 1000.0)),
-        MeasurementUnit::Um => format!("{} µm", format_sig(um)),
-        MeasurementUnit::Mm => format!("{} mm", format_sig(um / 1000.0)),
-        MeasurementUnit::Inches => format!("{} in", format_sig(um / 25_400.0)),
+        MeasurementUnit::Um if um.abs() >= 1000.0 => format!("{} mm", value(um / 1000.0)),
+        MeasurementUnit::Um => format!("{} µm", value(um)),
+        MeasurementUnit::Mm => format!("{} mm", value(um / 1000.0)),
+        MeasurementUnit::Inches if reader == Reader::Program => {
+            format!("{} in", value(um / 25_400.0))
+        }
+        // Translators: a length in inches ("1.00 in").
+        MeasurementUnit::Inches => tr!("{} in", value(um / 25_400.0)),
     }
 }
 
-/// An area for display in the user's unit. In µm mode areas from 0.1 mm²
-/// (about half a high-power field) upwards are shown in mm², as field and
-/// tumour areas are usually stated.
-pub fn format_area(um2: f64, unit: MeasurementUnit) -> String {
+fn area_text(um2: f64, unit: MeasurementUnit, reader: Reader) -> String {
+    let value = |v: f64| format_sig(v, reader);
     match unit {
         MeasurementUnit::Um if um2.abs() >= 100_000.0 => {
-            format!("{} mm²", format_sig(um2 / 1_000_000.0))
+            format!("{} mm²", value(um2 / 1_000_000.0))
         }
-        MeasurementUnit::Um => format!("{} µm²", format_sig(um2)),
-        MeasurementUnit::Mm => format!("{} mm²", format_sig(um2 / 1_000_000.0)),
-        MeasurementUnit::Inches => format!("{} in²", format_sig(um2 / 645_160_000.0)),
+        MeasurementUnit::Um => format!("{} µm²", value(um2)),
+        MeasurementUnit::Mm => format!("{} mm²", value(um2 / 1_000_000.0)),
+        MeasurementUnit::Inches if reader == Reader::Program => {
+            format!("{} in²", value(um2 / 645_160_000.0))
+        }
+        // Translators: an area in square inches ("1.00 in²").
+        MeasurementUnit::Inches => tr!("{} in²", value(um2 / 645_160_000.0)),
     }
 }
 
-/// The text shown next to a measurement.
-pub fn label(mode: MeasureMode, value: &MeasurementValue, unit: MeasurementUnit) -> String {
+fn label_text(
+    mode: MeasureMode,
+    value: &MeasurementValue,
+    unit: MeasurementUnit,
+    reader: Reader,
+) -> String {
     let prefix = if value.approximate { "≈ " } else { "" };
     if mode == MeasureMode::Angle {
         return value
             .angle_deg
-            .map(|deg| format!("{prefix}{deg:.1}°"))
+            .map(|deg| format!("{prefix}{}°", with_decimals(deg, 1, reader)))
             .unwrap_or_default();
     }
-    let length = match value.length_um {
-        Some(um) => format_length(um, unit),
-        None => format!("{} px", format_sig(value.length_px)),
+    let length = match (value.length_um, reader) {
+        (Some(um), Reader::Program) => format_length(um, unit),
+        (Some(um), Reader::Person) => display_length(um, unit),
+        (None, _) => format!("{} px", format_sig(value.length_px, reader)),
     };
     match mode {
         MeasureMode::Line | MeasureMode::Polyline => format!("{prefix}{length}"),
         _ => {
-            let area = match value.area_um2 {
-                Some(um2) => format_area(um2, unit),
-                None => format!("{} px²", format_sig(value.area_px2)),
+            let area = match (value.area_um2, reader) {
+                (Some(um2), Reader::Program) => format_area(um2, unit),
+                (Some(um2), Reader::Person) => display_area(um2, unit),
+                (None, _) => format!("{} px²", format_sig(value.area_px2, reader)),
             };
             format!("{prefix}{area} · {length}")
         }
     }
+}
+
+/// A length in the user's unit, with `.` decimals (CSV, scripts; the
+/// window shows [`display_length`]). In µm mode values from 1 mm upwards
+/// are shown in mm.
+pub fn format_length(um: f64, unit: MeasurementUnit) -> String {
+    length_text(um, unit, Reader::Program)
+}
+
+/// [`format_length`] as people read it in the interface's language.
+pub fn display_length(um: f64, unit: MeasurementUnit) -> String {
+    length_text(um, unit, Reader::Person)
+}
+
+/// An area in the user's unit, with `.` decimals (CSV, scripts; the window
+/// shows [`display_area`]). In µm mode areas from 0.1 mm² (about half a
+/// high-power field) upwards are shown in mm², as field and tumour areas
+/// are usually stated.
+pub fn format_area(um2: f64, unit: MeasurementUnit) -> String {
+    area_text(um2, unit, Reader::Program)
+}
+
+/// [`format_area`] as people read it in the interface's language.
+pub fn display_area(um2: f64, unit: MeasurementUnit) -> String {
+    area_text(um2, unit, Reader::Person)
+}
+
+/// The text next to a measurement, with `.` decimals (the CSV of the
+/// Measurements panel, scripts); [`display_label`] is the one shown.
+pub fn label(mode: MeasureMode, value: &MeasurementValue, unit: MeasurementUnit) -> String {
+    label_text(mode, value, unit, Reader::Program)
+}
+
+/// The text shown next to a measurement, in the interface's language.
+pub fn display_label(mode: MeasureMode, value: &MeasurementValue, unit: MeasurementUnit) -> String {
+    label_text(mode, value, unit, Reader::Person)
 }
 
 /// Style of committed measurements.

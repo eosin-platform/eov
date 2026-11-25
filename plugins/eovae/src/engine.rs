@@ -5,7 +5,9 @@
 //! backend (VAE-8): [`DevicePreference::Auto`] tries CUDA and falls back to
 //! the CPU, saying why; `Cuda` insists on CUDA; `Cpu` never touches a GPU.
 
+use crate::message::Message;
 use crate::model::ModelInfo;
+use eov_plugin_api::i18n::tr;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,6 +27,7 @@ pub enum DevicePreference {
 impl DevicePreference {
     pub const ALL: [DevicePreference; 3] = [Self::Auto, Self::Cpu, Self::Cuda];
 
+    /// The name batch parameters use ([`Self::parse`] reads it).
     pub fn label(self) -> &'static str {
         match self {
             Self::Auto => "Auto",
@@ -37,6 +40,15 @@ impl DevicePreference {
         Self::ALL
             .into_iter()
             .find(|d| d.label().eq_ignore_ascii_case(label.trim()))
+    }
+
+    /// The name in the sidebar, in the interface's language.
+    pub fn text(self) -> String {
+        match self {
+            // Translators: inference device: CUDA when it works, else the CPU
+            Self::Auto => tr!("Device" => "Auto"),
+            other => other.label().to_string(),
+        }
     }
 }
 
@@ -71,16 +83,60 @@ pub struct EngineInfo {
     /// Numeric precision of the computation (`fp32`, `tf32`): part of the
     /// cache key because it changes results slightly.
     pub precision: String,
-    /// Human-readable description ("CUDA · TF32", "CPU · 8 threads").
+    /// Human-readable description ("CUDA · TF32", "CPU · 8 threads"), in
+    /// English for batch summaries; [`Self::text`] is the sidebar's.
     pub label: String,
-    /// Why `Auto` did not get CUDA.
-    pub fallback: Option<String>,
+    /// CPU inference threads (0 on the GPU).
+    pub threads: usize,
+    /// Why `Auto` did not get CUDA: batch summaries record its English
+    /// form, [`reason_text`] shows it.
+    pub fallback: Option<Message>,
     /// The batch size the model's graph requires, if fixed.
     pub fixed_batch: Option<usize>,
     /// Values per batch item of the input and output tensors.
     pub item_len: usize,
     /// Values per batch item of the latent output, if one is read.
     pub latent_dim: Option<usize>,
+}
+
+impl EngineInfo {
+    /// [`Self::label`] in the interface's language.
+    pub fn text(&self) -> String {
+        match self.device {
+            Device::Cpu if self.threads > 0 => {
+                tr!("CPU · {n} thread" | "CPU · {n} threads" % self.threads)
+            }
+            _ => self.label.clone(),
+        }
+    }
+}
+
+/// Why `Auto` runs on the CPU with an ONNX Runtime built without CUDA, in
+/// English, as batch summaries record it ([`no_cuda_support`]).
+pub const NO_CUDA_SUPPORT: &str =
+    "this ONNX Runtime has no CUDA support (use the GPU build; see the README)";
+
+/// [`NO_CUDA_SUPPORT`] in the language being written.
+fn no_cuda_support_text() -> String {
+    tr!("this ONNX Runtime has no CUDA support (use the GPU build; see the README)")
+}
+
+/// Why `Auto` runs on the CPU with an ONNX Runtime built without CUDA.
+pub fn no_cuda_support() -> Message {
+    Message::new(no_cuda_support_text)
+}
+
+/// A reason an engine gives (why it fell back to the CPU, why CUDA is
+/// unavailable) in the language being written, as the sidebar and
+/// notifications show it: [`NO_CUDA_SUPPORT`] is worded again, so that it
+/// follows a change of language; others (eovae's, ONNX Runtime's) as they
+/// were made.
+pub fn reason_text(reason: &Message) -> String {
+    if reason.english == NO_CUDA_SUPPORT {
+        no_cuda_support_text()
+    } else {
+        reason.to_string()
+    }
 }
 
 /// One batch of results.
@@ -96,14 +152,15 @@ pub struct EngineOutput {
 pub enum EngineError {
     /// The run was stopped through the stop flag.
     Stopped,
-    Failed(String),
+    Failed(Message),
 }
 
+/// In the language being written (see [`Message`]).
 impl std::fmt::Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Stopped => f.write_str("stopped"),
-            Self::Failed(message) => f.write_str(message),
+            Self::Failed(message) => std::fmt::Display::fmt(message, f),
         }
     }
 }
@@ -178,7 +235,7 @@ pub trait Backend: Send + Sync + 'static {
         request: &EngineRequest,
         status: &dyn Fn(&str),
         stop: &[Arc<AtomicBool>],
-    ) -> Result<Box<dyn InferenceEngine>, String>;
+    ) -> Result<Box<dyn InferenceEngine>, Message>;
 
     /// Which inference runtime is in use, for the sidebar.
     fn runtime_label(&self) -> String;
@@ -225,6 +282,7 @@ pub(crate) mod testing {
                     device: Device::Cpu,
                     precision: "fp32".to_string(),
                     label: "Test engine".to_string(),
+                    threads: 0,
                     fallback: None,
                     fixed_batch,
                     item_len,
@@ -258,9 +316,9 @@ pub(crate) mod testing {
                 Behaviour::Identity => input.to_vec(),
                 Behaviour::Offset(offset) => input.iter().map(|v| v + offset).collect(),
                 Behaviour::FailOn(n) if n == run => {
-                    return Err(EngineError::Failed(
-                        "model output has the wrong shape".into(),
-                    ));
+                    return Err(EngineError::Failed(Message::plain(
+                        "model output has the wrong shape",
+                    )));
                 }
                 Behaviour::FailOn(_) => input.to_vec(),
                 Behaviour::Hang => loop {
@@ -290,7 +348,7 @@ pub(crate) mod testing {
             request: &EngineRequest,
             status: &dyn Fn(&str),
             _stop: &[Arc<AtomicBool>],
-        ) -> Result<Box<dyn InferenceEngine>, String> {
+        ) -> Result<Box<dyn InferenceEngine>, Message> {
             status("Building test engine");
             let tile = request.model.tile_size as usize;
             // The model's file name picks the behaviour.
@@ -304,10 +362,10 @@ pub(crate) mod testing {
             };
             let mut engine = TestEngine::new(tile * tile * 3, request.model.fixed_batch, behaviour);
             if request.device == DevicePreference::Cuda {
-                return Err("CUDA is not available in tests".to_string());
+                return Err(Message::plain("CUDA is not available in tests"));
             }
             if request.device == DevicePreference::Auto {
-                engine.info.fallback = Some("no CUDA in tests".to_string());
+                engine.info.fallback = Some(Message::plain("no CUDA in tests"));
             }
             Ok(Box::new(engine))
         }
@@ -319,5 +377,36 @@ pub(crate) mod testing {
         fn runtime_version(&self) -> Option<String> {
             Some("test".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shown_reasons_say_what_recorded_ones_say() {
+        // Tests run in English: the shown text is the recorded one.
+        assert_eq!(no_cuda_support().english, NO_CUDA_SUPPORT);
+        assert_eq!(reason_text(&no_cuda_support()), NO_CUDA_SUPPORT);
+        assert_eq!(
+            reason_text(&Message::plain("libcudart.so: missing")),
+            "libcudart.so: missing"
+        );
+        let info = |device, threads| EngineInfo {
+            device,
+            precision: "fp32".into(),
+            label: "CPU · 8 threads".into(),
+            threads,
+            fallback: None,
+            fixed_batch: None,
+            item_len: 3,
+            latent_dim: None,
+        };
+        assert_eq!(info(Device::Cpu, 8).text(), "CPU · 8 threads");
+        assert_eq!(
+            DevicePreference::Auto.text(),
+            DevicePreference::Auto.label()
+        );
     }
 }

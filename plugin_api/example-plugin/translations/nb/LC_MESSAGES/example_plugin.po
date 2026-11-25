@@ -1,0 +1,124 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Norwegian Bokmål\n"
+"Language: nb\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"Demonstrerer verktøylinjeknapper, et sidepanel, overleggslag, et "
+"punktverktøy med angrefunksjon, et filter og bakgrunnsjobber."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "Eksempelprogramtillegg"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "Eksempelpreparater med sjakkbrettmønster"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "Eksempelsidepanel"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "Plasser merke"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "Inverter farger"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "Inverter"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "Vevsandel og gjennomsnittlig vevsfarge for hvert preparat"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "Les det fineste nivået med høyst så mange piksler"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "Merker"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "Merke {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "oppretting av merke"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "Teller til ti"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} av {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "Legg til merke her"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "{n} merke på de åpne preparatene"
+msgstr[1] "{n} merker på de åpne preparatene"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "Eksempelprogramtillegg"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "Ikke noe preparat"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} merke"
+msgstr[1] "{n} merker"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "Fjern merker"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "Inverter farger"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "Kjør bakgrunnsjobb"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "Beskriv"

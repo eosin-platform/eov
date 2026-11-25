@@ -5,6 +5,9 @@ import { RecentFileData } from "types.slint";
 export global AppInfo {
     in property <string> version: "";
     callback check-for-updates();
+    /// The language of the interface, in itself ("Deutsch").
+    in property <string> language-name: "English";
+    callback choose-language();
 }
 
 export component HomeScreen inherits Rectangle {
@@ -208,6 +211,7 @@ export component HomeScreen inherits Rectangle {
         spacing: 4px;
 
         Text {
+            // Translators: "not for primary diagnosis" is the regulatory wording: eov must not be used to make a diagnosis from the slide; do not translate it as the "principal diagnosis" of hospital coding.
             text: @tr("For research and education. Not a medical device; not for primary diagnosis.");
             color: Theme.text-secondary;
             font-size: 10px;
@@ -223,6 +227,47 @@ export component HomeScreen inherits Rectangle {
                 text: "eov " + AppInfo.version;
                 color: Theme.text-secondary;
                 font-size: 10px;
+            }
+
+            Text {
+                text: "·";
+                color: Theme.text-secondary;
+                font-size: 10px;
+                accessible-role: none;
+            }
+
+            // The language, in its own name, with the globe of the
+            // toolbar's button.
+            HorizontalLayout {
+                spacing: 3px;
+                accessible-role: button;
+                accessible-label: @tr("Language: {}", AppInfo.language-name);
+                accessible-action-default => {
+                    AppInfo.choose-language();
+                }
+
+                Image {
+                    width: 11px;
+                    height: 11px;
+                    y: (parent.height - self.height) / 2;
+                    source: @image-url("icons/language.svg");
+                    colorize: language-touch.has-hover ? Theme.text-primary : Theme.link;
+                    accessible-role: none;
+                }
+
+                Text {
+                    text: AppInfo.language-name;
+                    color: language-touch.has-hover ? Theme.text-primary : Theme.link;
+                    font-size: 10px;
+                    accessible-role: none;
+
+                    language-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            AppInfo.choose-language();
+                        }
+                    }
+                }
             }
 
             Text {

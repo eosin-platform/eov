@@ -1,0 +1,251 @@
+term	translation	note
+eov	eov	Never translated; lowercase.
+slide	preparat	Glass microscope slide and its scan (et preparat, preparatet, preparater, preparatene). Never "lysbilde" or "slide". "objektglass" only for the physical glass.
+whole-slide image (WSI)	digitalt preparat (WSI)	Keep the abbreviation WSI; WSI-fil, WSI-filer. Desktop entry: "Visningsprogram for digitale preparater".
+slide viewer, viewer	visningsprogram	Visningsprogram for digitale preparater; never "leser".
+tab	fane	en fane, fanen, faner, fanene.
+pane	rute	As in Microsoft's Norwegian (navigasjonsrute): en rute, ruten, ruter, rutene. Split Right = Del til høyre.
+view	visning	What a pane shows (position, magnification, rotation).
+viewport	visningsområde	The area of a pane where the slide is drawn.
+minimap	minikart	
+scale bar	målestokk	
+HUD	panel	The idea, not the abbreviation: metadata HUD = metadatapanel; HUD settings = panelinnstillinger.
+toolbar	verktøylinje	
+sidebar	sidepanel	
+status bar	statuslinje	
+series bar	serielinje	The strip of slides of a folder.
+zoom	zoom; zoome	Screen scale. Zoom in = Zoom inn; Zoom out = Zoom ut; zoom level = zoomnivå.
+magnification	forstørrelse	Objective-equivalent optical magnification; 20× stays 20×.
+objective	objektiv	
+objective power	objektivforstørrelse	
+pixel size	pikselstørrelse	Norwegian spelling piksel (en piksel, piksler).
+MPP (µm per pixel)	MPP (µm per piksel)	Keep MPP.
+calibration	kalibrering	Calibrate = kalibrere; Kalibrer.
+level, pyramid level	nivå, pyramidenivå	et nivå, nivåer; L0 = full resolution.
+tile	flis	Square piece of the image loaded at a time (en flis, flisen, fliser, flisene).
+patch (dataset)	utsnitt	Small image cut from a slide for machine learning (et utsnitt, utsnittet, utsnitt, utsnittene). Dataset "Tile Size" = Utsnittsstørrelse.
+cache	hurtigbuffer	As in Norwegian Windows; tile cache = flishurtigbuffer.
+region of interest (ROI)	interesseområde (ROI)	Keep ROI as the abbreviation; the region = området.
+measurement	måling	en måling, målingen, målinger.
+measure (tool)	måleverktøy; tool name: Måling	Measure: Distance = Måling: Avstand.
+Navigate (tool)	Navigering	Tool name.
+annotation	annotasjon	A drawn mark with a meaning (en annotasjon, annotasjonen, annotasjoner); not a comment (kommentar, merknad).
+class (annotation class)	klasse	Annotation class = annotasjonsklasse.
+cell count, counting	celletelling, telling	
+high-power field (HPF)	synsfelt ved stor forstørrelse (HPF)	Keep the abbreviation HPF in compact labels (per 10 HPF).
+H&E	H&E	Never HE or translated.
+hematoxylin	hematoksylin	Norwegian spelling; letter H.
+eosin	eosin	Letter E.
+IHC, immunohistochemistry	IHC, immunhistokjemi	Keep IHC; immunhistokjemisk.
+DAB	DAB	Keep.
+chromogen	kromogen	
+stain (method, staining)	farging	H&E, Giemsa, the slide's stain: Farging: {}; HE-farging style compounds: H&E-farging.
+stain (dye, component)	fargestoff	Hematoxylin, eosin, DAB as components of a stain model: Isolert fargestoff: {}.
+stain names	Hematoksylin, Eosin, Metylblått, Ponceau-fuksin, Massons trikrom, Giemsa, Retikulin, Kongorødt, van Gieson, Elastin, Alcianblått, Perls' berlinerblått, Gram, Grocotts metenaminsølv, Mucikarmin, Ziehl–Neelsen	Norwegian laboratory names; person names stay.
+stain model	fargemodell	H-DAB stain preset = H-DAB-forvalg.
+stain vectors	fargevektorer	Reference vectors = referansevektorer.
+stain fit, fit (stains)	tilpasning, tilpasse	Macenko fit = Macenko-tilpasning; fit rejected = tilpasning forkastet.
+stain normalization (Macenko, Vahadane)	fargenormalisering	Also for "colour normalisation"; Macenko and Vahadane stay.
+stain target	fargemål	The appearance normalisation maps onto (et fargemål, fargemålet); reference stain target = referansefargemålet; normalisation target = normaliseringsmål.
+color deconvolution	fargedekonvolusjon	Ruifrok–Johnston.
+optical density	optisk tetthet	
+H-score	H-score	Weak (1+) = Svak (1+), Moderate (2+) = Moderat (2+), Strong (3+) = Sterk (3+).
+threshold	terskel	terskelverdi in running text when clearer.
+positive (for a stain)	positiv	DAB-positive = DAB-positiv; positive pixels = positive piksler.
+channel	kanal	en kanal, kanalen, kanaler.
+multiplex immunofluorescence (mIF)	multipleks immunfluorescens (mIF)	
+marker	markør	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	fokalplan	et fokalplan, fokalplanet, fokalplan.
+Z-stack	Z-stakk	
+time point (T)	tidspunkt	et tidspunkt, tidspunkter.
+time series	tidsserie	
+heat map	varmekart	et varmekart, varmekartet.
+overlay	overlegg	et overlegg, overlegget, overlegg.
+layer	lag	et lag, laget, lag, lagene.
+opacity	opasitet	Compact; 0–100 %.
+tissue QC	vevskontroll	kvalitetskontroll av vev in running text; Check Tissue Quality = Kontroller vevskvalitet.
+pen marks	tusjmerker	Marker-pen ink on the glass; tusj = ink.
+folds	folder	Tissue folds (en fold, folden, folder).
+blur, out of focus	uskarphet, ute av fokus	Blurred areas = uskarpe områder.
+tissue detection, tissue mask	vevsdeteksjon, vevsmaske	
+dataset	datasett	et datasett, datasettet.
+patch extraction	uttrekk av utsnitt	Dataset extraction = uttrekk av datasett.
+stride	steglengde	Step between patches.
+export	eksportere; Eksporter	Export Image = Eksporter bilde.
+save a copy	lagre en kopi	Save a Copy of the Slide = Lagre en kopi av preparatet.
+convert	konvertere	
+de-identify	avidentifisere; Avidentifiser	Norwegian health-data practice (avidentifiserte opplysninger); not "anonymisere".
+label image	etikettbilde	Photo of the slide's paper label; label = etikett.
+macro image	makrobilde	Photo of the whole glass slide.
+thumbnail	miniatyrbilde	
+overview (associated image)	oversiktsbilde	
+associated image	tilknyttet bilde	Label, macro and thumbnail images stored in a slide file.
+bookmark	bokmerke	Bookmark the view = Lag bokmerke for visningen.
+session	økt	As in Norwegian Windows (en økt, økten).
+plugin	programtillegg	As in Norwegian Firefox (et programtillegg, programtillegget, programtillegg, programtilleggene).
+package (.eop)	pakke; programtilleggspakke	en pakke, pakken; plugin package = programtilleggspakke.
+model, model store	modell, modellager	Machine-learning model file; eovs modellager.
+inference	inferens	
+render	gjengi	As in Microsoft's Norwegian; rendering = gjengivelse.
+renderer (CPU, GPU, software)	gjengivelse (CPU-gjengivelse, GPU-gjengivelse, programvaregjengivelse)	CPU and GPU stay.
+backend	backend	Keep, e.g. GPU-backend.
+graphics adapter	grafikkadapter	Software graphics adapters = programvarebaserte grafikkadaptere.
+filtering	filtrering	Filtering mode = Filtreringsmodus.
+bilinear, trilinear, Lanczos	bilineær, trilineær, Lanczos	Lanczos is a name.
+sharpness	skarphet	
+gamma	gamma	
+brightness	lysstyrke	
+contrast	kontrast	Auto contrast = Autokontrast.
+theme	tema	et tema, temaet.
+Dark, Light, High Contrast (theme)	Mørkt, Lyst, Høy kontrast	Neuter, agreeing with tema.
+colour management	fargestyring	Colour-managed = fargestyrt; colours as scanned = farger som skannet.
+colour profile, ICC profile	fargeprofil, ICC-profil	
+Home screen	startskjerm	
+Home (tab)	Start	
+Check for Updates…	Se etter oppdateringer…	Asks before going online; never imply automatic updates.
+research and education	forskning og undervisning	
+not a medical device	ikke medisinsk utstyr	Regulatory term (MDR, lov om medisinsk utstyr); never soften.
+primary diagnosis	primærdiagnostikk	Not for primary diagnosis = ikke til primærdiagnostikk.
+research use only (RUO)	kun til forskningsbruk (RUO)	Phrase printed on RUO reagents.
+synthetic, predicted, generated	syntetisk, predikert, generert	Computed by an algorithm (beregnet); never "falsk", "kunstig" or "simulert".
+intended use	tiltenkt bruk	
+alignment, align	innretting, rette inn	Of linked slides; Align from Landmarks = Rett inn etter landemerker. Not "justering" (that is adjust).
+adjust, adjustment	justere, justering	Adjust the alignment = Juster innrettingen; image adjustments = bildejusteringer.
+landmark	landemerke	Alignment landmark = landemerke for innretting.
+link, unlink (panes)	koble sammen, koble fra	Panes linked = Rutene er koblet sammen; linked slides = sammenkoblede preparater.
+focused pane	den aktive ruten	
+split (view)	dele	Split Right = Del til høyre; Split Down = Del nedover.
+quantify	kvantifisere; Kvantifiser	
+Open	Åpne	Imperative for buttons and menu items; sentence case.
+Open Folder…	Åpne mappe…	
+Close	Lukk	
+Cancel	Avbryt	
+OK	OK	
+Confirm	Bekreft	
+Done	Ferdig	Status "done" (completed) = Fullført.
+Save	Lagre	
+Save As	Lagre som	
+Import	Importer	Imperatives without accent: Importer, Eksporter, Kopier, Roter, Aktiver.
+Copy	Kopier	
+Paste	Lim inn	
+Delete	Slett	
+Remove	Fjern	
+Add	Legg til	
+Edit	Rediger	
+Rename	Gi nytt navn	
+Clear	Tøm; Fjern	Clear a list = Tøm; Clear All Measurements = Fjern alle målinger.
+Settings	Innstillinger	
+Apply	Bruk	
+Reset	Tilbakestill	Reset to Defaults = Tilbakestill til standard.
+Restore	Gjenopprett	
+Show, Hide	Vis, Skjul	
+Toggle	Vis/skjul; Slå av/på	
+Enable, Disable	Aktiver, Deaktiver	Enabled = aktivert, Disabled = deaktivert, Active = aktiv; on/off = på/av.
+Undo, Redo	Angre, Gjør om	Nothing to undo = Ingenting å angre.
+Zoom to {}	Zoom til {}	
+Fit	Tilpass	Fit the slide to the pane = Tilpass preparatet til ruten.
+Rotate, rotation	Roter, rotasjon	Rotate Right 90° = Roter 90° mot høyre.
+Flip horizontally	Speilvend vannrett	Unflip = Opphev speilvending.
+Pan	Panorer	
+Update (verb), update (noun)	Oppdater, oppdatering	Updating = oppdaterer; up to date = oppdatert.
+Install, uninstall	Installer, avinstaller	
+Download	Last ned; laste ned	Downloading = laster ned; download (noun) = nedlasting.
+Load	Last inn; laste inn	Loading = laster inn.
+Filter	Filtrer (verb), filter (noun)	
+Back, Forward, Up	Tilbake, Fremover, Opp	
+Next, Previous	Neste, Forrige	
+Select, choose	Velg	
+Retry, try again	Prøv igjen	
+Quit	Avslutt	Quit eov = Avslutt eov.
+Help, About	Hjelp, Om	About eov = Om eov.
+file, folder, path	fil, mappe, bane	As in Norwegian Windows (filbane); Open Containing Folder = Åpne mappen filen ligger i.
+file manager	filbehandler	
+clipboard	utklippstavle	
+properties	egenskaper	Slide properties, as the scanner wrote them.
+metadata	metadata	
+vendor	produsent	
+scan date	skannedato	scan = skanne, skanning.
+dimensions	dimensjoner	
+file size	filstørrelse	
+preview	forhåndsvisning	
+format, quality, compression, lossless	format, kvalitet, komprimering, tapsfri	
+resolution	oppløsning	
+messages, notification	meldinger, varsel	et varsel, varsler.
+error, warning, information	feil, advarsel, informasjon	
+log folder	loggmappe	
+crash report	krasjrapport	
+safe mode	sikker modus	
+language	språk	Automatic (System Default) = Automatisk (systemstandard).
+Keyboard Shortcuts	Hurtigtaster	Shortcut, hotkey = hurtigtast; no key = ingen tast.
+full screen	fullskjerm	
+recent files, recently opened	nylige filer, nylig åpnet	
+administrator policy	administratorpolicy	As in Norwegian Windows (gruppepolicy); policy file = policyfil.
+release, release notes, prerelease	utgivelse, versjonsmerknader, forhåndsutgivelse	
+signature, signed, verified	signatur, signert, verifisert	
+update helper	oppdateringshjelper	
+repository	kodelager	GitHub repository (et kodelager, kodelageret).
+artifact	artefakt	Release artifact (en artefakt).
+manifest, catalog, registry	manifest, katalog, register	Plugin catalog = programtilleggskatalog.
+bundle	pakke	macOS app bundle = macOS-programpakke; offline update bundle = frakoblet oppdateringspakke.
+offline	frakoblet	As in Norwegian Windows; network access = nettverkstilgang.
+lock file	låsefil	
+thread, worker thread	tråd, arbeidstråd	
+distance, area, angle, length	avstand, areal, vinkel, lengde	Measure modes: Avstand, Banelengde, Polygonareal, Rektangelareal, Ellipseareal, Vinkel.
+colour names	rød, oransje, gul, grønn, turkis, blå, lilla, rosa, hvit, grå, svart	Navy = marineblå; letters R, G, B stay.
+units	enheter	Micrometres = mikrometer; millimetres = millimeter; inches = tommer; mil = tusendels tomme.
+percent	{} %	Space before % in Norwegian (50 %).
+time units	t, min, s	{hours} t {minutes} min; {minutes} min {seconds} s.
+quotation marks	«…»	Norwegian guillemets; ‘…’ inside them.
+undo label (Undo {}, Redo {})	Angre {}, Gjør om {}	The label is a noun phrase, as in Word: Angre sletting av måling, Gjør om oppretting av måling.
+case (patient accession)	kasus	Series order by case = etter kasus (et kasus).
+tissue cell (QC grid cell)	vevsfelt	A cell of the tissue-QC grid, not a biological cell: {n} vevsfelt.
+colour composite	fargekompositt	Channels copied as the colour composite shown = som den viste fargekompositten.
+staged (update)	klargjort	Installed by the update helper after eov exits; staging directory = klargjøringsmappe.
+N/A (not recorded)	I/T	ikke tilgjengelig; Unknown = Ukjent.
+A–Z (sort order)	A–Å	Norwegian alphabet ends with Å; Newest = Nyeste.
+viewport lock	visningslås	
+tool names	Navigering, Interesseområde, Måling	Navigate, Region of interest, Measure (Measure: Distance = Måling: Avstand).
+annotation layer	lag	Annotation layers in the annotations plugin (et lag, laget, lag, lagene); Layer settings = Laginnstillinger.
+region (annotation)	område	A drawn area (et område, området, områder); Add to region / Cut from region = legg til i / kutt ut av området.
+outline	omriss	Of a region or polygon (et omriss, omrisset); Repair outline = reparasjon av omriss.
+shape (drawn)	figur	A drawn geometric shape (en figur, figuren, figurer); kind of shape = figurtype.
+text label (annotation)	tekstetikett	A text annotation; Text label tool = Tekstetikett.
+brush, eraser, stroke	pensel, viskelær, penselstrøk	Brush tool = Pensel; Erase (undo label) = utvisking; Alt erases = Alt visker ut.
+HPF field	HPF-felt	A placed high-power field (et HPF-felt, HPF-felt); section heading HIGH-POWER FIELDS = SYNSFELT (HPF); HPF field tool = HPF-feltverktøyet.
+field number (FN)	feltnummer (FN)	The eyepiece field number in mm; FN (mm) stays.
+count point, Count tool, Count tab	tellepunkt, telleverktøy, Telling	Counting cells with points (et tellepunkt); the tab is named Telling (i fanen Telling); counted = talt.
+combined positive score (CPS)	kombinert positiv skår (CPS)	PD-L1 score; score = skår (en skår); tumour cells = tumorceller; immune cells = immunceller.
+comment (annotation)	kommentar	A comment on an annotation; button Comment = Kommenter.
+review status: Draft, Verified, Rejected	Utkast, Verifisert, Avvist	Review status = Gjennomgangsstatus; Mark verified (undo label) = markering som verifisert.
+second reader, reader	annen bedømmer, bedømmer	Another pathologist who reads the same slide (inter-rater sense, en bedømmer); SECOND READER = ANNEN BEDØMMER; the other reader's = den andre bedømmerens.
+blinded copy	blindet kopi	Export a blinded copy… = Eksporter en blindet kopi…
+merge (database)	slå sammen	Merge… = Slå sammen…; Merge a database… = Slå sammen med en database…
+back up, backup	sikkerhetskopiere, sikkerhetskopi	Back up… = Sikkerhetskopier…
+attach (annotations to a slide)	knytte til	Attach = Knytt til; Attached {n} layers = Knyttet {n} lag til.
+Bring them in (old annotations)	Hent dem inn	Bringing pre-1.0 annotations into the current database = hente inn.
+plugin undo labels	lowercase noun phrase (oppretting av punkt, sletting av laget «{}»)	As eov's own labels; a label that is also a menu item or dialog title keeps the imperative (Slett lag, Slett klasse, Fjern tellinger, Slett annotasjon). Could not save "{}" = Kunne ikke lagre endringen «{}».
+even-odd rule	even-odd-regelen	Fill rule for self-crossing outlines.
+readout, region readout	avlesning, områdeavlesning	Cellaris: REGION READOUT = OMRÅDEAVLESNING; tool Cellaris region readout = Cellaris-områdeavlesning.
+prediction, predict	prediksjon, predikere	Predicted = predikert; never "spådd".
+window (model input)	vindu	A square image the model predicts from (et vindu, vinduer).
+cell (Cellaris grid square)	felt	A 41.6 µm square of the slide predicted at once (et felt, felt); never "celle", which reads as a biological cell.
+tissue block (Cellaris, 5 µm)	vevskvadrat; kvadrat	A 5.2 µm square of tissue (et vevskvadrat, vevskvadrater); never "vevsblokk" (paraffin block); near-black block = nesten svart kvadrat.
+display window (marker)	visningsvindu	Range of values a marker's colour is drawn over; Black / White ends = Svart / Hvit.
+model card	modellkort	Model card labels: Inngang, Utganger, Kanaler, Trent ved, Trent på, Eksportert av.
+runtime (ONNX Runtime library)	kjøremiljø	Choose runtime… = Velg kjøremiljø…; Runtime… = Kjøremiljø…; ONNX Runtime stays.
+model input, output	inngang, utgang	Of a model (en inngang, innganger); input/output data or range = inndata/utdata, Inndataområde.
+reconstruction error, error map	rekonstruksjonsfeil, feilkart	eovae; MAE stays; Tile MAE = MAE per flis.
+sidecar file	følgefil	A model's <model>.eovae.json file.
+result cache	resultathurtigbuffer	Clear cache… = Tøm hurtigbuffer…; Clear (cache dialog button) = Tøm.
+your site's model, copy	organisasjonens modell, kopi	A model hosted by the user's institution; Address… = Adresse…
+bright-field	lysfelt	not bright-field H&E = ikke lysfelt-H&E.
+gamepad, game controller, controller	spillkontroller, kontroller	Plugin name Gamepad = Spillkontroller (en spillkontroller, spillkontrollere); gamepad profile = spillkontrollerprofil.
+stick, trigger, D-pad, shoulder button	styrespak, utløser, styrekors, skulderknapp	Left Stick X = Venstre styrespak X; Left Stick Click = Venstre styrespak (trykk); D-Pad Left = Styrekors venstre.
+face buttons South, East, North, West	Sørknapp, Østknapp, Nordknapp, Vestknapp	Named by position, as in the English.
+dead zone, response curve	dødsone, responskurve	Trigger Dead Zone = Utløserdødsone.
+mapping (gamepad)	tilordning	Mappings = Tilordninger; Unassigned = Ikke tilordnet; map a stick to = tilordne en styrespak til.
+system pointer	systempeker	System pointer control = Styring av systempekeren; Remote Desktop (portal) = Eksternt skrivebord; macOS Accessibility = Tilgjengelighet.
+marker (example plugin point)	merke	A placed point in the example plugin (et merke, merker); not "markør" (protein marker, text cursor).
+whole-slide image (file type name)	Digitalt preparat (<produsent/format>)	File type names in file managers: Aperio whole-slide image = Digitalt preparat (Aperio); Hamamatsu NDPI whole-slide image = Digitalt preparat (Hamamatsu NDPI); BigTIFF image = BigTIFF-bilde.
+flag, flagged (tissue QC)	markere, markert	Flags for review, not certainties: tissue QC flagged it = vevskontrollen markerte det; {n} of them flagged by tissue QC = {n} av dem ble markert av vevskontrollen.
+host (eov, as a plugin calls it)	vertsprogrammet	the host returned … = vertsprogrammet returnerte …; not "verten" (reads as a network host).

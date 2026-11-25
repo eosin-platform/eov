@@ -1,0 +1,249 @@
+// The language of the interface (AUDIT §14.4): every language eov is
+// translated into, by its own name, and the system's. The choice applies
+// at once and is kept in config.toml (`language`).
+//
+// It has to work for someone who cannot read the current language: the
+// toolbar opens it with a globe, its title also says "Language" in
+// English, and every language is listed in its own writing.
+
+import { Theme } from "theme.slint";
+import { Locale } from "locale.slint";
+import { DialogKeys } from "dialog-keys.slint";
+import { LanguageEntry } from "types.slint";
+
+component LanguageRow inherits Rectangle {
+    in property <LanguageEntry> entry;
+    callback clicked();
+
+    height: max(40px, row-layout.preferred-height + 12px);
+    border-radius: 6px;
+    background: root.entry.selected ? Theme.accent.with-alpha(0.25) : touch.has-hover ? Theme.surface-hover : transparent;
+    border-width: root.entry.selected || focus.has-focus ? Theme.focus-width : 0px;
+    border-color: Theme.accent;
+    accessible-role: list-item;
+    accessible-label: root.entry.detail != "" ? root.entry.native-name + " (" + root.entry.detail + ")" : root.entry.native-name;
+    accessible-checked: root.entry.selected;
+    accessible-checkable: true;
+    accessible-action-default => {
+        root.clicked();
+    }
+    forward-focus: focus;
+
+    // The keyboard (Tab to a row, Space or Enter to choose it); below the
+    // touch area, so that clicks reach the touch area.
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    row-layout := HorizontalLayout {
+        x: 10px;
+        width: parent.width - 20px;
+        spacing: 10px;
+        alignment: stretch;
+
+        // The language's own name, in its own direction: Slint lays out
+        // Arabic, Persian and Hebrew names from right to left by
+        // themselves.
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                text: root.entry.native-name;
+                color: Theme.text-primary;
+                font-size: 13px;
+                font-weight: root.entry.selected ? 600 : 400;
+                horizontal-alignment: Locale.start;
+                accessible-role: none;
+            }
+
+            if root.entry.detail != "": Text {
+                text: root.entry.detail;
+                color: Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: Locale.start;
+                wrap: word-wrap;
+                height: self.preferred-height;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            width: 16px;
+            text: root.entry.selected ? "✓" : "";
+            color: Theme.accent-bright;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+export component LanguageDialog inherits Rectangle {
+    in property <[LanguageEntry]> entries;
+    /// Says that `--language` chose this run's language ("" otherwise).
+    in property <string> override-note;
+    /// The tag (empty: follow the system).
+    callback chosen(string);
+    callback closed();
+
+    background: Theme.scrim;
+
+    TouchArea {
+        clicked => {
+            root.closed();
+        }
+    }
+
+    DialogKeys {
+        title: Locale.tag == "en" ? @tr("Language") : @tr("Language") + " · Language";
+        cancel => {
+            root.closed();
+        }
+
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(480px, root.width - 32px);
+            height: min(layout.preferred-height, root.height - 32px);
+            background: Theme.surface;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            TouchArea { }
+
+            layout := VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Image {
+                        width: 18px;
+                        height: 18px;
+                        source: @image-url("icons/language.svg");
+                        colorize: Theme.text-primary;
+                        accessible-role: none;
+                    }
+
+                    // "Language" in the interface's language and, for those
+                    // who cannot read it, in English.
+                    Text {
+                        horizontal-stretch: 1;
+                        text: Locale.tag == "en" ? @tr("Language") : @tr("Language") + " · Language";
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: Locale.start;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: @tr("The language of eov's menus, panels and messages. It changes at once and is kept for the next start. Slide names, slide metadata and other data are shown as they are.");
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
+                    height: self.preferred-height;
+                }
+
+                if root.override-note != "": Text {
+                    text: root.override-note;
+                    color: Theme.warning;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
+                    height: self.preferred-height;
+                }
+
+                Rectangle {
+                    // Room for about nine languages; the list scrolls.
+                    height: min(360px, max(120px, root.height - 300px));
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.border-subtle;
+                    background: Theme.background;
+                    accessible-role: list;
+                    accessible-label: @tr("Languages");
+
+                    Flickable {
+                        x: 4px;
+                        y: 4px;
+                        width: parent.width - 8px;
+                        height: parent.height - 8px;
+                        content-height: language-rows.preferred-height;
+
+                        language-rows := VerticalLayout {
+                            spacing: 2px;
+
+                            for entry[index] in root.entries: LanguageRow {
+                                entry: entry;
+                                clicked => {
+                                    root.chosen(entry.tag);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    // Translators: keep github.com/eosin-platform/eov/issues as it is.
+                    text: @tr("Translations other than English were drafted with machine translation and have not yet been reviewed by native speakers. Wording that is unclear, inaccurate or just awkward can be reported at github.com/eosin-platform/eov/issues — corrections are welcome.");
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
+                    height: self.preferred-height;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+
+                    Rectangle {
+                        min-width: close-text.preferred-width + 24px;
+                        height: 28px;
+                        border-radius: 4px;
+                        background: close-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                        accessible-role: button;
+                        accessible-label: @tr("Close");
+                        accessible-action-default => {
+                            root.closed();
+                        }
+
+                        close-touch := TouchArea {
+                            clicked => {
+                                root.closed();
+                            }
+                        }
+
+                        close-text := Text {
+                            text: @tr("Close");
+                            accessible-role: none;
+                            color: Theme.text-on-accent;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

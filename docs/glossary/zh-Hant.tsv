@@ -1,0 +1,304 @@
+term	translation	note
+(style) variant	臺灣正體中文用語	以臺灣軟體慣用語為準，香港、澳門亦適用：檔案、資料夾、程式、設定、視窗、網路、記憶體、影像、解析度、預設、支援、資訊、伺服器、介面、品質、偵測、擷取、軟體、硬體。不用中國大陸用語（文件、文件夾、程序、設置、窗口、網絡、內存、圖像、分辨率、默認、支持、信息、服務器、界面、質量、檢測、提取、軟件、硬件）
+(style) register	稱使用者為「您」	訊息與說明用完整句子，稱「您」。按鈕、選單項目、分頁與欄位標題用「動詞＋受詞」的簡短形式（開啟檔案、匯出影像），不加句號；不反映英文的 Title Case
+(style) spacing	中英文之間加半形空格	中文與拉丁字母、數字、預留位置之間加一個半形空格（開啟 eov、{n} 張玻片、GPU 繪製引擎）；全形標點前後不加空格；數字與 %、°、× 之間不空格（12.5%、20×）；數字與 µm、mm、px、MB 等單位之間保留空格（0.25 µm）。預留位置必定代入中文詞句時（如 {what}、{reason}）可不加空格：不允許{what}
+(style) punctuation	，。：；！？、	使用全形標點。英文以句點結尾的句子以「。」結尾；英文無句點的標籤、狀態與句子片段（常接在冒號後）不加。數學式、範圍「(0, 1]」、設定值、指令、URL 內的標點保持半形
+(style) parentheses	（）	中文內的括號用全形（）；括號內全為英文、數字或程式碼時亦用全形，例：（Ctrl+E）、（RUO）。設定範例、數學區間、程式碼內的括號保持原樣
+(style) quotation marks	「」	檔案名稱、項目名稱、選單名稱以「」括住，內層用『』。設定檔中的值（"Ctrl+B"）與指令（`brew update`）保持原樣
+(style) ellipsis	…	開啟對話方塊的選單項目末尾的「…」保留（單一刪節號，與原文相同）；進行中狀態寫成「正在…」，例：正在載入…
+(style) plural and counters	{n} 張玻片、{n} 個檔案、{n} 則訊息	中文只有一種複數形式，該形式必須包含 {n}。量詞：玻片、影像用「張」；檔案、圖塊、區塊、標註、書籤、通道、層級用「個」；訊息用「則」；項目、設定用「項」
+(style) X of Y	第 {current} 個，共 {count} 個；{current}/{count}	「{current} of {count}」依空間改寫為「第 {current}／{count} 個」或「共 {count} 個中的第 {current} 個」；進度計數可保留「{current}/{total}」
+For research and education. Not a medical device; not for primary diagnosis.	僅供研究與教學使用。本軟體並非醫療器材，不得用於初級診斷。	安全聲明。完整翻譯，不得弱化、縮短或省略
+research use only (RUO)	僅供研究使用（RUO）	依研究用試劑標示用語。明確表示結果不得用於臨床決策，不可縮短
+not for diagnosis	不得用於診斷	安全聲明。不可弱化為「不建議」
+primary diagnosis	初級診斷	法規用語：病例首次且最終的病理診斷。不可譯為「初步診斷」（意為暫時性診斷）
+medical device	醫療器材	臺灣法規用語
+synthetic (image, channel, stain)	合成	像素由演算法計算而得（正規化、反卷積、神經網路），非掃描器擷取。不用「人工」「假」「模擬」
+predicted	預測	預測影像、預測標記。不可省略「預測」
+generated	生成	生成影像
+slide	玻片	顯微鏡載玻片標本及其掃描檔。非簡報投影片；不用「切片」（指組織切片本身）或「幻燈片」
+whole-slide image (WSI)	全玻片影像（WSI）	縮寫 WSI 保留。「WSI 檔案」
+slide viewer, viewer	玻片檢視器、檢視器	
+tab	分頁	窗格中開啟的一張玻片（如同瀏覽器分頁）
+pane	窗格	視窗中並排的檢視區域；分割窗格
+focused pane	作用中的窗格	具有焦點的窗格
+view	檢視	窗格顯示的狀態（位置、倍率、旋轉）。「目前的檢視」「複製檢視」
+viewport	檢視區	繪製玻片的區域
+minimap	導覽圖	整張玻片的小型概覽圖，標示目前可見範圍
+scale bar	比例尺	
+HUD	浮動面板	浮在玻片上方的小型資訊面板（heads-up display）
+toolbar	工具列	
+sidebar	側邊欄	
+status bar	狀態列	
+series bar	系列欄	列出資料夾內各張玻片的橫列
+panel	面板	
+dialog	對話方塊	
+menu	選單	
+tooltip	工具提示	
+Home screen	首頁	未開啟玻片時顯示的起始畫面；分頁名稱亦為「首頁」
+zoom	縮放	螢幕上的顯示比例（%）
+Zoom in / Zoom out	放大 / 縮小	
+magnification (20×)	放大倍率（20×）	等同物鏡的光學倍率；20× 保持不變
+objective	物鏡	
+objective power	物鏡倍率	
+pixel size	像素大小	一個影像像素的實際尺寸
+MPP (µm per pixel)	MPP（µm/像素）	MPP 保留
+calibration	校正	像素大小的校正
+level, pyramid level	層級、金字塔層級	玻片檔中影像金字塔的一種解析度
+level-0 pixels	第 0 層像素	
+tile	圖塊	一次載入的方形影像片段
+cache	快取	
+rotate, rotation	旋轉	
+flip horizontally	水平翻轉	
+focal plane (Z)	焦平面（Z）	Z 保留
+Z-stack	Z 軸堆疊	
+time point (T)	時間點（T）	T 保留
+time series	時間序列	
+link (panes)	連動	窗格同步移動與縮放：連動窗格、取消連動
+alignment, align	對齊	連動窗格之間的位置對齊
+landmark	定位點	對齊用的對應點。不用「標記」（marker 專用）
+bookmark	書籤	已儲存的玻片檢視
+session	工作階段	上次開啟的玻片與檢視，下次啟動時還原
+recent files	最近使用的檔案	
+region of interest (ROI)	感興趣區域（ROI）	ROI 縮寫保留；空間有限時只寫 ROI
+measurement	測量	
+Measure (tool)	測量（工具）	
+distance	距離	
+path length	路徑長度	
+area	面積	
+angle	角度	
+perimeter	周長	
+annotation	標註	具有意義的繪製標記（點、區域、線、文字），非自由文字註解
+comment	註解	
+class (annotation class)	類別	如「腫瘤」「基質」
+cell count, counting	細胞計數、計數	
+high-power field (HPF)	高倍視野（HPF）	40× 物鏡下的視野，HPF 縮寫保留
+layer	圖層	
+overlay	疊加層	繪製在玻片上方的圖形
+opacity	不透明度	0–100%
+heat map	熱圖	
+colour map	色彩映射	數值對應色彩的配色表
+colour palette	調色盤	
+stain	染色	染色方法或染劑（H&E、DAB）
+H&E	H&E	蘇木精-伊紅染色；縮寫保留
+hematoxylin	蘇木精	單字母通道標籤 H 保留
+eosin	伊紅	單字母通道標籤 E 保留
+IHC	免疫組織化學（IHC）	IHC 縮寫保留
+DAB	DAB	IHC 常用的棕色呈色劑
+chromogen	呈色劑	
+stain normalization	染色正規化	Macenko、Vahadane 為方法名稱，不翻譯
+stain target	染色目標	染色正規化所依據的參考染色
+reference (stain vectors, H&E)	參考（參考染色向量、參考 H&E）	
+stain model	染色模型	
+stain vector	染色向量	
+fit (stain fit)	擬合	由玻片估計染色向量；勿與「符合窗格」混淆
+color deconvolution	色彩反卷積	Ruifrok–Johnston 方法
+isolated stain/channel	單獨顯示的染色、單獨通道	只顯示一種染色（以灰階）或一個通道。例：單獨顯示染色：蘇木精
+special stains (Masson trichrome, Giemsa, Congo red, Gram, …)	Masson 三色、Giemsa、剛果紅、革蘭氏、網狀纖維、彈性纖維、阿爾辛藍、Perls 普魯士藍、Grocott 六胺銀、黏液胭脂紅、Ziehl–Neelsen、Van Gieson	染色方法名稱不加「染色」二字，句中再加：此玻片標示為 Giemsa 染色。以人名命名者保留原文
+stain preset	染色預設集	如 H-DAB 染色預設集；「預設」單用時指 default
+intensity	強度	
+concentration	濃度	
+optical density	光學密度	OD
+quantify	量化	量化區域內的染色
+H-score	H-score	保留
+weak / moderate / strong (1+/2+/3+)	弱 / 中 / 強（1+/2+/3+）	
+positive	陽性	
+threshold	閾值	
+colour management	色彩管理	
+colour profile, ICC profile	色彩描述檔、ICC 描述檔	
+colours as scanned	掃描原色	不經色彩管理，按掃描所得顯示
+colour normalisation	色彩正規化	
+channel	通道	螢光或計算出的影像通道
+multiplex immunofluorescence (mIF)	多重免疫螢光（mIF）	
+marker	標記	通道中染色或預測的蛋白質（CD3、Ki-67、PanCK）；標記名稱不翻譯
+Solo (channel)	單獨	只顯示此通道
+sharpness, gamma, brightness, contrast	銳利度、Gamma、亮度、對比	
+filtering (bilinear, trilinear, Lanczos)	過濾（雙線性、三線性、Lanczos）	紋理內插方法；Lanczos 為名稱
+render, renderer	繪製、繪製引擎	GPU 繪製引擎、CPU 繪製引擎；不用「渲染」「算繪」
+backend	後端	
+theme (dark, light, high contrast)	佈景主題（深色、淺色、高對比）	
+tissue	組織	
+tissue QC	組織品管	掃描組織的品質管制
+tissue quality	組織品質	
+pen marks	筆跡	玻片上的記號筆痕跡
+folds	摺疊	組織摺疊
+blur, out of focus	模糊、失焦	
+tissue detection, tissue mask	組織偵測、組織遮罩	
+background	背景	
+dataset	資料集	
+patch, patch extraction	區塊、區塊擷取	資料集用的小影像；區別於檢視用的「圖塊」(tile)
+stride	步幅	相鄰區塊之間的間距
+white threshold	白色閾值	
+export	匯出	
+save a copy	另存複本	
+convert	轉換	
+de-identify	去識別化	移除可識別病人的資料（標籤影像、中繼資料）
+label image, macro image, thumbnail	標籤影像、巨觀影像、縮圖	玻片紙標籤的照片、整片載玻片的照片、小型預覽
+pyramidal TIFF	金字塔式 TIFF	
+compression, lossless	壓縮、無損	
+resolution	解析度	
+format	格式	
+metadata	中繼資料	
+property (slide)	屬性	
+vendor	廠商	掃描器廠商
+scanner	掃描器	
+file	檔案	
+folder	資料夾	
+clipboard	剪貼簿	
+log, log folder	記錄檔、記錄檔資料夾	
+click, double-click, drag, scroll	按一下、按兩下、拖曳、捲動	滑鼠滾輪：滾輪
+plugin	外掛程式	
+package (.eop)	套件（.eop）	
+plugin API	外掛程式 API	
+model, model store	模型、模型庫	
+inference	推論	
+update (software)	更新	
+Check for Updates…	檢查更新…	連線前會先詢問；不暗示自動於背景更新
+update helper	更新輔助程式	
+release	版本	發行的版本；prerelease：搶先版
+release notes	版本資訊	
+signature	簽章	數位簽章
+administrator policy	系統管理員政策	
+safe mode	安全模式	
+restart	重新啟動	
+self-update	自我更新	
+repository, manifest, artifact	存放庫、資訊清單、成品	GitHub 發行版本的檔案
+staging, stage (an update)	準備安裝；staged（狀態）：待安裝	已下載，於 eov 結束後由更新輔助程式安裝：更新準備目錄、待安裝的外掛程式套件。不用「暫存」（易與臨時檔案混淆）
+temporary	臨時	臨時目錄、臨時檔案
+roll back, rollback	回復至先前版本	上次的更新已回復至先前版本；選項 --rollback 保留原文
+build (of eov)	組建	開發組建、此 eov 組建
+prerelease, stable release	搶先版、穩定版本	
+registry (plugin registry)	登錄	外掛程式登錄
+archive (ZIP, release archive)	封存檔	發行封存檔
+bundle (macOS app, Flatpak)	App 套件、Flatpak 套件	
+portable (Windows)	免安裝版	Windows 免安裝資料夾
+schema	結構描述	
+crash	當機	當機報告
+process, handle, pipe, thread	處理程序、控制代碼、管線、執行緒	
+proxy	代理伺服器	設定名稱 HTTPS_PROXY 等保留原文
+filter (a plugin's image filter)	濾鏡	區別於清單的「篩選」
+frame (rendered)	影格	
+modifier key	修飾鍵	
+graphics adapter	顯示卡、顯示配接器	
+downsample	降採樣	熱圖放置方式
+tissue cell (QC grid cell)	組織網格	組織品管的網格單位，不是生物學的細胞
+Figure (export section)	圖片標示	比例尺與色彩處理說明等加在匯出圖片上的元素
+Measurements (panel, list)	測量結果	單一測量的動作用「測量」：新增測量、刪除測量
+Undo {} / Redo {}	復原：{} / 重做：{}	
+list separator	、	清單項目之間用頓號
+micrometre, millimetre, inch, mil	微米、公釐、英吋、密爾	單位符號 µm、mm 保留；in、in² 寫作英吋、平方英吋
+Ready (status)	就緒	
+hotkey, keyboard shortcut	快速鍵、鍵盤快速鍵	
+install, uninstall	安裝、解除安裝	
+official (plugin)	官方	
+Annotations (plugin name)	標註	
+Gamepad (plugin name)	遊戲手把	
+Example Plugin	範例外掛程式	
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris、eovae/EOVAE、HistoVAE	自創產品名稱，不翻譯
+Open	開啟	
+Open File	開啟檔案	
+Open Folder…	開啟資料夾…	
+Close	關閉	
+Cancel	取消	
+OK	確定	
+Confirm	確認	
+Save, Save…	儲存、儲存…	
+Delete	刪除	
+Remove	移除	
+Settings	設定	
+Apply	套用	
+Reset	重設	
+Show / Hide	顯示 / 隱藏	
+Toggle …	切換…	顯示或隱藏的切換：切換導覽圖
+Import	匯入	
+Copy	複製	
+Undo / Redo	復原 / 重做	
+Fit	符合窗格	縮放使玻片（或組織）完整顯示於窗格中
+Enable / Disable	啟用 / 停用	
+Add	新增	
+Edit	編輯	
+Clear	清除	
+Done	完成	
+Download	下載	
+Retry	重試	
+Back / Forward / Up	返回 / 前進 / 上一層	
+Next / Previous	下一個 / 上一個	
+Filter (a list)	篩選	
+Messages	訊息	
+Error / Warning / Information	錯誤 / 警告 / 資訊	
+Language	語言	
+Automatic (System Default)	自動（系統預設）	
+Unknown	未知	
+None	無	
+Loading…	正在載入…	
+Could not …	無法…	失敗訊息：無法開啟「{}」
+Cannot …	無法…	
+Keyboard Shortcuts	鍵盤快速鍵	
+N/A (not recorded)	無資料	檔案未記錄的玻片屬性
+Navigate (tool)	導覽	平移與縮放的工具
+order: A–Z / Newest / Stain / Case	名稱 / 最新 / 染色 / 病例	
+Units	單位	
+(plugins) annotation region	區域	標註外掛程式中的區域標註（多邊形、矩形、橢圓、筆刷）；加入區域、從區域剪除
+outline (of a shape)	輪廓	形狀的外框；crossed itself：自我交叉；Repair outline：修復輪廓
+shape	形狀	
+Point / Line / Arrow / Polygon / Rectangle / Ellipse / Text (annotation kind)	點 / 線 / 箭頭 / 多邊形 / 矩形 / 橢圓 / 文字	標註種類
+text label	文字標籤	
+brush, eraser, stroke	筆刷、橡皮擦、筆畫	塗繪區域；Brush stroke：筆刷筆畫
+freehand	手繪	手繪輪廓
+vertex, corner (polygon)	頂點	
+hole (of a polygon)	孔洞	
+count point	計數點	細胞計數放置的點
+HPF field	HPF 視野	放置於玻片上的高倍視野；HIGH-POWER FIELDS 標題：高倍視野
+field number (FN)	視野數（FN）	目鏡視野直徑（mm）
+Lock / Unlock	鎖定 / 解除鎖定	Locked：已鎖定
+review status: Draft / Verified / Rejected	審閱狀態：草稿 / 已驗證 / 已拒絕	Mark verified：標示為已驗證
+description (annotation)	說明	
+notes (layer)	備註	匯入對話方塊的 NOTES 標題：附註
+database, read-only	資料庫、唯讀	標註資料庫
+back up, merge (database)	備份、合併	Back up…：備份…；Merge…：合併…
+attach (annotations to the open slide)	附加	將舊玻片的標註附加到開啟的玻片
+Bring them in (old annotations)	匯入	將 eov 1.0 之前的標註匯入目前的資料庫
+Not now	稍後再說	
+reader, second reader	判讀者、第二判讀者	另一位判讀者
+blinded copy	盲化副本	供第二判讀者使用，不含作者、註解等
+even-odd rule	奇偶規則	自我交叉輪廓的面積計算
+combined positive score (CPS)	綜合陽性分數（CPS）	PD-L1；CPS 縮寫保留
+confidence interval (95%)	信賴區間（95% 信賴區間）	不用大陸用語「置信區間」
+index (Ki-67 index)	指數	{class} 指數
+DICOM bulk annotations	DICOM 大量標註	Microscopy Bulk Simple Annotations 等 DICOM 名稱保留原文
+annotation group (DICOM)	標註群組	
+study (DICOM)	檢查（study）	DICOM series：系列
+checksum	總和檢查碼	
+feature (GeoJSON)	圖徵	FeatureCollection 保留原文
+coordinates	座標	不用「坐標」
+readout (Cellaris region readout)	讀值（區域讀值）	Cellaris 區域讀值：測量區域內的預測值表格
+cell (Cellaris grid cell)	網格	Cellaris 一次預測的方格（約 41.6 µm），不是生物學的細胞
+tissue block (Cellaris, 5 µm square)	組織方塊	5 µm 的組織方格；不用「組織塊」（易與石蠟包埋組織塊混淆）
+window (model input window)	預測視窗	模型預測所用的方形影像；區別於 display window：顯示範圍
+display window (marker, channel)	顯示範圍	與 eov 通道面板一致；Black / White 端點：黑點 / 白點
+reconstruction, reconstruction error	重建影像、重建誤差	eovae；Original：原始影像
+error map	誤差圖	
+model card	模型卡	
+reference model	參考模型	
+your site's model / copy	貴機構的模型 / 副本	機構內部提供的模型副本
+sidecar file	附屬檔案	<model>.eovae.json
+preprocessing	前處理	
+runtime (ONNX Runtime library)	執行環境	Choose runtime…：選擇執行環境…；ONNX Runtime 名稱保留
+batch (inference)	批次	批次大小
+upsample, resample	升採樣、重新採樣	與「降採樣」一致
+bright-field	明視野	
+near-black	近黑色	
+{n} failed	失敗 {n} 個	與 eov 一致
+game controller	遊戲控制器	Gamepad（外掛程式名稱）：遊戲手把
+stick, trigger, shoulder button, D-pad	搖桿、扳機鍵、肩鍵、方向鍵	Left Stick Click：按下左搖桿
+South / East / North / West Button	下方 / 右方 / 上方 / 左方按鈕	依位置命名的面板按鈕
+dead zone	死區	Left Dead Zone：左搖桿死區
+response curve	回應曲線	
+mappings (gamepad)	按鍵對應	Move Pointer：移動指標
+profile (gamepad)	設定檔	已儲存的一組遊戲手把設定
+pointer (mouse)	指標	System Pointer：系統指標
+series item	系列項目	
+have focus (eov has focus)	取得焦點	在 eov 取得焦點時
+Remote Desktop portal	遠端桌面入口	Wayland 桌面入口（portal）
+On / Off (toggle)	開 / 關	小型切換開關；狀態文字：已開啟 / 已關閉
+marker (example plugin point)	標記點	範例外掛程式放置的點，區別於蛋白質標記（marker）

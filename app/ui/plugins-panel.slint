@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { DialogKeys } from "dialog-keys.slint";
 import { PluginRowData } from "types.slint";
@@ -60,6 +61,7 @@ export component PluginsPanel inherits Rectangle {
                         color: Theme.text-primary;
                         font-size: 15px;
                         font-weight: 600;
+                        horizontal-alignment: Locale.start;
                         vertical-alignment: center;
                     }
 
@@ -154,10 +156,11 @@ export component PluginsPanel inherits Rectangle {
                 }
 
                 Text {
-                    text: root.plugin-dir != "" ? @tr("Plugin packages (.eop) are loaded from {}", root.plugin-dir) : "";
+                    text: root.plugin-dir != "" ? @tr("Plugin packages (.eop) are loaded from {}", Locale.isolate(root.plugin-dir)) : "";
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                     // Only its own height: otherwise the text takes the panel's
                     // spare height and pushes the list to the bottom.
                     height: self.preferred-height;
@@ -168,6 +171,7 @@ export component PluginsPanel inherits Rectangle {
                     color: Theme.warning;
                     font-size: 11px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                     height: self.preferred-height;
                 }
 
@@ -176,6 +180,7 @@ export component PluginsPanel inherits Rectangle {
                     color: Theme.text-secondary;
                     font-size: 11px;
                     wrap: word-wrap;
+                    horizontal-alignment: Locale.start;
                     height: self.preferred-height;
                 }
 
@@ -190,6 +195,7 @@ export component PluginsPanel inherits Rectangle {
                             text: @tr("No plugins are installed.");
                             color: Theme.text-secondary;
                             font-size: 12px;
+                            horizontal-alignment: Locale.start;
                         }
 
                         for row in root.rows: Rectangle {
@@ -221,7 +227,8 @@ export component PluginsPanel inherits Rectangle {
                                             font-weight: 600;
                                         }
                                         Text {
-                                            text: row.api-version != "" ? @tr("{}  (plugin API {})", row.version, row.api-version) : row.version;
+                                            // Translators: the plugin's version, then the version of eov's plugin API it was built for.
+                                            text: row.api-version != "" ? @tr("{} (plugin API {})", Locale.isolate(row.version), Locale.isolate(row.api-version)) : row.version;
                                             color: Theme.text-secondary;
                                             font-size: 11px;
                                             vertical-alignment: center;
@@ -238,14 +245,16 @@ export component PluginsPanel inherits Rectangle {
                                         color: Theme.text-secondary;
                                         font-size: 11px;
                                         wrap: word-wrap;
+                                        horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                     }
 
                                     Text {
-                                        text: row.update != "" ? @tr("{} · version {} is available", row.status, row.update) : row.status;
+                                        text: row.update != "" ? @tr("{} · version {} is available", row.status, Locale.isolate(row.update)) : row.status;
                                         color: row.status-level == 0 ? Theme.success : row.status-level == 1 ? Theme.text-secondary : Theme.danger;
                                         font-size: 11px;
                                         wrap: word-wrap;
+                                        horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                     }
 
@@ -257,6 +266,7 @@ export component PluginsPanel inherits Rectangle {
                                         color: Theme.text-secondary;
                                         font-size: 11px;
                                         wrap: word-wrap;
+                                        horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                         accessible-description: @tr("Resources used since the plugin started");
                                     }
@@ -266,6 +276,7 @@ export component PluginsPanel inherits Rectangle {
                                         color: Theme.warning;
                                         font-size: 11px;
                                         wrap: word-wrap;
+                                        horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                     }
 
@@ -274,6 +285,7 @@ export component PluginsPanel inherits Rectangle {
                                         color: Theme.text-secondary;
                                         font-size: 10px;
                                         wrap: word-wrap;
+                                        horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                     }
                                 }
@@ -288,7 +300,7 @@ export component PluginsPanel inherits Rectangle {
                                         border-radius: 4px;
                                         background: update-touch.has-hover ? Theme.accent-hover : Theme.accent;
                                         accessible-role: button;
-                                        accessible-label: @tr("Update {}", row.name);
+                                        accessible-label: @tr("Update {}", Locale.isolate(row.name));
                                         accessible-description: row.update;
                                         accessible-action-default => {
                                             root.update-requested(row.id);
@@ -318,7 +330,7 @@ export component PluginsPanel inherits Rectangle {
                                         border-width: 1px;
                                         border-color: Theme.border;
                                         accessible-role: button;
-                                        accessible-label: row.can-disable ? @tr("Disable {}", row.name) : @tr("Enable {}", row.name);
+                                        accessible-label: row.can-disable ? @tr("Disable {}", Locale.isolate(row.name)) : @tr("Enable {}", Locale.isolate(row.name));
                                         accessible-action-default => {
                                             root.enable-requested(row.id, !row.can-disable);
                                         }
@@ -347,7 +359,7 @@ export component PluginsPanel inherits Rectangle {
                                         border-width: 1px;
                                         border-color: Theme.border;
                                         accessible-role: button;
-                                        accessible-label: @tr("Remove {}", row.name);
+                                        accessible-label: @tr("Remove {}", Locale.isolate(row.name));
                                         accessible-action-default => {
                                             root.remove-requested(row.id);
                                         }

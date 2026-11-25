@@ -231,7 +231,7 @@ impl Default for ConvertOptions {
 pub enum ConvertError {
     /// The options cannot work for this slide or output.
     #[error("{0}")]
-    Invalid(String),
+    Invalid(ConvertProblem),
     /// The output exists and [`ConvertOptions::overwrite`] is off.
     #[error("{} already exists", .0.display())]
     OutputExists(PathBuf),
@@ -243,6 +243,114 @@ pub enum ConvertError {
     /// Writing the copy failed.
     #[error("{0}")]
     Io(#[from] io::Error),
+}
+
+/// Why the options of a conversion cannot work for its slide or output:
+/// what [`ConvertError::Invalid`] holds, as data for interfaces that word
+/// it in another language. Its `Display` is the message in English.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConvertProblem {
+    /// A tile size that is not a multiple of 16 between 64 and 2048.
+    TileSize(u32),
+    /// A JPEG quality that is not between 1 and 100.
+    JpegQuality(u8),
+    /// The region to copy is empty.
+    EmptyRegion,
+    /// The region is outside the slide (`slide_width` × `slide_height`
+    /// level-0 pixels).
+    RegionOutside {
+        region: SlideBounds,
+        slide_width: u64,
+        slide_height: u64,
+    },
+    /// The slide has no level `level`; its levels are 0 to `last`.
+    NoSuchLevel { level: u32, last: usize },
+    /// A target pixel size that is not a positive number of µm.
+    NotAPixelSize(f64),
+    /// The slide records no pixel size, so a target pixel size cannot be
+    /// used.
+    NoPixelSize,
+    /// A target pixel size (µm/px) finer than the slide's full resolution
+    /// (`full` µm/px): copies are never upsampled.
+    FinerThanSlide { target: f64, full: f64 },
+    /// The copy would be wider or taller than [`MAX_SIDE`].
+    TooLarge { width: u64, height: u64 },
+    /// The copy would be narrower or lower than [`MIN_SIDE`].
+    TooSmall { width: u64, height: u64 },
+    /// The output path names no file.
+    NotAFileName(PathBuf),
+    /// The output path is a folder.
+    IsAFolder(PathBuf),
+    /// The output's folder (this one) does not exist.
+    NoSuchFolder(PathBuf),
+    /// The output path is the slide being copied, or one of its files.
+    IsTheSlide(PathBuf),
+    /// The temporary file of the output (this one, see [`partial_path`])
+    /// exists: another conversion writes it, or one was interrupted.
+    PartialExists(PathBuf),
+}
+
+impl std::fmt::Display for ConvertProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TileSize(tile) => write!(
+                f,
+                "tile size {tile} is not a multiple of 16 between 64 and 2048"
+            ),
+            Self::JpegQuality(quality) => {
+                write!(f, "JPEG quality {quality} is not between 1 and 100")
+            }
+            Self::EmptyRegion => f.write_str("the region is empty"),
+            Self::RegionOutside {
+                region,
+                slide_width,
+                slide_height,
+            } => write!(
+                f,
+                "the region {},{},{},{} is outside the slide ({slide_width} × {slide_height} \
+                 pixels)",
+                region.x, region.y, region.width, region.height
+            ),
+            Self::NoSuchLevel { level, last } => write!(
+                f,
+                "the slide has no level {level}; its levels are 0 to {last}"
+            ),
+            Self::NotAPixelSize(target) => write!(f, "{target} is not a pixel size in µm"),
+            Self::NoPixelSize => f.write_str(
+                "the slide does not record its pixel size, so a target pixel size cannot be \
+                 used; choose a level instead",
+            ),
+            Self::FinerThanSlide { target, full } => write!(
+                f,
+                "{target} µm/px is finer than the slide's full resolution ({} µm/px); copies \
+                 are never upsampled",
+                metadata_number(*full)
+            ),
+            Self::TooLarge { width, height } => write!(
+                f,
+                "the copy would be {width} × {height} pixels; at most {MAX_SIDE} per side"
+            ),
+            Self::TooSmall { width, height } => write!(
+                f,
+                "the copy would be {width} × {height} pixels; it must be at least {MIN_SIDE} × \
+                 {MIN_SIDE} (choose a larger region or a finer resolution)"
+            ),
+            Self::NotAFileName(path) => write!(f, "{} is not a file name", path.display()),
+            Self::IsAFolder(path) => write!(f, "{} is a folder", path.display()),
+            Self::NoSuchFolder(path) => write!(f, "the folder {} does not exist", path.display()),
+            Self::IsTheSlide(path) => write!(
+                f,
+                "{} is the slide being copied (or one of its files)",
+                path.display()
+            ),
+            Self::PartialExists(path) => write!(
+                f,
+                "{} exists: another conversion is writing this file, or an interrupted one left \
+                 it behind (delete it and try again)",
+                path.display()
+            ),
+        }
+    }
 }
 
 /// What a conversion will write, worked out without writing anything.
@@ -297,13 +405,42 @@ pub struct ConvertReport {
     /// Whether the ICC profile was copied.
     pub icc_profile: bool,
     /// Things that did not stop the copy (an unreadable associated image or
-    /// ICC profile).
+    /// ICC profile), in English.
     pub warnings: Vec<String>,
+    /// [`warnings`](Self::warnings) as data, in the same order, for
+    /// interfaces that word them in another language.
+    pub omissions: Vec<CopyOmission>,
     pub elapsed: Duration,
 }
 
+/// Something a copy left out without failing: an entry of
+/// [`ConvertReport::warnings`] as data. Its `Display` is that entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyOmission {
+    /// The slide's associated image `name` (as the slide names it:
+    /// `label`, `macro`, …) could not be read; `error` says why.
+    AssociatedImage { name: String, error: String },
+    /// The slide's ICC profile could not be read; `error` says why.
+    IccProfile { error: String },
+}
+
+impl std::fmt::Display for CopyOmission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AssociatedImage { name, error } => match name.as_str() {
+                "label" | "macro" | "thumbnail" => {
+                    write!(f, "the {name} image was not copied: {error}")
+                }
+                _ => write!(f, "the extra image {name} was not copied: {error}"),
+            },
+            Self::IccProfile { error } => write!(f, "the ICC profile was not copied: {error}"),
+        }
+    }
+}
+
 impl ConvertReport {
-    /// A warning for the user when the copy is incomplete.
+    /// A warning for the user when the copy is incomplete, in English (the
+    /// facts are `unreadable_tiles` of `plan.tiles`).
     pub fn shortfall_message(&self) -> Option<String> {
         (self.unreadable_tiles > 0).then(|| {
             format!(
@@ -363,8 +500,8 @@ fn level0_mpp(wsi: &WsiFile, options: &ConvertOptions) -> Option<(f64, f64)> {
     }
 }
 
-fn invalid(message: impl Into<String>) -> ConvertError {
-    ConvertError::Invalid(message.into())
+fn invalid(problem: ConvertProblem) -> ConvertError {
+    ConvertError::Invalid(problem)
 }
 
 /// Works out what [`convert_slide`] will write, and checks the options.
@@ -376,25 +513,22 @@ pub fn plan_conversion(
     let props = wsi.properties();
     let tile = options.tile_size;
     if !(64..=2048).contains(&tile) || !tile.is_multiple_of(16) {
-        return Err(invalid(format!(
-            "tile size {tile} is not a multiple of 16 between 64 and 2048"
-        )));
+        return Err(invalid(ConvertProblem::TileSize(tile)));
     }
     if let SlideCompression::Jpeg { quality } = options.compression
         && !(1..=100).contains(&quality)
     {
-        return Err(invalid(format!(
-            "JPEG quality {quality} is not between 1 and 100"
-        )));
+        return Err(invalid(ConvertProblem::JpegQuality(quality)));
     }
     let full = SlideBounds::full(props.width, props.height);
     let region = match options.region {
-        Some(region) if region.is_empty() => return Err(invalid("the region is empty")),
+        Some(region) if region.is_empty() => return Err(invalid(ConvertProblem::EmptyRegion)),
         Some(region) => region.intersect(&full).ok_or_else(|| {
-            invalid(format!(
-                "the region {},{},{},{} is outside the slide ({} × {} pixels)",
-                region.x, region.y, region.width, region.height, props.width, props.height
-            ))
+            invalid(ConvertProblem::RegionOutside {
+                region,
+                slide_width: props.width,
+                slide_height: props.height,
+            })
         })?,
         None => props.content_bounds().intersect(&full).unwrap_or(full),
     };
@@ -437,30 +571,26 @@ pub fn plan_conversion(
         OutputResolution::Full => native(0),
         OutputResolution::Level(level) => {
             if level as usize >= props.levels.len() {
-                return Err(invalid(format!(
-                    "the slide has no level {level}; its levels are 0 to {}",
-                    props.levels.len() - 1
-                )));
+                return Err(invalid(ConvertProblem::NoSuchLevel {
+                    level,
+                    last: props.levels.len() - 1,
+                }));
             }
             native(level as usize)
         }
         OutputResolution::Mpp(target) => {
             if !target.is_finite() || target <= 0.0 {
-                return Err(invalid(format!("{target} is not a pixel size in µm")));
+                return Err(invalid(ConvertProblem::NotAPixelSize(target)));
             }
             let Some((mx, my)) = mpp0 else {
-                return Err(invalid(
-                    "the slide does not record its pixel size, so a target pixel size cannot be \
-                     used; choose a level instead",
-                ));
+                return Err(invalid(ConvertProblem::NoPixelSize));
             };
             let (fx, fy) = (target / mx, target / my);
             if fx.min(fy) < 1.0 - 1e-6 {
-                return Err(invalid(format!(
-                    "{target} µm/px is finer than the slide's full resolution ({} µm/px); copies \
-                     are never upsampled",
-                    metadata_number(mx.min(my))
-                )));
+                return Err(invalid(ConvertProblem::FinerThanSlide {
+                    target,
+                    full: mx.min(my),
+                }));
             }
             let matching = (0..props.levels.len()).find(|&index| {
                 level_mpp(index).is_some_and(|(x, y)| {
@@ -502,15 +632,10 @@ pub fn plan_conversion(
         }
     };
     if width > MAX_SIDE || height > MAX_SIDE {
-        return Err(invalid(format!(
-            "the copy would be {width} × {height} pixels; at most {MAX_SIDE} per side"
-        )));
+        return Err(invalid(ConvertProblem::TooLarge { width, height }));
     }
     if width < MIN_SIDE || height < MIN_SIDE {
-        return Err(invalid(format!(
-            "the copy would be {width} × {height} pixels; it must be at least {MIN_SIDE} × \
-             {MIN_SIDE} (choose a larger region or a finer resolution)"
-        )));
+        return Err(invalid(ConvertProblem::TooSmall { width, height }));
     }
     let (width, height) = (width as u32, height as u32);
     let geometry = match options.compression {
@@ -577,20 +702,17 @@ fn canonical_target(path: &Path) -> PathBuf {
 /// early.
 pub fn check_output(wsi: &WsiFile, output: &Path, overwrite: bool) -> Result<(), ConvertError> {
     if output.file_name().is_none() {
-        return Err(invalid(format!("{} is not a file name", output.display())));
+        return Err(invalid(ConvertProblem::NotAFileName(output.to_path_buf())));
     }
     if output.is_dir() {
-        return Err(invalid(format!("{} is a folder", output.display())));
+        return Err(invalid(ConvertProblem::IsAFolder(output.to_path_buf())));
     }
     let parent = output
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     if !parent.is_dir() {
-        return Err(invalid(format!(
-            "the folder {} does not exist",
-            parent.display()
-        )));
+        return Err(invalid(ConvertProblem::NoSuchFolder(parent.to_path_buf())));
     }
     let target = canonical_target(output);
     let props = wsi.properties();
@@ -602,10 +724,7 @@ pub fn check_output(wsi: &WsiFile, output: &Path, overwrite: bool) -> Result<(),
         .iter()
         .any(|source| canonical_target(source) == target)
     {
-        return Err(invalid(format!(
-            "{} is the slide being copied (or one of its files)",
-            output.display()
-        )));
+        return Err(invalid(ConvertProblem::IsTheSlide(output.to_path_buf())));
     }
     if output.exists() && !overwrite {
         return Err(ConvertError::OutputExists(output.to_path_buf()));
@@ -628,11 +747,7 @@ impl PartialFile {
             .open(path)
             .map_err(|err| {
                 if err.kind() == io::ErrorKind::AlreadyExists {
-                    invalid(format!(
-                        "{} exists: another conversion is writing this file, or an interrupted \
-                         one left it behind (delete it and try again)",
-                        path.display()
-                    ))
+                    invalid(ConvertProblem::PartialExists(path.to_path_buf()))
                 } else {
                     ConvertError::Io(err)
                 }
@@ -709,7 +824,8 @@ pub fn convert_slide(
         unreadable_tiles: written.unreadable_tiles,
         associated_images: written.associated_images,
         icc_profile: written.icc_profile,
-        warnings: written.warnings,
+        warnings: written.omissions.iter().map(ToString::to_string).collect(),
+        omissions: written.omissions,
         elapsed: started.elapsed(),
     })
 }
@@ -720,7 +836,7 @@ struct Written {
     unreadable_tiles: u64,
     associated_images: Vec<String>,
     icc_profile: bool,
-    warnings: Vec<String>,
+    omissions: Vec<CopyOmission>,
 }
 
 const NEW_SUBFILE_TYPE: u16 = 254;
@@ -883,7 +999,7 @@ fn write_copy(
     let mut tiff = TiffFile::new(BufWriter::with_capacity(4 << 20, file))?;
     let software = crate::export::software_name();
     let props = wsi.properties();
-    let mut warnings = Vec::new();
+    let mut omissions = Vec::new();
 
     // Associated images (never for de-identified copies: plan has none).
     let mut associated = Vec::new();
@@ -897,7 +1013,10 @@ fn write_copy(
                 associated.push((name.clone(), image.width as u32, image.height as u32, ifd));
             }
             Ok(_) => {}
-            Err(err) => warnings.push(format!("the {name} image was not copied: {err}")),
+            Err(err) => omissions.push(CopyOmission::AssociatedImage {
+                name: name.clone(),
+                error: err.to_string(),
+            }),
         }
         control.advance(1);
     }
@@ -947,7 +1066,9 @@ fn write_copy(
         match wsi.icc_profile() {
             Ok(profile) => profile.filter(|profile| !profile.is_empty()),
             Err(err) => {
-                warnings.push(format!("the ICC profile was not copied: {err}"));
+                omissions.push(CopyOmission::IccProfile {
+                    error: err.to_string(),
+                });
                 None
             }
         }
@@ -1028,6 +1149,6 @@ fn write_copy(
         unreadable_tiles: pyramid.unreadable_tiles,
         associated_images: associated.into_iter().map(|(name, ..)| name).collect(),
         icc_profile: icc.is_some(),
-        warnings,
+        omissions,
     })
 }

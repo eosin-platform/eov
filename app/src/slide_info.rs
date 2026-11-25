@@ -9,8 +9,10 @@
 //! core's limit for associated images.
 
 use crate::state::{AppState, PaneId};
+use crate::ui_update::localized_number;
 use crate::{AppWindow, PropertyRow};
 use eov_common::{RgbaImageData, WsiFile};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::NotifyLevel;
 use parking_lot::RwLock;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
@@ -114,24 +116,31 @@ fn summary(wsi: &WsiFile) -> String {
         Some(eov_common::wsi::OME_TIFF_VENDOR) => "OME-TIFF".to_string(),
         Some(eov_common::wsi::QPTIFF_VENDOR) => "QPTIFF".to_string(),
         Some(vendor) => vendor.to_string(),
-        None => "Slide".to_string(),
+        // Translators: the slide's format when its file does not name one.
+        None => tr!("Slide format" => "Slide"),
     };
     let levels = props.levels.len();
-    let mut text = format!(
-        "{format} · {} × {} px · {levels} {}",
-        props.width,
-        props.height,
-        if levels == 1 { "level" } else { "levels" }
-    );
+    // Facts about the slide, each one complete, joined by "·".
+    let mut parts = vec![
+        isolate(format),
+        isolate(format!("{} × {} px", props.width, props.height)),
+        tr!("{n} level" | "{n} levels" % levels),
+    ];
     // The keys that step through them are in the status line when the
     // slide opens, and in the Keyboard Shortcuts panel.
-    for (count, current, what) in [
-        (wsi.focal_planes(), wsi.focal_plane(), "focal plane"),
-        (wsi.time_points(), wsi.time_point(), "time point"),
-    ] {
-        if count > 1 {
-            text.push_str(&format!(" · {what} {} of {count}", current + 1));
-        }
+    if wsi.focal_planes() > 1 {
+        parts.push(tr!(
+            "focal plane {current} of {count}",
+            current = wsi.focal_plane() + 1,
+            count = wsi.focal_planes()
+        ));
+    }
+    if wsi.time_points() > 1 {
+        parts.push(tr!(
+            "time point {current} of {count}",
+            current = wsi.time_point() + 1,
+            count = wsi.time_points()
+        ));
     }
     if let Some(set) = wsi.channels() {
         let names: Vec<&str> = set
@@ -140,25 +149,28 @@ fn summary(wsi: &WsiFile) -> String {
             .take(SUMMARY_CHANNELS)
             .map(|c| c.name.as_str())
             .collect();
+        let names = names.join(", ");
         let more = set.len().saturating_sub(SUMMARY_CHANNELS);
-        text.push_str(&format!(
-            " · {} {} ({}): {}{}",
-            set.len(),
-            if set.len() == 1 {
-                "channel"
-            } else {
-                "channels"
-            },
-            set.sample_type.name(),
-            names.join(", "),
-            if more > 0 {
-                format!(" and {more} more")
-            } else {
-                String::new()
-            }
+        let names = if more > 0 {
+            // Translators: a list of channel names, then how many more
+            // channels the slide has.
+            tr!(
+                "{names} and {n} more" | "{names} and {n} more" % more,
+                names = isolate(&names)
+            )
+        } else {
+            isolate(&names)
+        };
+        parts.push(tr!(
+            // Translators: the number of channels, their sample type
+            // ("uint16"), and their names.
+            "{n} channel ({sample_type}): {names}"
+                | "{n} channels ({sample_type}): {names}" % set.len(),
+            sample_type = set.sample_type.name(),
+            names = names
         ));
     }
-    text
+    parts.join(" · ")
 }
 
 /// Opens the Channels panel for the slide shown here.
@@ -293,7 +305,7 @@ pub(crate) fn copy_all() {
     crate::host_ui::with_host(|host| {
         host.notify(
             NotifyLevel::Success,
-            &format!("Copied {count} properties"),
+            &tr!("Copied {n} property" | "Copied {n} properties" % count),
             None,
             None,
         )
@@ -310,7 +322,8 @@ pub(crate) fn copy_row(ui: &AppWindow, index: i32) {
     });
     if let Some((key, value)) = row {
         crate::clipboard::copy_text(value);
-        ui.set_status_text(SharedString::from(format!("Copied {key}")));
+        // Translators: {} names what was copied.
+        ui.set_status_text(SharedString::from(tr!("Copied {}", isolate(&key))));
     }
 }
 
@@ -320,18 +333,26 @@ fn show_pixel_size(ui: &AppWindow, state: &AppState, file_id: i32) {
         return;
     };
     let props = file.wsi.properties();
+    let number = |value: f64| localized_number(&eov_common::format_decimal(value));
+    // The size with its unit is isolated: a text that starts with it would
+    // otherwise run left to right in a right-to-left language.
+    let size = |text: String| isolate(format!("{text} µm/px"));
     let text = match (file.calibration_override, props.mpp_x, props.mpp_y) {
-        (Some(um), _, _) => format!("{} µm/px (set by you)", eov_common::format_decimal(um)),
-        (None, Some(x), Some(y)) => format!(
-            "{} × {} µm/px (from the file)",
-            eov_common::format_decimal(x),
-            eov_common::format_decimal(y)
+        // Translators: {} is the pixel size with its unit ("0.25 µm/px"),
+        // which the user set.
+        (Some(um), _, _) => tr!("{} (set by you)", size(number(um))),
+        // Translators: {} is the pixel size with its unit ("0.25 × 0.25
+        // µm/px"), as the slide file records it.
+        (None, Some(x), Some(y)) => tr!(
+            "{} (from the file)",
+            size(format!("{} × {}", number(x), number(y)))
         ),
-        (None, Some(v), None) | (None, None, Some(v)) => format!(
-            "{} µm/px (one axis in the file)",
-            eov_common::format_decimal(v)
-        ),
-        (None, None, None) => "not recorded — measurements are in pixels".to_string(),
+        (None, Some(v), None) | (None, None, Some(v)) => {
+            // Translators: {} is the pixel size with its unit ("0.25 µm/px");
+            // the slide file records it for one axis only.
+            tr!("{} (one axis in the file)", size(number(v)))
+        }
+        (None, None, None) => tr!("not recorded — measurements are in pixels"),
     };
     ui.set_slide_info_pixel_size(SharedString::from(text));
     ui.set_slide_info_pixel_size_manual(file.calibration_override.is_some());
@@ -347,9 +368,10 @@ pub(crate) fn set_pixel_size(ui: &AppWindow, state: &Arc<RwLock<AppState>>, text
         Some(text) => match crate::calibration_store::parse_um_per_px(text) {
             Some(um) => Some(um),
             None => {
-                ui.set_status_text(SharedString::from(
-                    "Enter the pixel size in µm per pixel, e.g. 0.25",
-                ));
+                ui.set_status_text(SharedString::from(tr!(
+                    "Enter the pixel size in µm per pixel, e.g. {}",
+                    eov_plugin_api::i18n::format_decimal(0.25, 2)
+                )));
                 return;
             }
         },
@@ -385,19 +407,41 @@ pub(crate) fn set_pixel_size(ui: &AppWindow, state: &Arc<RwLock<AppState>>, text
         match (saved, um) {
             (Ok(()), Some(um)) => host.notify(
                 NotifyLevel::Info,
-                &format!("Pixel size set to {} µm/px", eov_common::format_decimal(um)),
-                Some("Measurements, the scale bar and exports use it; it is remembered for this slide."),
+                &tr!(
+                    "Pixel size set to {} µm/px",
+                    localized_number(&eov_common::format_decimal(um))
+                ),
+                Some(&tr!(
+                    "Measurements, the scale bar and exports use it; it is remembered for this slide."
+                )),
                 None,
             ),
-            (Ok(()), None) => host.status("Using the pixel size recorded in the file"),
+            (Ok(()), None) => host.status(&tr!("Using the pixel size recorded in the file")),
             (Err(error), _) => host.notify(
                 NotifyLevel::Warning,
-                "The pixel size applies to this session only",
+                &tr!("The pixel size applies to this session only"),
                 Some(&error),
                 None,
             ),
         }
     });
+}
+
+/// Writes the open panel's summary and pixel size again, in the language of
+/// the interface (after it changed).
+pub(crate) fn refresh_texts(ui: &AppWindow, state: &Arc<RwLock<AppState>>) {
+    let Some(file_id) = shown_file_id() else {
+        return;
+    };
+    if !ui.get_slide_info_visible() {
+        return;
+    }
+    let state = state.read();
+    let Some(file) = state.get_file(file_id) else {
+        return;
+    };
+    ui.set_slide_info_summary(SharedString::from(summary(&file.wsi)));
+    show_pixel_size(ui, &state, file_id);
 }
 
 pub(crate) fn set_hide_label(ui: &AppWindow, hidden: bool) {

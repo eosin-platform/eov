@@ -1,0 +1,185 @@
+term	translation	note
+(register)	πληθυντικός ευγενείας (Ανοίξτε, Επιλέξτε)	Sentences address the user politely in the plural; never the familiar singular.
+(buttons, menu items, command tooltips)	ουσιαστικό ενέργειας (Άνοιγμα, Αποθήκευση)	Verbal nouns in sentence case, as Greek desktop software does; no English Title Case. Keep the … of menu items that open a dialog.
+(quotation marks)	« »	Names inside sentences: «{}». Keep straight quotes inside code, TOML and command examples.
+(semicolon ;)	· (άνω τελεία), comma or full stop	In Greek ';' is the QUESTION MARK (Έλεγχος για ενημερώσεις;). Never use ';' for an English semicolon.
+(percent, time units)	{}%, 4 min 05 s	No space before % (CLDR el); SI symbols h, min, s.
+could not … / cannot …	Δεν ήταν δυνατή η / δεν ήταν δυνατό το … (δεν είναι δυνατή/δυνατό)	Standard error pattern with a verbal noun: Δεν ήταν δυνατό το άνοιγμα του {}.
+For research and education. Not a medical device; not for primary diagnosis.	Για έρευνα και εκπαίδευση. Δεν αποτελεί ιατροτεχνολογικό προϊόν· δεν προορίζεται για πρωτογενή διάγνωση.	Safety text: translate in full; never soften or shorten.
+medical device	ιατροτεχνολογικό προϊόν	Term of the Greek text of the EU Medical Device Regulation.
+primary diagnosis	πρωτογενής διάγνωση	Regulatory term.
+research use only (RUO)	μόνο για ερευνητική χρήση (RUO)	Phrase printed on RUO reagents; keep RUO.
+synthetic, predicted, generated (image, channel, stain)	συνθετικός, προβλεπόμενος, παραγόμενος υπολογιστικά	Computed by an algorithm. Never «τεχνητός» in the sense of fake, never «προσομοιωμένος».
+slide	πλακίδιο	The glass slide and its scan (Greek pathology usage). Never «διαφάνεια».
+whole-slide image (WSI)	εικόνα ολόκληρου πλακιδίου (WSI)	Keep WSI: «αρχεία WSI».
+slide viewer, viewer	πρόγραμμα προβολής	«Whole Slide Image Viewer» = Πρόγραμμα προβολής εικόνων ολόκληρου πλακιδίου.
+pathology, pathologist	παθολογική ανατομική / ιστοπαθολογία, παθολογοανατόμος	Never «παθολογία»/«παθολόγος» alone: in Greek they mean internal medicine/internist.
+tab	καρτέλα	
+pane	πλαίσιο	Side-by-side viewing area; focused pane = ενεργό πλαίσιο. Not «παράθυρο» (window) or «πάνελ».
+view	προβολή	What a pane shows: position, magnification, rotation.
+viewport	πεδίο προβολής	The area of a pane where the slide is drawn.
+minimap	χάρτης επισκόπησης	
+scale bar	γραμμή κλίμακας	
+HUD, panel	αιωρούμενο πάνελ, πάνελ	πάνελ is indeclinable neuter; metadata HUD = πάνελ μεταδεδομένων.
+toolbar, sidebar, status bar	γραμμή εργαλείων, πλευρική γραμμή, γραμμή κατάστασης	
+series bar, series	γραμμή σειράς, σειρά	The strip with the slides of the current folder.
+order (sort)	ταξινόμηση	«Order: by name» = Ταξινόμηση: κατά όνομα; «A–Z» = Α–Ω.
+case (patient case)	περιστατικό	
+window, dialog, menu	παράθυρο, παράθυρο διαλόγου, μενού	
+Home screen	αρχική οθόνη	The Home tab = «Αρχική».
+zoom; zoom in / zoom out	ζουμ; μεγέθυνση / σμίκρυνση	ζουμ is indeclinable: «Ζουμ σε 40×».
+magnification (20×)	μεγέθυνση	Optical magnification; 20× stays 20×.
+optical-equivalent zoom, digital zoom	οπτικά ισοδύναμο ζουμ, ψηφιακό ζουμ	
+objective, objective power	αντικειμενικός φακός, μεγέθυνση αντικειμενικού φακού	Short label: «Αντικειμενικός».
+pixel	pixel	Latin script, indeclinable neuter (το pixel, τα pixel); unit px.
+pixel size, MPP (µm per pixel)	μέγεθος pixel, MPP (µm ανά pixel)	MPP stays.
+calibration	βαθμονόμηση	
+level, pyramid level, pyramid	επίπεδο, επίπεδο πυραμίδας, πυραμίδα	«level-0 pixels» = pixel επιπέδου 0; «Pyramidal TIFF» = Πυραμιδικό TIFF.
+tile, patch	τμήμα (εικόνας)	Never «πλακίδιο», which is the slide. Dataset «Tile Size» = Μέγεθος τμήματος.
+cache	κρυφή μνήμη	
+region of interest (ROI)	περιοχή ενδιαφέροντος (ROI)	Keep ROI as the abbreviation.
+measurement, Measure (tool)	μέτρηση, Μέτρηση	
+distance, path length, area, angle	απόσταση, μήκος διαδρομής, εμβαδόν, γωνία	
+annotation	επισήμανση	A drawn mark with a meaning; not «σχόλιο».
+class (annotation class)	κατηγορία	e.g. Όγκος, Στρώμα.
+cell count, counting	καταμέτρηση κυττάρων	«μέτρηση» is reserved for measurement.
+high-power field (HPF)	οπτικό πεδίο μεγάλης μεγέθυνσης (HPF)	Keep HPF.
+H&E, hematoxylin, eosin	H&E, αιματοξυλίνη, ηωσίνη	η H&E (feminine). One-letter labels H and E stay Latin.
+IHC, DAB, chromogen	IHC (ανοσοϊστοχημεία), DAB, χρωμογόνο	η DAB (feminine).
+stain (staining method; the slide's stain)	χρώση	H&E, IHC, Masson, Giemsa: «χρώση Giemsa».
+stain (dye component)	χρωστική	In deconvolution, normalisation and quantification: απομονωμένη χρωστική, διανύσματα χρωστικών.
+stain normalization (Macenko, Vahadane)	κανονικοποίηση χρώσης	Method names stay. Short label: «Κανον. χρώσης».
+colour normalisation	κανονικοποίηση χρωμάτων	
+stain target, stain model	στόχος χρώσης, μοντέλο χρώσης	
+stain vectors, stain fit	διανύσματα χρωστικών, εκτίμηση χρωστικών	Fitting = estimating the stain vectors of a slide.
+reference (stain vectors, target)	αναφοράς	«reference H&E» = H&E αναφοράς.
+colour deconvolution	αποσυνέλιξη χρωμάτων	
+intensity, concentration, optical density	ένταση, συγκέντρωση, οπτική πυκνότητα	
+quantify, threshold	ποσοτικοποίηση, κατώφλι	
+weak (1+), moderate (2+), strong (3+)	ασθενής (1+), μέτρια (2+), ισχυρή (3+)	Feminine: agrees with «χρώση».
+H-score, positive (DAB-positive)	H-score, θετικός για (θετικά για DAB)	
+channel, isolated channel	κανάλι, απομονωμένο κανάλι	
+multiplex immunofluorescence (mIF)	πολυπλεγμένος ανοσοφθορισμός (mIF)	
+marker	δείκτης	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z), Z-stack	εστιακό επίπεδο (Z), στοίβα Z	
+time point (T), time series	χρονικό σημείο (T), χρονοσειρά	
+heat map, colour map	θερμικός χάρτης, χρωματικός χάρτης	
+overlay, layer	επικάλυψη, στρώση	Layer is not «επίπεδο», which is the pyramid level.
+opacity	αδιαφάνεια	
+shapes: point, polygon, rectangle, ellipse, line	σημείο, πολύγωνο, ορθογώνιο, έλλειψη, γραμμή	
+stroke: solid, dashed, dotted	γραμμή: συνεχής, παύλες, τελείες	Compact labels (52 px buttons in the export dialog).
+line caps: round, square, flat	άκρα: στρογγυλό, τετράγωνο, επίπεδο	
+thickness, outline, font size	πάχος, περίγραμμα, μέγεθος γραμματοσειράς	
+downsample	υποδειγματοληψία	Heat map placement: level-0 pixels per map pixel.
+tissue, background	ιστός, φόντο	
+tissue QC	έλεγχος ποιότητας ιστού	
+pen marks, folds, blur (out of focus)	σημάδια μαρκαδόρου, πτυχώσεις, θόλωση (εκτός εστίασης)	«blurred areas» = θολές περιοχές.
+tissue detection, tissue mask	ανίχνευση ιστού, μάσκα ιστού	
+dataset, patch extraction, stride	σύνολο δεδομένων, εξαγωγή τμημάτων, βήμα	
+export, save a copy, convert	εξαγωγή, αποθήκευση αντιγράφου, μετατροπή	
+de-identify, de-identified	αποταυτοποίηση, αποταυτοποιημένος	Not «ανωνυμοποίηση»: text inside the image is not removed.
+label image, macro image, thumbnail, overview	εικόνα ετικέτας, μακροσκοπική εικόνα, μικρογραφία, επισκόπηση	
+bookmark	σελιδοδείκτης	
+landmark, align/alignment	σημείο αναφοράς, ευθυγράμμιση	
+link / unlink (panes), split	σύνδεση / αποσύνδεση, διαίρεση	
+session, safe mode	περίοδος λειτουργίας, ασφαλής λειτουργία	
+plugin, package (.eop)	πρόσθετο, πακέτο	Genitive «του πρόσθετου», plural «των πρόσθετων».
+plugin API	API πρόσθετων	
+model, model store	μοντέλο, αποθήκη μοντέλων	
+inference	συμπερασμός	
+render, renderer (CPU, GPU)	απόδοση, μηχανή απόδοσης	CPU and GPU stay.
+filtering (bilinear, trilinear, Lanczos)	φιλτράρισμα (διγραμμικό, τριγραμμικό, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	οξύτητα, γάμμα, φωτεινότητα, αντίθεση	«Sharpened» = με όξυνση.
+image adjustments	ρυθμίσεις εικόνας	
+colour profile (ICC), colour management	προφίλ χρωμάτων (ICC), διαχείριση χρωμάτων	«Colour-managed» = με διαχείριση χρωμάτων.
+as scanned, scanner	όπως σαρώθηκαν, σαρωτής	
+metadata, properties, vendor	μεταδεδομένα, ιδιότητες, κατασκευαστής	
+theme (dark, light, high contrast)	θέμα (σκούρο, ανοιχτό, υψηλή αντίθεση)	
+Check for Updates…	Έλεγχος για ενημερώσεις…	Asks first; never imply automatic background updates.
+update, update helper	ενημέρωση, βοηθητικό πρόγραμμα ενημέρωσης	
+self-update	αυτοενημέρωση	The application updating itself; not «αυτόματη ενημέρωση».
+release, version, build	έκδοση, έκδοση, δομή	Release = «κυκλοφορία» when «version» is in the same sentence.
+release manifest, artifact	μανιφέστο έκδοσης, τεχνούργημα	
+signature, digest (SHA-256)	υπογραφή, σύνοψη	
+repository, plugin registry	αποθετήριο, μητρώο πρόσθετων	
+administrator policy	πολιτική διαχειριστή	
+server/host, proxy, redirect	διακομιστής, διακομιστής μεσολάβησης, ανακατεύθυνση	Host as opposed to a Flatpak sandbox = κεντρικό σύστημα.
+folder / directory, path	φάκελος / κατάλογος, διαδρομή	
+archive, entry	αρχειοθήκη, καταχώριση	
+log folder, crash report	φάκελος καταγραφής, αναφορά κατάρρευσης	
+thread, script, job	νήμα, σενάριο, εργασία	
+file manager, clipboard	διαχείριση αρχείων, πρόχειρο	
+keyboard shortcut, key, modifier key	συντόμευση πληκτρολογίου, πλήκτρο, πλήκτρο τροποποίησης	Key names (Ctrl, Shift, Esc) stay.
+click, right-click, drag and drop	κλικ, δεξί κλικ, σύρετε και αποθέστε	
+Open, Open Folder…, Open File	Άνοιγμα, Άνοιγμα φακέλου…, Άνοιγμα αρχείου	
+Open Containing Folder	Άνοιγμα φακέλου αρχείου	
+Close, Close All	Κλείσιμο, Κλείσιμο όλων	
+Cancel, OK, Confirm	Ακύρωση, OK, Επιβεβαίωση	
+Done	Τέλος	As a status: «Ολοκληρώθηκε».
+Save, Save…	Αποθήκευση, Αποθήκευση…	
+Export, Import	Εξαγωγή, Εισαγωγή	
+Delete	Διαγραφή	
+Remove	Κατάργηση	
+Clear	Απαλοιφή	«Clear All Measurements» = Απαλοιφή όλων των μετρήσεων.
+Add, Edit, Change, Set	Προσθήκη, Επεξεργασία, Αλλαγή, Ορισμός	
+Settings, Apply	Ρυθμίσεις, Εφαρμογή	
+Reset, Reset to Defaults	Επαναφορά, Επαναφορά προεπιλογών	
+Show, Hide, Toggle X	Εμφάνιση, Απόκρυψη, Εμφάνιση/απόκρυψη X	
+Enable, Disable	Ενεργοποίηση, Απενεργοποίηση	
+Copy, Copy All	Αντιγραφή, Αντιγραφή όλων	
+Undo, Redo	Αναίρεση, Επανάληψη	«Undo {}» = Αναίρεση: {}.
+Fit (to the pane)	Προσαρμογή	
+Rotate, Flip horizontally, Mirror	Περιστροφή, Οριζόντια αναστροφή, Κατοπτρισμός	
+Pan, Navigate (tool)	Μετακίνηση, Πλοήγηση	
+Full screen	Πλήρης οθόνη	
+Download	Λήψη	In sentences: «κάνει λήψη».
+Install, Uninstall, Restart	Εγκατάσταση, Απεγκατάσταση, Επανεκκίνηση	
+Preview, Format, Quality	Προεπισκόπηση, Μορφή, Ποιότητα	
+Compression, lossless, resolution (DPI)	Συμπίεση, χωρίς απώλειες, ανάλυση (DPI)	
+Filter (noun / verb)	φίλτρο / φιλτράρισμα	
+Messages, Error, Warning, Information	Μηνύματα, Σφάλμα, Προειδοποίηση, Πληροφορίες	
+Ready, N/A, Unknown	Έτοιμο, Μ/Δ, Άγνωστο	Μ/Δ = μη διαθέσιμο.
+Language, Automatic (System Default)	Γλώσσα, Αυτόματα (προεπιλογή συστήματος)	Language names are neuter plural: Ελληνικά, Γερμανικά.
+(all-caps section headings)	κεφαλαία χωρίς τόνους	ΜΕΤΡΗΣΕΙΣ, ΔΕΥΤΕΡΟΣ ΑΞΙΟΛΟΓΗΤΗΣ, ΠΡΟΒΛΕΠΟΜΕΝΟΙ ΔΕΙΚΤΕΣ: Greek capitals drop the accents (keep the dialytika: Ϊ, Ϋ).
+region (annotation), outline	περιοχή, περίγραμμα	Plugins. «crosses itself» = τέμνεται με τον εαυτό του; «parts» = μέρη (not «τμήματα», which are tiles).
+add to / cut from a region	προσθήκη σε / αποκοπή από περιοχή	Plugins. «The cut…» = Η αποκοπή…
+hole (of a polygon)	οπή	Plugins.
+brush, eraser, brush stroke	πινέλο, γόμα, πινελιά	Plugins. «paint a region» = ζωγραφίστε μια περιοχή; «Erase» = Σβήσιμο.
+comment (on an annotation)	σχόλιο	Plugins. Not the annotation itself (επισήμανση).
+hotkey	συντόμευση	As in eov's catalog.
+lock / unlock, locked	κλείδωμα / ξεκλείδωμα, κλειδωμένη	Plugins. Feminine for layer and annotation (στρώση, επισήμανση).
+HPF field (a placed field), count point	πεδίο HPF, σημείο καταμέτρησης	Plugins. «Count tool (C)» = Εργαλείο καταμέτρησης (C); the Count tab = καρτέλα «Καταμέτρηση».
+tumour cells, immune cells	καρκινικά κύτταρα, ανοσοκύτταρα	Plugins (PD-L1 scoring). «PD-L1-positive» = θετικά για PD-L1.
+combined positive score (CPS)	συνδυασμένη θετική βαθμολογία (CPS)	Plugins. Keep CPS.
+95% (confidence interval)	95% ΔΕ	ΔΕ = διάστημα εμπιστοσύνης: (95% ΔΕ {low}–{high}).
+database, back up, merge	βάση δεδομένων, αντίγραφο ασφαλείας, συγχώνευση	Plugins. «Back up…» = Αντίγραφο ασφαλείας…; «Merge…» = Συγχώνευση…
+attach (annotations to the open slide)	προσάρτηση	Plugins. Not «σύνδεση», which is linking panes.
+second reader, blinded copy	δεύτερος αξιολογητής, τυφλό αντίγραφο	Plugins. «another reader» = άλλος αξιολογητής.
+review status: draft, verified, rejected	κατάσταση ελέγχου: πρόχειρη, επαληθευμένη, απορριφθείσα	Plugins. Feminine: agrees with «επισήμανση».
+author (of an annotation)	συντάκτης	Plugins.
+overlap (geometric)	αλληλοεπικάλυψη	Plugins. Never «επικάλυψη», which is the overlay.
+even-odd rule	κανόνας άρτιου-περιττού	Plugins.
+DICOM bulk annotations, attribute, study, series	μαζικές επισημάνσεις DICOM, χαρακτηριστικό, μελέτη, σειρά	Plugins. IOD and attribute names (Microscopy Bulk Simple Annotations, SOP Class UID) stay in English.
+feature (GeoJSON)	στοιχείο (feature)	Plugins.
+region readout (Cellaris)	ανάγνωση τιμών περιοχής	Plugins. «readout» = ανάγνωση τιμών; «Measure ROI» = Μέτρηση ROI.
+cell (Cellaris: grid square predicted at once)	κελί	Plugins. Never «κύτταρο» here: it is not a biological cell.
+window (square image a model predicts from)	παράθυρο	Plugins.
+tissue block (5 µm square of tissue)	τετράγωνο ιστού	Plugins. Not «κύβος» or «μπλοκ», which read as a paraffin block.
+display window (of a marker)	εύρος εμφάνισης	Plugins (Cellaris).
+PREDICTED (badge over predicted colours)	ΠΡΟΒΛΕΨΗ ΜΟΝΤΕΛΟΥ	Safety badge: «ΠΡΟΒΛΕΨΗ ΜΟΝΤΕΛΟΥ — μόνο για ερευνητική χρήση, όχι για διάγνωση».
+reconstruction error, reconstruction	σφάλμα ανακατασκευής, ανακατασκευή	Plugins (eovae, Cellaris).
+batch (inference), session (ONNX Runtime)	παρτίδα, συνεδρία	Plugins. «session» of eov stays «περίοδος λειτουργίας».
+Runtime… (button choosing the ONNX Runtime library)	ONNX Runtime…	Plugins. In prose: περιβάλλον εκτέλεσης.
+sidecar file	συνοδευτικό αρχείο	Plugins (eovae).
+your site's model / copy	μοντέλο / αντίγραφο του οργανισμού σας	Plugins. Compact button: «Λήψη μοντέλου οργανισμού».
+bright-field	φωτεινού πεδίου	Plugins. «not bright-field» = δεν είναι φωτεινού πεδίου.
+upsample, resample	υπερδειγματοληψία, επαναδειγματοληψία	Plugins.
+Retry	Νέα προσπάθεια	Button. Not «Επανάληψη», which is Redo.
+gamepad, game controller	χειριστήριο παιχνιδιών, χειριστήριο	Plugins. Plugin name: Χειριστήριο παιχνιδιών.
+stick, trigger, shoulder button, D-pad, dead zone	μοχλός, σκανδάλη, κουμπί ώμου, D-pad, νεκρή ζώνη	Plugins (gamepad). Face buttons by position: Κάτω/Δεξί/Πάνω/Αριστερό κουμπί.
+mapping, profile	αντιστοίχιση, προφίλ	Plugins (gamepad). προφίλ is indeclinable.
+On / Off (small switch)	Ναι / Όχι	Plugins (gamepad). The switch has room for about 5 characters.
+marker (a placed point in the example plugin)	σημάδι	Example plugin only. A biological marker stays «δείκτης».
+worker thread	νήμα εργασίας	Background thread of eov or a plugin: «Δεν ήταν δυνατή η εκκίνηση νήματος εργασίας».
+flagged by tissue QC	σημάνθηκε από τον έλεγχο ποιότητας ιστού	Flags are for review, not certainties: keep «πιθανές πτυχώσεις». Not «επισήμανση», which is an annotation.
+the host (eov running a plugin)	το eov	Plugins (eovae). «the host returned …» = το eov επέστρεψε …

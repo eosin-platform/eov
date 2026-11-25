@@ -9,9 +9,11 @@ use crate::host_ui::with_host;
 use crate::state::AppState;
 use crate::{AppWindow, DatasetExportSettings};
 use eov_common::dataset::{
-    self, DatasetControl, DatasetError, DatasetPatchesConfig, DatasetPatchesOptions,
-    DatasetPatchesProgress, DatasetPatchesReport, DatasetPhase, TissueFilter,
+    self, DatasetConfigError, DatasetControl, DatasetError, DatasetPatchesConfig,
+    DatasetPatchesOptions, DatasetPatchesProgress, DatasetPatchesReport, DatasetPhase,
+    TissueFilter,
 };
+use eov_plugin_api::i18n::{isolate, join_sentences, tr};
 use eov_plugin_api::protocol::NotifyLevel;
 use parking_lot::RwLock;
 use slint::{Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
@@ -79,8 +81,10 @@ pub(crate) fn add_inputs(ui: &AppWindow) {
     let extensions = dataset::slide_extensions();
     let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
     let Some(paths) = rfd::FileDialog::new()
-        .add_filter("Slides", &extensions)
-        .add_filter("All files", &["*"])
+        // Translators: file types in the dialog that adds slides to a
+        // dataset.
+        .add_filter(tr!("Slides"), &extensions)
+        .add_filter(tr!("All files"), &["*"])
         .pick_files()
     else {
         return;
@@ -142,13 +146,78 @@ fn run_spec(settings: &DatasetExportSettings) -> (DatasetPatchesConfig, DatasetP
     (config, options)
 }
 
+/// Why the dialog's run cannot start ([`DatasetConfigError`]), in the
+/// interface's language.
+fn config_error(error: &DatasetConfigError) -> String {
+    match error {
+        // Translators: no slides were chosen for a dataset.
+        DatasetConfigError::NoInputs => tr!("no input paths were given"),
+        // Translators: the size of the dataset's patches is out of range.
+        DatasetConfigError::TileSize { value, min, max } => tr!(
+            "tile size must be between {min} and {max} pixels (got {value})",
+            min = min,
+            max = max,
+            value = value
+        ),
+        // Translators: the step between the dataset's patches is out of
+        // range.
+        DatasetConfigError::Stride { value, min, max } => tr!(
+            "stride must be between {min} and {max} pixels (got {value})",
+            min = min,
+            max = max,
+            value = value
+        ),
+        // Translators: the number of threads (processor cores) to use is out
+        // of range.
+        DatasetConfigError::Threads { value, min, max } => tr!(
+            "threads must be between {min} and {max} (got {value})",
+            min = min,
+            max = max,
+            value = value
+        ),
+        // Translators: {} is the number given.
+        DatasetConfigError::WhiteThreshold(value) => tr!(
+            "white threshold must be above 0 and at most 1 (got {})",
+            crate::ui_update::localized_number(&value.to_string())
+        ),
+        // Settings the dialog does not offer (the command line does): as
+        // eov_common words them.
+        DatasetConfigError::TissueFraction(_)
+        | DatasetConfigError::TissueThreshold(_)
+        | DatasetConfigError::Resolution(_)
+        | DatasetConfigError::MaxTiles
+        | DatasetConfigError::JpegQuality(_)
+        | DatasetConfigError::Coverage(_)
+        | DatasetConfigError::MaxCandidates => error.to_string(),
+    }
+}
+
+/// Writes the open dialog's error again, in the language of the interface
+/// (after it changed).
+pub(crate) fn refresh_texts(ui: &AppWindow) {
+    if !ui.get_dataset_export_dialog_visible() {
+        return;
+    }
+    let mut settings = ui.get_dataset_export_settings();
+    if settings.error.is_empty() {
+        return;
+    }
+    let (config, options) = run_spec(&settings);
+    settings.error = config
+        .validate(&options)
+        .err()
+        .map(|error| SharedString::from(config_error(&error)))
+        .unwrap_or_default();
+    ui.set_dataset_export_settings(settings);
+}
+
 /// Validates the dialog and starts the run as a status-bar job.
 pub(crate) fn start(ui: &AppWindow) {
     let mut settings = ui.get_dataset_export_settings();
     let (config, options) = run_spec(&settings);
     // Pre-flight (DS-4): refuse bad parameters while the dialog is open.
     if let Err(err) = config.validate(&options) {
-        settings.error = SharedString::from(err.to_string());
+        settings.error = SharedString::from(config_error(&err));
         ui.set_dataset_export_settings(settings);
         return;
     }
@@ -160,7 +229,7 @@ pub(crate) fn start(ui: &AppWindow) {
         Box::new(move || control.cancel()) as Box<dyn Fn()>
     };
     let Some(job_id) =
-        with_host(|host| host.start_host_job("Extracting dataset patches", Some(cancel)))
+        with_host(|host| host.start_host_job(&tr!("Extracting dataset patches"), Some(cancel)))
     else {
         return;
     };
@@ -199,7 +268,7 @@ pub(crate) fn start(ui: &AppWindow) {
             host.finish_host_job(&job_id);
             host.notify(
                 NotifyLevel::Error,
-                "Could not start the dataset extraction",
+                &tr!("Could not start the dataset extraction"),
                 None,
                 None,
             );
@@ -209,30 +278,41 @@ pub(crate) fn start(ui: &AppWindow) {
 
 /// The job line in the status bar.
 fn progress_message(progress: &DatasetPatchesProgress, elapsed: Duration) -> String {
+    let (current, total) = (progress.current_slide.max(1), progress.total_slides);
     let phase = match progress.phase {
-        DatasetPhase::Discovering => return "Finding slides…".to_string(),
-        DatasetPhase::Planning => return "Planning…".to_string(),
-        DatasetPhase::Hashing => "Hashing",
-        DatasetPhase::Extracting => "Slide",
-        DatasetPhase::Finishing | DatasetPhase::Done => return "Finishing…".to_string(),
+        DatasetPhase::Discovering => return tr!("Finding slides…"),
+        DatasetPhase::Planning => return tr!("Planning…"),
+        // Translators: the dataset extraction is computing the identity of
+        // slide {current} of {total}.
+        DatasetPhase::Hashing => tr!(
+            "Hashing {current}/{total}",
+            current = current,
+            total = total
+        ),
+        DatasetPhase::Extracting => {
+            // Translators: the dataset extraction is at slide {current} of
+            // {total}.
+            tr!("Slide {current}/{total}", current = current, total = total)
+        }
+        DatasetPhase::Finishing | DatasetPhase::Done => return tr!("Finishing…"),
     };
-    let mut parts = vec![format!(
-        "{phase} {}/{}",
-        progress.current_slide.max(1),
-        progress.total_slides
-    )];
-    parts.push(format!("{} written", progress.tiles_written));
+    let mut parts = vec![phase];
+    // Translators: patches written so far (as are "kept", "skipped" and
+    // "failed" below).
+    parts.push(tr!("{n} written" | "{n} written" % progress.tiles_written));
     if progress.tiles_existing > 0 {
-        parts.push(format!("{} kept", progress.tiles_existing));
+        // Translators: patches already there from an earlier run.
+        parts.push(tr!("{n} kept" | "{n} kept" % progress.tiles_existing));
     }
     if progress.tiles_skipped > 0 {
-        parts.push(format!("{} skipped", progress.tiles_skipped));
+        parts.push(tr!("{n} skipped" | "{n} skipped" % progress.tiles_skipped));
     }
     if progress.tiles_failed > 0 {
-        parts.push(format!("{} failed", progress.tiles_failed));
+        parts.push(tr!("{n} failed" | "{n} failed" % progress.tiles_failed));
     }
     if let Some(eta) = remaining(progress, elapsed) {
-        parts.push(format!("{} left", format_duration(eta)));
+        // Translators: the time the extraction still needs ("4m 05s left").
+        parts.push(tr!("{} left", format_duration(eta)));
     }
     parts.join(" · ")
 }
@@ -247,16 +327,28 @@ fn remaining(progress: &DatasetPatchesProgress, elapsed: Duration) -> Option<Dur
     Some(Duration::from_secs_f64(left))
 }
 
-/// `"1h 02m"`, `"4m 05s"`, `"12s"` (never `"1m60s"`, DS-6).
+/// `"1h 02m"`, `"4m 05s"`, `"12s"` (never `"1m60s"`, DS-6), in the
+/// interface's language.
 fn format_duration(duration: Duration) -> String {
     let total = duration.as_secs_f64().round() as u64;
     let (hours, minutes, seconds) = (total / 3600, (total / 60) % 60, total % 60);
     if hours > 0 {
-        format!("{hours}h {minutes:02}m")
+        // Translators: hours and minutes ("1h 02m").
+        tr!(
+            "{hours}h {minutes}m",
+            hours = hours,
+            minutes = format!("{minutes:02}")
+        )
     } else if minutes > 0 {
-        format!("{minutes}m {seconds:02}s")
+        // Translators: minutes and seconds ("4m 05s").
+        tr!(
+            "{minutes}m {seconds}s",
+            minutes = minutes,
+            seconds = format!("{seconds:02}")
+        )
     } else {
-        format!("{seconds}s")
+        // Translators: seconds ("12s").
+        tr!("{seconds}s", seconds = seconds)
     }
 }
 
@@ -272,11 +364,12 @@ fn finished(
         match result {
             Ok(report) if cancelled => host.notify(
                 NotifyLevel::Info,
-                "Dataset extraction cancelled",
-                Some(&format!(
-                    "{} patches were written to {}; run it again to resume.",
-                    report.total_tiles,
-                    output_dir.display()
+                &tr!("Dataset extraction cancelled"),
+                Some(&tr!(
+                    "{n} patch was written to {folder}; run it again to resume."
+                        | "{n} patches were written to {folder}; run it again to resume."
+                            % report.total_tiles,
+                    folder = isolate(output_dir.display())
                 )),
                 None,
             ),
@@ -288,14 +381,14 @@ fn finished(
                 };
                 host.notify(
                     level,
-                    "Dataset extraction finished",
+                    &tr!("Dataset extraction finished"),
                     Some(&summary(&report, &output_dir)),
                     None,
                 );
             }
             Err(err) => host.notify(
                 NotifyLevel::Error,
-                "Dataset extraction failed",
+                &tr!("Dataset extraction failed"),
                 Some(&err.to_string()),
                 None,
             ),
@@ -304,49 +397,202 @@ fn finished(
 }
 
 fn summary(report: &DatasetPatchesReport, output_dir: &std::path::Path) -> String {
-    let mut lines = vec![format!(
-        "{} patches from {} slide(s) in {}.",
-        report.total_tiles,
-        report.processed_slides,
-        output_dir.display()
-    )];
+    let mut lines = vec![
+        tr!(
+            "{n} patch written to {folder}."
+                | "{n} patches written to {folder}." % report.total_tiles,
+            folder = isolate(output_dir.display())
+        ),
+        tr!("{n} slide processed." | "{n} slides processed." % report.processed_slides),
+    ];
     let skipped = report.total_tiles_skipped_white
         + report.total_tiles_skipped_tissue
         + report.total_tiles_skipped_annotation
         + report.total_tiles_skipped_qc;
-    if skipped > 0 {
-        lines.push(format!("{skipped} patches skipped by the filters."));
-    }
-    if report.total_tiles_skipped_qc > 0 {
-        lines.push(format!(
-            "{} of them over pen marks, folds or blurred areas.",
-            report.total_tiles_skipped_qc
+    if skipped > 0 && report.total_tiles_skipped_qc >= skipped {
+        // Translators: tissue QC flagged every patch the filters skipped
+        // (pen marks, possible folds or possible blur: flags for review, not
+        // certainties).
+        lines.push(tr!(
+            "{n} patch skipped by the filters: tissue QC flagged it (pen marks, possible folds or blur)."
+                | "{n} patches skipped by the filters: tissue QC flagged them (pen marks, possible folds or blur)."
+                    % skipped
         ));
+    } else if skipped > 0 {
+        lines
+            .push(tr!("{n} patch skipped by the filters."
+                | "{n} patches skipped by the filters." % skipped));
+        if report.total_tiles_skipped_qc > 0 {
+            // Translators: follows the sentence about the patches skipped
+            // by the filters (always more than one here): how many of them
+            // tissue QC flagged (flags for review, not certainties).
+            lines.push(tr!(
+                "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
+                    | "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
+                        % report.total_tiles_skipped_qc
+            ));
+        }
     }
     if report.total_tiles_existing > 0 {
-        lines.push(format!(
-            "{} patches were already there from an earlier run.",
-            report.total_tiles_existing
-        ));
+        lines.push(tr!("{n} patch was already there from an earlier run."
+            | "{n} patches were already there from an earlier run."
+                % report.total_tiles_existing));
     }
     if report.total_tiles_failed > 0 {
-        lines.push(format!(
-            "{} patches could not be read.",
-            report.total_tiles_failed
-        ));
+        lines.push(tr!("{n} patch could not be read."
+            | "{n} patches could not be read." % report.total_tiles_failed));
     }
-    if report.skipped_slides > 0 || report.failed_slides > 0 {
-        lines.push(format!(
-            "{} slide(s) skipped, {} failed (see slides.csv).",
-            report.skipped_slides, report.failed_slides
-        ));
+    // The slides skipped include the ones that failed.
+    if report.skipped_slides > 0 && report.failed_slides >= report.skipped_slides {
+        // Translators: every slide that was skipped failed. slides.csv is
+        // the name of a file in the dataset; keep it as it is.
+        lines.push(tr!("{n} slide failed (see slides.csv)."
+            | "{n} slides failed (see slides.csv)." % report.failed_slides));
+    } else if report.skipped_slides > 0 {
+        // Translators: slides.csv is the name of a file in the dataset;
+        // keep it as it is.
+        lines.push(tr!("{n} slide was skipped (see slides.csv)."
+            | "{n} slides were skipped (see slides.csv)."
+                % report.skipped_slides));
+        if report.failed_slides > 0 {
+            // Translators: follows the sentence about the slides that were
+            // skipped (always more than one here): how many of them failed.
+            lines.push(tr!(
+                "{n} of them failed." | "{n} of them failed." % report.failed_slides
+            ));
+        }
     }
-    lines.join(" ")
+    join_sentences(lines)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// In English the dialog says why a run cannot start as `eov_common`
+    /// does, word for word.
+    #[test]
+    fn config_errors_say_what_common_says() {
+        for error in [
+            DatasetConfigError::NoInputs,
+            DatasetConfigError::TileSize {
+                value: 8,
+                min: 16,
+                max: 8192,
+            },
+            DatasetConfigError::Stride {
+                value: 0,
+                min: 1,
+                max: 8192,
+            },
+            DatasetConfigError::Threads {
+                value: 0,
+                min: 1,
+                max: 256,
+            },
+            DatasetConfigError::WhiteThreshold(1.5),
+            DatasetConfigError::MaxTiles,
+        ] {
+            assert_eq!(config_error(&error), error.to_string());
+        }
+    }
+
+    /// Each count of the summary has a sentence of its own, with its own
+    /// plural; the sentences follow one another as the language writes
+    /// them.
+    #[test]
+    fn the_summary_gives_each_count_a_sentence() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let mut report = DatasetPatchesReport {
+            input_count: 4,
+            discovered_slides: 4,
+            processed_slides: 1,
+            skipped_slides: 3,
+            failed_slides: 1,
+            total_tiles: 120,
+            total_tiles_skipped_white: 30,
+            total_tiles_skipped_tissue: 0,
+            total_tiles_skipped_annotation: 0,
+            total_tiles_skipped_qc: 1,
+            total_tiles_existing: 0,
+            total_tiles_failed: 0,
+            planned_tiles: 151,
+            metadata_paths: Vec::new(),
+            manifest_path: None,
+            slides: Vec::new(),
+            input_errors: Vec::new(),
+            skipped_inputs: Vec::new(),
+            cancelled: false,
+            dry_run: false,
+        };
+        let folder = std::path::Path::new("/data/patches");
+        assert_eq!(
+            summary(&report, folder),
+            "120 patches written to /data/patches. 1 slide processed. 31 patches skipped by \
+             the filters. 1 of them flagged by tissue QC (pen marks, possible folds or blur). \
+             3 slides were skipped (see slides.csv). 1 of them failed."
+        );
+        report.skipped_slides = 1;
+        report.failed_slides = 0;
+        report.total_tiles_skipped_white = 0;
+        report.total_tiles_skipped_qc = 0;
+        assert_eq!(
+            summary(&report, folder),
+            "120 patches written to /data/patches. 1 slide processed. 1 slide was skipped \
+             (see slides.csv)."
+        );
+        // "Of them" is never about one: when every slide skipped failed
+        // (or tissue QC flagged every patch skipped), one sentence says so.
+        report.failed_slides = 1;
+        report.total_tiles_skipped_qc = 1;
+        assert_eq!(
+            summary(&report, folder),
+            "120 patches written to /data/patches. 1 slide processed. 1 patch skipped by the \
+             filters: tissue QC flagged it (pen marks, possible folds or blur). 1 slide failed \
+             (see slides.csv)."
+        );
+        report.skipped_slides = 2;
+        report.failed_slides = 2;
+        assert_eq!(
+            summary(&report, folder),
+            "120 patches written to /data/patches. 1 slide processed. 1 patch skipped by the \
+             filters: tissue QC flagged it (pen marks, possible folds or blur). 2 slides failed \
+             (see slides.csv)."
+        );
+        report.skipped_slides = 1;
+        report.failed_slides = 0;
+        report.total_tiles_skipped_qc = 0;
+
+        let _english = English;
+        let chinese = i18n::by_tag("zh-Hans").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 3] = [
+            (
+                None,
+                "{n} patch written to {folder}.",
+                &["已将 {n} 个图块写入 {folder}。"],
+            ),
+            (None, "{n} slide processed.", &["已处理 {n} 张切片。"]),
+            (
+                None,
+                "{n} slide was skipped (see slides.csv).",
+                &["跳过了 {n} 张切片（见 slides.csv）。"],
+            ),
+        ];
+        i18n::set_catalog(
+            chinese,
+            Some(i18n::Catalog::from_messages(chinese, "", messages).unwrap()),
+        );
+        assert_eq!(
+            summary(&report, folder),
+            "已将 120 个图块写入 /data/patches。已处理 1 张切片。跳过了 1 张切片（见 slides.csv）。"
+        );
+    }
 
     #[test]
     fn durations_never_show_sixty_seconds() {

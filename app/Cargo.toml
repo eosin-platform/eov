@@ -32,7 +32,7 @@ required-features = ["windows-console-launcher"]
 eov-common = { path = "../common", version = "1.0.0" }
 
 # Plugin API
-eov-plugin-api = { path = "../plugin_api", version = "1.0.0" }
+eov-plugin-api = { path = "../plugin_api", version = "1.1.0" }
 
 # Stable ABI for dynamic plugin loading
 abi_stable = { version = "0.11", default-features = false }
@@ -66,7 +66,12 @@ slint-interpreter = { version = "1.19.0", default-features = false, features = [
     "renderer-femtovg-wgpu",
     "internal",
     "internal-json",
+    # Plugin surfaces are compiled with the plugin's catalogs.
+    "bundle-translations",
 ] }
+
+# The system's preferred languages (the same crate Slint uses).
+sys-locale = "0.3"
 
 # Image handling
 image = { version = "0.25", default-features = false, features = [
@@ -183,9 +188,14 @@ objc = "0.2"
 
 [build-dependencies]
 slint-build = "1.19.0"
+# Reads the translation catalogs for the texts made in Rust (the .po reader
+# slint-build uses for the window's texts).
+rspolib = "0.1.2"
 
 [dev-dependencies]
 eov-common = { path = "../common", features = ["test-support"] }
+# Tests that switch languages do so for their own thread only.
+eov-plugin-api = { path = "../plugin_api", version = "1.1.0", features = ["thread-local-language"] }
 eov-example-plugin = { path = "../plugin_api/example-plugin" }
 i-slint-backend-testing = { version = "1.19.0" }
 # Validates the viewer's WGSL (the same naga as wgpu's).

@@ -16,7 +16,7 @@ use super::manifest::{
 };
 use super::network::{FetchError, NetworkPermission, ReleaseClient};
 use super::platform::Platform;
-use super::policy::{self, Policy};
+use super::policy::{self, Policy, ThirdPartyUse};
 use super::prompt::{Answer, Interaction, Prompter};
 use super::registry::{
     self, ManagedPlugin, ManagedRegistry, PluginDirLock, SOURCE_GITHUB, SOURCE_LOCAL,
@@ -28,6 +28,7 @@ use crate::plugins::discovery::{
     invalidate_plugin_package_cache, package_cache,
 };
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,8 +66,13 @@ pub struct PluginContext {
 }
 
 impl PluginContext {
-    /// The context of a CLI invocation.
+    /// The context of a CLI invocation. With `json`, the texts of this
+    /// process (reasons, notes, messages, errors) are in English: programs
+    /// read them.
     pub fn for_cli(plugin_dir: &Path, assume_yes: bool, json: bool) -> Result<Self> {
+        if json {
+            eov_plugin_api::i18n::set_catalog(eov_plugin_api::i18n::source(), None);
+        }
         let policy = policy::current().clone();
         Ok(Self {
             plugin_dir: plugin_dir.to_path_buf(),
@@ -223,7 +229,11 @@ pub struct InstalledPackage {
 #[derive(Debug, Clone, Serialize)]
 pub struct BrokenPackage {
     pub package_path: PathBuf,
+    /// Why, in English (the log, the command line, JSON).
     pub error: String,
+    /// Why, in the interface's language (the window).
+    #[serde(skip)]
+    pub localized_error: String,
 }
 
 /// The plugins installed in a plugin directory.
@@ -292,6 +302,7 @@ pub fn inventory(plugin_dir: &Path, system_dirs: &[PathBuf], host: &Version) -> 
                 Err(error) => broken.push(BrokenPackage {
                     package_path: path,
                     error: error.to_string(),
+                    localized_error: error.localized(),
                 }),
             }
         }
@@ -413,9 +424,23 @@ pub fn fetch_catalog(
         if error.is_not_found() {
             match tag {
                 Some(tag) => anyhow::anyhow!(
-                    "eov release {tag} publishes no {MANIFEST_FILE} ({url} does not exist)."
+                    "{}",
+                    // Translators: {tag} is a release, such as v1.2.0; {file} a file name.
+                    tr!(
+                        "eov release {tag} publishes no {file} ({url} does not exist).",
+                        tag = isolate(tag),
+                        file = isolate(MANIFEST_FILE),
+                        url = isolate(&url)
+                    )
                 ),
-                None => anyhow::anyhow!("the latest eov release publishes no {MANIFEST_FILE}."),
+                None => anyhow::anyhow!(
+                    "{}",
+                    // Translators: {} is a file name.
+                    tr!(
+                        "the latest eov release publishes no {}.",
+                        isolate(MANIFEST_FILE)
+                    )
+                ),
             }
         } else {
             anyhow::Error::new(error)
@@ -465,9 +490,10 @@ fn fetch_host_catalog(ctx: &PluginContext, permission: &NetworkPermission) -> Re
         Some(&ctx.host),
     )
     .with_context(|| {
-        format!(
+        // Translators: "eov plugin install github.com/…" is a command: keep it as it is.
+        tr!(
             "The official plugin catalog for eov {} is unavailable. If this is a development build, install an explicit release instead, e.g. eov plugin install github.com/eosin-platform/eov-gamepad-plugin@v1.0.0",
-            ctx.host
+            isolate(&ctx.host)
         )
     })
 }
@@ -518,7 +544,8 @@ pub fn parse_source(value: &str) -> Result<PluginSource> {
         Some((id, version)) => (id, Some(normalize_version(version)?)),
         None => (value, None),
     };
-    compat::validate_plugin_id(id).with_context(|| format!("invalid plugin source '{value}'"))?;
+    compat::validate_plugin_id(id)
+        .with_context(|| tr!("invalid plugin source '{}'", isolate(value)))?;
     Ok(PluginSource::Official {
         id: id.to_string(),
         version,
@@ -573,12 +600,21 @@ pub fn resolve_official(
     let Some(entry) = catalog.manifest.plugins.get(id) else {
         let available: Vec<_> = catalog.manifest.plugins.keys().cloned().collect();
         bail!(
-            "'{id}' is not an official plugin in the eov {} catalog (official plugins: {}).",
-            catalog.manifest.version,
+            "{}",
             if available.is_empty() {
-                "none".to_string()
+                tr!(
+                    "'{id}' is not an official plugin in the eov {version} catalog (official plugins: none).",
+                    id = isolate(id),
+                    version = isolate(&catalog.manifest.version)
+                )
             } else {
-                available.join(", ")
+                // Translators: {plugins} are the ids of the official plugins.
+                tr!(
+                    "'{id}' is not an official plugin in the eov {version} catalog (official plugins: {plugins}).",
+                    id = isolate(id),
+                    version = isolate(&catalog.manifest.version),
+                    plugins = isolate(available.join(", "))
+                )
             }
         );
     };
@@ -620,8 +656,15 @@ pub fn resolve_official(
     let mut resolved = resolve_github_release(ctx, permission, &repository, Some(&tag), Some(id))?;
     if resolved.version != target {
         bail!(
-            "official plugin {id} release {tag} contains version {}, expected {target}",
-            resolved.version
+            "{}",
+            // Translators: {tag} is a release, such as v1.2.0.
+            tr!(
+                "official plugin {id} release {tag} contains version {version}, expected {expected}",
+                id = isolate(id),
+                tag = isolate(&tag),
+                version = isolate(&resolved.version),
+                expected = isolate(&target)
+            )
         );
     }
     resolved.provenance.kind = SOURCE_OFFICIAL.into();
@@ -640,11 +683,19 @@ pub fn resolve_github_release(
     let url = release_manifest_url(repository, tag)?;
     let text = ctx.client.get_text(permission, &url).map_err(|error| {
         if error.is_not_found() {
-            anyhow::Error::new(error).context(format!(
-                "{} has no plugin release manifest for {}",
-                repository,
-                tag.unwrap_or("its latest release")
-            ))
+            anyhow::Error::new(error).context(match tag {
+                // Translators: {repository} is a GitHub repository, {tag} a release, such as v1.2.0.
+                Some(tag) => tr!(
+                    "{repository} has no plugin release manifest for {tag}",
+                    repository = isolate(repository),
+                    tag = isolate(tag)
+                ),
+                // Translators: {} is a GitHub repository.
+                None => tr!(
+                    "{} has no plugin release manifest for its latest release",
+                    isolate(repository)
+                ),
+            })
         } else {
             anyhow::Error::new(error)
         }
@@ -652,27 +703,49 @@ pub fn resolve_github_release(
     let manifest = PluginReleaseManifest::parse(&text, repository)?;
     let id = match (manifest.plugin_id(), expected_id) {
         (Some(declared), Some(expected)) if declared != expected => {
-            bail!("the release declares plugin id '{declared}', but '{expected}' was expected")
+            bail!(
+                "{}",
+                tr!(
+                    "the release declares plugin id '{declared}', but '{expected}' was expected",
+                    declared = isolate(declared),
+                    expected = isolate(expected)
+                )
+            )
         }
         (Some(declared), _) => declared.to_string(),
         (None, Some(expected)) => expected.to_string(),
         (None, None) => bail!(
-            "the release in {repository} does not declare a plugin id. Check which plugin it contains and re-run with --id <id>."
+            "{}",
+            // Translators: {} is a GitHub repository. "--id <id>" is an option of eov plugin install: keep it as it is.
+            tr!(
+                "the release in {} does not declare a plugin id. Check which plugin it contains and re-run with --id <id>.",
+                isolate(repository)
+            )
         ),
     };
     compat::validate_plugin_id(&id)?;
     let key = ctx.platform.plugin_artifact_key();
     let artifact = manifest.artifact(&key).with_context(|| {
-        format!(
-            "{repository} publishes no {} package for this release",
-            ctx.platform
+        // Translators: {repository} is a GitHub repository, {platform} an operating system and processor, such as linux.x86_64.
+        tr!(
+            "{repository} publishes no {platform} package for this release",
+            repository = isolate(repository),
+            platform = isolate(ctx.platform)
         )
     })?;
     let artifact_tag = validate_artifact_url(&artifact.url, repository)?;
     if let Some(tag) = tag
         && artifact_tag != tag
     {
-        bail!("the release manifest for {tag} points at an artifact of release {artifact_tag}");
+        bail!(
+            "{}",
+            // Translators: {tag} and {release} are releases, such as v1.2.0.
+            tr!(
+                "the release manifest for {tag} points at an artifact of release {release}",
+                tag = isolate(tag),
+                release = isolate(&artifact_tag)
+            )
+        );
     }
     let name = manifest
         .plugin
@@ -731,9 +804,12 @@ pub fn resolve_github_compatible(
             permission,
             &format!("{api}/releases?per_page=100&page={page}"),
         )?;
-        let releases = value
-            .as_array()
-            .with_context(|| format!("GitHub releases response for {repository} is not a list"))?;
+        let releases = value.as_array().with_context(|| {
+            tr!(
+                "GitHub releases response for {} is not a list",
+                isolate(repository)
+            )
+        })?;
         for release in releases {
             let skip = release.get("draft").and_then(|value| value.as_bool()) == Some(true)
                 || release.get("prerelease").and_then(|value| value.as_bool()) == Some(true);
@@ -754,7 +830,16 @@ pub fn resolve_github_compatible(
             Ok(candidate) if compatible(&candidate) => return Ok(Some(candidate)),
             Ok(_) => {}
             Err(error) => {
-                tracing::debug!("skipping {repository} release {tag}: {error:#}");
+                // The error is worded for the window, in the interface's
+                // language; the log says in English what kind it was.
+                let reason = if is_not_found(&error) {
+                    "it has no plugin release manifest"
+                } else if error.chain().any(|cause| cause.is::<FetchError>()) {
+                    "its plugin release manifest could not be downloaded"
+                } else {
+                    "its plugin release manifest cannot be used"
+                };
+                tracing::debug!("skipping {repository} release {tag}: {reason}");
             }
         }
     }
@@ -818,7 +903,7 @@ pub fn stage_package(
     eov: &Version,
 ) -> Result<StagedPackage> {
     fs::create_dir_all(&ctx.plugin_dir)
-        .with_context(|| format!("could not create {}", ctx.plugin_dir.display()))?;
+        .with_context(|| tr!("could not create {}", isolate(ctx.plugin_dir.display())))?;
     let path = match &resolved.fetch {
         PackageFetch::Download { url, sha256 } => {
             let permission = permission.context("network permission is required to download")?;
@@ -858,35 +943,59 @@ fn verify_staged(
     resolved: &ResolvedPackage,
     eov: &Version,
 ) -> Result<StagedPackage> {
-    let inspected = inspect_staged_plugin_package(&path, true)
-        .map_err(|error| anyhow::anyhow!("the downloaded package is not valid: {error}"))?;
+    let inspected = inspect_staged_plugin_package(&path, true).map_err(|error| {
+        anyhow::anyhow!(
+            "{}",
+            tr!("the downloaded package is not valid: {}", error.localized())
+        )
+    })?;
     let manifest = &inspected.manifest;
     if manifest.id != resolved.id {
         bail!(
-            "the package contains plugin '{}', but the release metadata promised '{}'",
-            manifest.id,
-            resolved.id
+            "{}",
+            tr!(
+                "the package contains plugin '{contained}', but the release metadata promised '{promised}'",
+                contained = isolate(&manifest.id),
+                promised = isolate(&resolved.id)
+            )
         );
     }
     if normalize_version(&manifest.version)? != resolved.version {
         bail!(
-            "the package contains version {}, but the release metadata promised {}",
-            manifest.version,
-            resolved.version
+            "{}",
+            tr!(
+                "the package contains version {contained}, but the release metadata promised {promised}",
+                contained = isolate(&manifest.version),
+                promised = isolate(&resolved.version)
+            )
         );
     }
     if let Some(environment) = &resolved.environment
         && manifest.environment.version != *environment
     {
         bail!(
-            "the package requires eov {}, but the release metadata declared {environment}",
-            manifest.environment.version
+            "{}",
+            // Translators: {required} and {declared} are ranges of eov versions, such as ">=1.0.0, <2.0.0".
+            tr!(
+                "the package requires eov {required}, but the release metadata declared {declared}",
+                required = isolate(&manifest.environment.version),
+                declared = isolate(environment)
+            )
         );
     }
     if let Compatibility::Incompatible(reason) =
         compat::check_manifest(manifest, &inspected.raw_manifest, eov)
     {
-        bail!("plugin {} {} {reason}", manifest.id, manifest.version);
+        bail!(
+            "{}",
+            // Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0").
+            tr!(
+                "plugin {id} {version} does not run with this eov: {reason}",
+                id = isolate(&manifest.id),
+                version = isolate(&manifest.version),
+                reason = reason
+            )
+        );
     }
     let sha256 = inspected.sha256.clone().unwrap_or_default();
     Ok(StagedPackage {
@@ -924,9 +1033,14 @@ pub fn activate_package(
         && existing.manifest.id != id
     {
         bail!(
-            "{} contains a different plugin ('{}'); rename or remove it before installing '{id}'",
-            target.display(),
-            existing.manifest.id
+            "{}",
+            // Translators: {file} is a plugin package; {other} and {id} are plugin ids.
+            tr!(
+                "{file} contains a different plugin ('{other}'); rename or remove it before installing '{id}'",
+                file = isolate(target.display()),
+                other = isolate(&existing.manifest.id),
+                id = isolate(&id)
+            )
         );
     }
     let staged_path = staged.path.to_path_buf();
@@ -953,7 +1067,12 @@ pub fn activate_package(
     };
     registry.plugins.insert(id.clone(), entry);
     let result = fs::rename(&staged_path, &target)
-        .with_context(|| format!("could not move the package to {}", target.display()))
+        .with_context(|| {
+            tr!(
+                "could not move the package to {}",
+                isolate(target.display())
+            )
+        })
         .and_then(|()| registry::save(plugin_dir, &registry));
     if let Err(error) = result {
         if !staged_path.exists() && target.exists() {
@@ -1004,7 +1123,7 @@ fn move_to_backups(packages: &[PathBuf]) -> Result<Vec<Backup>> {
         if let Err(error) = fs::rename(package, &backup) {
             restore_backups(&backups)?;
             return Err(error)
-                .with_context(|| format!("could not move {} aside", package.display()));
+                .with_context(|| tr!("could not move {} aside", isolate(package.display())));
         }
         backups.push((package.clone(), backup));
     }
@@ -1015,10 +1134,10 @@ fn restore_backups(backups: &[Backup]) -> Result<()> {
     for (original, backup) in backups.iter().rev() {
         if backup.exists() {
             fs::rename(backup, original).with_context(|| {
-                format!(
-                    "could not restore {} from {}",
-                    original.display(),
-                    backup.display()
+                tr!(
+                    "could not restore {original} from {backup}",
+                    original = isolate(original.display()),
+                    backup = isolate(backup.display())
                 )
             })?;
         }
@@ -1131,10 +1250,10 @@ pub fn install(ctx: &mut PluginContext, source_text: &str, options: &InstallOpti
     match &source {
         PluginSource::Github { .. } => ctx
             .policy
-            .ensure_third_party_allowed("Installing plugins from GitHub repositories")?,
+            .ensure_third_party_allowed(ThirdPartyUse::InstallFromGitHub)?,
         PluginSource::Local(_) => ctx
             .policy
-            .ensure_third_party_allowed("Installing local plugin packages")?,
+            .ensure_third_party_allowed(ThirdPartyUse::InstallLocalPackage)?,
         PluginSource::Official { .. } => {}
     }
 
@@ -1186,20 +1305,34 @@ pub fn install(ctx: &mut PluginContext, source_text: &str, options: &InstallOpti
         (_, None) => unreachable!("remote sources always have a network permission"),
     };
     if options.require_existing && inventory.with_id(&resolved.id).is_empty() {
-        bail!("plugin '{}' is not installed", resolved.id);
+        bail!(
+            "{}",
+            tr!("plugin '{}' is not installed", isolate(&resolved.id))
+        );
     }
     if let Some(environment) = &resolved.environment
         && let Compatibility::Incompatible(reason) =
             compat::check(environment, None, &ctx.host, &compat::host_api_version())
     {
+        let (id, version) = (isolate(&resolved.id), isolate(&resolved.version));
         bail!(
-            "Plugin {} {} {reason}.{}",
-            resolved.id,
-            resolved.version,
+            "{}",
             if compat::environment_matches(environment, &next_major(&ctx.host)) {
-                "\n\nUpdate eov first:\n    eov update"
+                // Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0"). "eov update" is a command, on a line of its own: keep it as it is.
+                tr!(
+                    "Plugin {id} {version} does not run with this eov: {reason}.\n\nUpdate eov first:\n    eov update",
+                    id = id,
+                    version = version,
+                    reason = reason
+                )
             } else {
-                ""
+                // Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0").
+                tr!(
+                    "Plugin {id} {version} does not run with this eov: {reason}.",
+                    id = id,
+                    version = version,
+                    reason = reason
+                )
             }
         );
     }
@@ -1223,8 +1356,12 @@ pub fn install(ctx: &mut PluginContext, source_text: &str, options: &InstallOpti
     if plan.needs_override && !options.force {
         if !ctx.interaction.interactive() {
             bail!(
-                "{}\nRe-run with --force to proceed.",
-                plan.warnings.join("\n")
+                "{}",
+                // Translators: {} are warnings, one per line. --force is an option of eov plugin install: keep it as it is.
+                tr!(
+                    "{}\nRe-run with --force to proceed.",
+                    plan.warnings.join("\n")
+                )
             );
         }
         if !ctx
@@ -1279,35 +1416,45 @@ fn plan_install(
     let mut needs_override = false;
     let third_party = package.provenance.kind != SOURCE_OFFICIAL;
     if third_party && official_ids.contains(&package.id) {
-        warnings.push(format!(
-            "'{}' is the id of an official eov plugin. This package ({}) would {} it.",
-            package.id,
-            package.provenance.describe(),
-            if installed.is_some() {
-                "replace"
-            } else {
-                "shadow"
-            }
-        ));
+        let (id, source) = (isolate(&package.id), isolate(package.provenance.describe()));
+        warnings.push(if installed.is_some() {
+            // Translators: {source} is where the package comes from ("github (owner/repository)", "local").
+            tr!(
+                "'{id}' is the id of an official eov plugin. This package ({source}) would replace it.",
+                id = id,
+                source = source
+            )
+        } else {
+            // Translators: {source} is where the package comes from ("github (owner/repository)", "local"). To shadow: to hide the official plugin, which is then not loaded.
+            tr!(
+                "'{id}' is the id of an official eov plugin. This package ({source}) would shadow it.",
+                id = id,
+                source = source
+            )
+        });
         needs_override = true;
     }
     if let Some(installed) = installed
         && !installed.provenance.same_origin(&package.provenance)
         && installed.provenance.kind != "unmanaged"
     {
-        warnings.push(format!(
-            "This replaces the installed {} {} from {} with a package from {}.",
-            installed.id,
-            installed.version,
-            installed.provenance.describe(),
-            package.provenance.describe()
+        // Translators: {installed} and {new} are where packages come from ("official", "github (owner/repository)", "local").
+        warnings.push(tr!(
+            "This replaces the installed {id} {version} from {installed} with a package from {new}.",
+            id = isolate(&installed.id),
+            version = isolate(&installed.version),
+            installed = isolate(installed.provenance.describe()),
+            new = isolate(package.provenance.describe())
         ));
         needs_override = true;
     }
     if !package.pinned_by_catalog && package.provenance.kind == SOURCE_OFFICIAL {
-        warnings.push(
-            "This version is not pinned by the eov release catalog; its SHA-256 comes from the plugin repository's own release.toml.".to_string(),
-        );
+        // Translators: "pinned": eov's release catalog lists each official plugin
+        // version with a fixed SHA-256; this version is not listed there.
+        // release.toml is a file name: keep it as it is.
+        warnings.push(tr!(
+            "This version is not pinned by the eov release catalog; its SHA-256 comes from the plugin repository's own release.toml."
+        ));
     }
     InstallPlan {
         installed_version: installed.map(|package| package.version.clone()),
@@ -1371,7 +1518,7 @@ fn prepare_update_source(source: PluginSource, inventory: &Inventory) -> Result<
     match source {
         PluginSource::Official { id, version } => {
             if inventory.with_id(&id).is_empty() {
-                bail!("plugin '{id}' is not installed");
+                bail!("{}", tr!("plugin '{}' is not installed", isolate(&id)));
             }
             if version.is_some() {
                 return Ok(PluginSource::Official { id, version });
@@ -1381,11 +1528,17 @@ fn prepare_update_source(source: PluginSource, inventory: &Inventory) -> Result<
                     repository: entry
                         .repository
                         .clone()
-                        .context("managed GitHub plugin has no repository")?,
+                        .with_context(|| tr!("managed GitHub plugin has no repository"))?,
                     tag: None,
                 }),
                 Some(entry) if entry.source == SOURCE_LOCAL => bail!(
-                    "Plugin '{id}' was installed from a local package and has no remote update source.\n\nInstall a new package explicitly:\n    eov plugin install /path/to/{id}.eop"
+                    "{}",
+                    // Translators: the last line is a command: keep it as it is ({command}).
+                    tr!(
+                        "Plugin '{id}' was installed from a local package and has no remote update source.\n\nInstall a new package explicitly:\n    {command}",
+                        id = isolate(&id),
+                        command = format!("eov plugin install /path/to/{id}.eop")
+                    )
                 ),
                 _ => Ok(PluginSource::Official { id, version }),
             }
@@ -1785,8 +1938,13 @@ pub fn plan_removal(plugin_dir: &Path, host: &Version, query: &str) -> Result<Re
     let ids: BTreeSet<String> = matches.iter().map(|package| package.id.clone()).collect();
     if ids.len() > 1 {
         bail!(
-            "'{query}' matches several plugins ({}); use the plugin ID",
-            ids.into_iter().collect::<Vec<_>>().join(", ")
+            "{}",
+            // Translators: {query} is what was asked for, {plugins} plugin ids.
+            tr!(
+                "'{query}' matches several plugins ({plugins}); use the plugin ID",
+                query = isolate(query),
+                plugins = isolate(ids.into_iter().collect::<Vec<_>>().join(", "))
+            )
         );
     }
     let id = ids.into_iter().next();
@@ -1804,7 +1962,10 @@ pub fn plan_removal(plugin_dir: &Path, host: &Version, query: &str) -> Result<Re
             .map(|broken| broken.package_path.clone()),
     );
     if paths.is_empty() {
-        bail!("no installed plugin matches '{query}'");
+        bail!(
+            "{}",
+            tr!("no installed plugin matches '{}'", isolate(query))
+        );
     }
     Ok(Removal { id, paths })
 }
@@ -2140,7 +2301,10 @@ pub fn sync(ctx: &mut PluginContext, lockfile_path: &Path, options: &SyncOptions
         }
         if entry.source != SOURCE_OFFICIAL {
             ctx.policy
-                .ensure_third_party_allowed(&format!("Plugin '{}' ({})", entry.id, entry.source))?;
+                .ensure_third_party_allowed(ThirdPartyUse::LockedPlugin {
+                    id: &entry.id,
+                    source: &entry.source,
+                })?;
         }
     }
     let inventory = inventory(&ctx.plugin_dir, &[], &ctx.host)?;
@@ -2940,6 +3104,61 @@ url = "{GAMEPAD_REPO}/releases/download/v{plugin_version}/gamepad-v{plugin_versi
         assert_eq!(inventory.broken.len(), 1);
         remove(&mut ctx, "broken.eop", &RemoveOptions::default()).unwrap();
         assert!(!broken.exists());
+    }
+
+    /// Why a package cannot be read is kept in English for the log and
+    /// `eov plugin ls --json`, as eov wrote it before it was translated and
+    /// without the marks that keep a path in order in right-to-left
+    /// languages, and in the interface's language for the Plugins panel.
+    #[test]
+    fn broken_packages_say_why_in_english_and_in_the_interface_s_language() {
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let temp = tempfile::tempdir().unwrap();
+        let plugin_dir = temp.path().join("plugins");
+        fs::create_dir_all(&plugin_dir).unwrap();
+        let broken = plugin_dir.join("broken.eop");
+        fs::write(&broken, b"not a tar archive at all, sorry").unwrap();
+        let host = Version::parse(HOST).unwrap();
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "plugin package '{package}' is not a valid archive: {error}",
+            &["Plugin-Paket „{package}“ ist kein gültiges Archiv: {error}"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let english = format!(
+            "plugin package '{}' is not a valid archive: ",
+            broken.display()
+        );
+        let found = inventory(&plugin_dir, &[], &host).unwrap().broken.remove(0);
+        assert!(found.error.starts_with(&english), "{}", found.error);
+        assert!(
+            found.localized_error.starts_with(&format!(
+                "Plugin-Paket „{}“ ist kein gültiges Archiv: ",
+                broken.display()
+            )),
+            "{}",
+            found.localized_error
+        );
+        let json = serde_json::to_value(&found).unwrap();
+        assert_eq!(json["error"], found.error.as_str());
+        assert!(json.get("localized_error").is_none());
+
+        i18n::set_catalog(i18n::by_tag("fa").unwrap(), None);
+        let found = inventory(&plugin_dir, &[], &host).unwrap().broken.remove(0);
+        assert!(found.error.starts_with(&english), "{}", found.error);
+        assert!(!found.error.contains('\u{2068}'));
+        assert!(found.localized_error.contains('\u{2068}'));
     }
 
     #[test]

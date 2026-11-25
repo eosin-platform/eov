@@ -42,6 +42,7 @@
 //! restrictive policy ("fail closed") and every blocked action reports why.
 
 use anyhow::{Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -70,7 +71,37 @@ pub struct Policy {
     /// Keys the file contained that this eov does not understand.
     pub unknown_keys: Vec<String>,
     /// Why the policy file could not be used (the policy is then restrictive).
-    pub error: Option<String>,
+    pub error: Option<PolicyError>,
+}
+
+/// Why the policy file cannot be used. `Display` says it in English (the
+/// audit log, the log); [`PolicyError::localized`] in the interface's
+/// language. What the system and the TOML reader say stays as they word it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PolicyError {
+    /// The file is not a valid policy (the TOML reader's words).
+    Invalid(String),
+    /// The file cannot be read (the system's words).
+    Unreadable(String),
+}
+
+impl std::fmt::Display for PolicyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PolicyError::Invalid(error) => write!(f, "invalid policy file: {error}"),
+            PolicyError::Unreadable(error) => write!(f, "unreadable policy file: {error}"),
+        }
+    }
+}
+
+impl PolicyError {
+    /// Why, in the interface's language.
+    pub fn localized(&self) -> String {
+        match self {
+            PolicyError::Invalid(error) => tr!("invalid policy file: {}", error),
+            PolicyError::Unreadable(error) => tr!("unreadable policy file: {}", error),
+        }
+    }
 }
 
 impl Default for Policy {
@@ -121,7 +152,7 @@ struct RawPolicy {
 
 impl Policy {
     /// The policy that applies when the policy file is unusable.
-    pub fn restrictive(source: &Path, error: String) -> Self {
+    pub fn restrictive(source: &Path, error: PolicyError) -> Self {
         Self {
             disable_self_update: true,
             allow_third_party_plugins: false,
@@ -197,10 +228,10 @@ impl Policy {
                     }
                     policy
                 }
-                Err(error) => Self::restrictive(path, format!("invalid policy file: {error}")),
+                Err(error) => Self::restrictive(path, PolicyError::Invalid(error.to_string())),
             },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
-            Err(error) => Self::restrictive(path, format!("unreadable policy file: {error}")),
+            Err(error) => Self::restrictive(path, PolicyError::Unreadable(error.to_string())),
         }
     }
 
@@ -213,8 +244,13 @@ impl Policy {
     pub fn ensure_valid(&self) -> Result<()> {
         if let Some(error) = &self.error {
             bail!(
-                "{}: {error}. eov applies the most restrictive settings until it is fixed.{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {policy} is the policy file, {error} why it cannot be used.
+                tr!(
+                    "the administrator policy {policy}: {error}. eov applies the most restrictive settings until it is fixed.",
+                    policy = self.file(),
+                    error = error.localized()
+                ),
                 self.contact()
             );
         }
@@ -226,8 +262,12 @@ impl Policy {
         self.ensure_valid()?;
         if self.disable_self_update {
             bail!(
-                "Application self-update is disabled by {}.{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {} is the policy file.
+                tr!(
+                    "Application self-update is disabled by the administrator policy {}.",
+                    self.file()
+                ),
                 self.contact()
             );
         }
@@ -235,12 +275,12 @@ impl Policy {
     }
 
     /// Refuses third-party plugin sources when the policy disallows them.
-    pub fn ensure_third_party_allowed(&self, what: &str) -> Result<()> {
+    pub fn ensure_third_party_allowed(&self, use_: ThirdPartyUse<'_>) -> Result<()> {
         self.ensure_valid()?;
         if !self.allow_third_party_plugins {
             bail!(
-                "{what} is not allowed: {} only permits official eov plugins.{}",
-                self.describe_source(),
+                "{}{}",
+                third_party_refusal(use_, &self.file()),
                 self.contact()
             );
         }
@@ -252,8 +292,12 @@ impl Policy {
         self.ensure_valid()?;
         if !self.allow_network {
             bail!(
-                "Network access is disabled by {}. Use an offline update bundle instead (eov update --from <dir>).{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {} is the policy file. "eov update --from <dir>" is a command: keep it as it is.
+                tr!(
+                    "Network access is disabled by the administrator policy {}. Use an offline update bundle instead (eov update --from <dir>).",
+                    self.file()
+                ),
                 self.contact()
             );
         }
@@ -264,24 +308,44 @@ impl Policy {
     /// it (callers check every redirect too).
     pub fn ensure_model_download_allowed(&self, url: &Url) -> Result<()> {
         self.ensure_valid()?;
-        const IMPORT: &str = "Copy the model to this computer and add it with `eov model import <FILE> --sha256 <SHA-256>`.";
+        let import = || {
+            // Translators: keep the command "eov model import <FILE> --sha256 <SHA-256>" as it is.
+            tr!(
+                "Copy the model to this computer and add it with `eov model import <FILE> --sha256 <SHA-256>`."
+            )
+        };
         match self.allow_model_downloads {
             Some(false) => bail!(
-                "Model downloads are disabled by {}. {IMPORT}{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {policy} is the policy file; {import} says how to add a model by hand.
+                tr!(
+                    "Model downloads are disabled by the administrator policy {policy}. {import}",
+                    policy = self.file(),
+                    import = import()
+                ),
                 self.contact()
             ),
             None if !self.allow_network => bail!(
-                "Network access is disabled by {}, so models cannot be downloaded. {IMPORT}{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {policy} is the policy file; {import} says how to add a model by hand.
+                tr!(
+                    "Network access is disabled by the administrator policy {policy}, so models cannot be downloaded. {import}",
+                    policy = self.file(),
+                    import = import()
+                ),
                 self.contact()
             ),
             _ => {}
         }
         if !self.allow_network && self.model_url_prefixes.is_empty() {
             bail!(
-                "{} disables network access and names no model servers (model_url_prefixes), so models cannot be downloaded. {IMPORT}{}",
-                self.describe_source(),
+                "{}{}",
+                // Translators: {policy} is the policy file; model_url_prefixes is its setting: keep it as it is. {import} says how to add a model by hand.
+                tr!(
+                    "the administrator policy {policy} disables network access and names no model servers (model_url_prefixes), so models cannot be downloaded. {import}",
+                    policy = self.file(),
+                    import = import()
+                ),
                 self.contact()
             );
         }
@@ -292,10 +356,14 @@ impl Policy {
                 .any(|prefix| url_has_prefix(url, prefix))
         {
             bail!(
-                "{} is not on a model server that {} allows ({}).{}",
-                redacted_url(url),
-                self.describe_source(),
-                self.model_url_prefixes.join(", "),
+                "{}{}",
+                // Translators: {url} is a model's address, {policy} the policy file, {servers} the addresses it allows.
+                tr!(
+                    "{url} is not on a model server that the administrator policy {policy} allows ({servers}).",
+                    url = isolate(redacted_url(url)),
+                    policy = self.file(),
+                    servers = isolate(self.model_url_prefixes.join(", "))
+                ),
                 self.contact()
             );
         }
@@ -321,11 +389,15 @@ impl Policy {
             .filter(|url| !url.is_empty())
     }
 
-    fn describe_source(&self) -> String {
-        match &self.source {
-            Some(path) => format!("the administrator policy {}", path.display()),
-            None => "the administrator policy".to_string(),
-        }
+    /// The policy file, for messages (where it would be, for a policy
+    /// made in code).
+    fn file(&self) -> String {
+        let path = self
+            .source
+            .clone()
+            .or_else(policy_path)
+            .unwrap_or_else(default_policy_path);
+        isolate(path.display())
     }
 
     fn contact(&self) -> String {
@@ -333,6 +405,55 @@ impl Policy {
             .as_deref()
             .map(|message| format!("\n{message}"))
             .unwrap_or_default()
+    }
+}
+
+/// What a plugin that is not official would be used for, when the policy
+/// refuses it.
+#[derive(Debug, Clone, Copy)]
+pub enum ThirdPartyUse<'a> {
+    LoadPlugin,
+    RunPlugin,
+    InstallFromGitHub,
+    InstallLocalPackage,
+    /// A plugin of a lock file, by its id and source.
+    LockedPlugin {
+        id: &'a str,
+        source: &'a str,
+    },
+}
+
+/// The policy's refusal of `use_` in the interface's language, one whole
+/// sentence per use; `policy` is the policy file, isolated.
+pub fn third_party_refusal(use_: ThirdPartyUse<'_>, policy: &str) -> String {
+    match use_ {
+        // Translators: {policy} is the policy file.
+        ThirdPartyUse::LoadPlugin => tr!(
+            "Loading this plugin is not allowed: the administrator policy {policy} only permits official eov plugins.",
+            policy = policy
+        ),
+        // Translators: {policy} is the policy file.
+        ThirdPartyUse::RunPlugin => tr!(
+            "Running this plugin is not allowed: the administrator policy {policy} only permits official eov plugins.",
+            policy = policy
+        ),
+        // Translators: {policy} is the policy file.
+        ThirdPartyUse::InstallFromGitHub => tr!(
+            "Installing plugins from GitHub repositories is not allowed: the administrator policy {policy} only permits official eov plugins.",
+            policy = policy
+        ),
+        // Translators: {policy} is the policy file.
+        ThirdPartyUse::InstallLocalPackage => tr!(
+            "Installing local plugin packages is not allowed: the administrator policy {policy} only permits official eov plugins.",
+            policy = policy
+        ),
+        // Translators: {id} is a plugin id, {source} where the lock file says it comes from; {policy} is the policy file.
+        ThirdPartyUse::LockedPlugin { id, source } => tr!(
+            "Plugin '{id}' ({source}) is not allowed: the administrator policy {policy} only permits official eov plugins.",
+            id = isolate(id),
+            source = isolate(source),
+            policy = policy
+        ),
     }
 }
 
@@ -420,7 +541,9 @@ mod tests {
         assert_eq!(policy, Policy::default());
         assert!(!policy.is_managed());
         policy.ensure_self_update_allowed().unwrap();
-        policy.ensure_third_party_allowed("x").unwrap();
+        policy
+            .ensure_third_party_allowed(ThirdPartyUse::LoadPlugin)
+            .unwrap();
         policy.ensure_network_allowed().unwrap();
     }
 
@@ -463,6 +586,50 @@ disable_self_updates = true
         );
     }
 
+    /// Each use of a plugin that is not official is refused in a sentence
+    /// of its own; in English the command line still says word for word
+    /// what it said when the use was put into one shared sentence.
+    #[test]
+    fn third_party_refusals_keep_their_english() {
+        let policy = Policy {
+            allow_third_party_plugins: false,
+            source: Some(PathBuf::from("/etc/eov/policy.toml")),
+            message: Some("Call x1234.".into()),
+            ..Policy::default()
+        };
+        let refusal = |use_| {
+            policy
+                .ensure_third_party_allowed(use_)
+                .unwrap_err()
+                .to_string()
+        };
+        let rest = "is not allowed: the administrator policy /etc/eov/policy.toml only \
+                    permits official eov plugins.\nCall x1234.";
+        assert_eq!(
+            refusal(ThirdPartyUse::LoadPlugin),
+            format!("Loading this plugin {rest}")
+        );
+        assert_eq!(
+            refusal(ThirdPartyUse::RunPlugin),
+            format!("Running this plugin {rest}")
+        );
+        assert_eq!(
+            refusal(ThirdPartyUse::InstallFromGitHub),
+            format!("Installing plugins from GitHub repositories {rest}")
+        );
+        assert_eq!(
+            refusal(ThirdPartyUse::InstallLocalPackage),
+            format!("Installing local plugin packages {rest}")
+        );
+        assert_eq!(
+            refusal(ThirdPartyUse::LockedPlugin {
+                id: "thing",
+                source: "github:someone/thing",
+            }),
+            format!("Plugin 'thing' (github:someone/thing) {rest}")
+        );
+    }
+
     #[test]
     fn invalid_file_fails_closed() {
         let temp = tempfile::tempdir().unwrap();
@@ -477,6 +644,85 @@ disable_self_updates = true
                 .unwrap_err()
                 .to_string()
                 .contains("invalid policy file")
+        );
+    }
+
+    /// Why the policy file cannot be used is kept in English, as eov wrote
+    /// it before it was translated: the audit log records it with the
+    /// plugins the policy kept from loading. Where it is shown, it is in
+    /// the interface's language.
+    #[test]
+    fn why_a_policy_is_invalid_is_kept_in_english() {
+        use crate::plugin_runtime::{FailReason, PluginStatus};
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("policy.toml");
+        std::fs::write(&path, "allow_network = \"maybe\"").unwrap();
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "invalid policy file: {}",
+            &["ungültige Richtliniendatei: {}"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let policy = Policy::load_from(&path);
+        let error = policy.error.clone().unwrap();
+        let reason = toml::from_str::<RawPolicy>("allow_network = \"maybe\"")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(error.to_string(), format!("invalid policy file: {reason}"));
+        assert_eq!(
+            error.localized(),
+            format!("ungültige Richtliniendatei: {reason}")
+        );
+        assert!(
+            policy
+                .ensure_valid()
+                .unwrap_err()
+                .to_string()
+                .contains("ungültige Richtliniendatei")
+        );
+        // A plugin the invalid policy keeps from loading, as eov records it
+        // (also in a right-to-left language: without isolation marks).
+        i18n::set_catalog(i18n::by_tag("ar").unwrap(), None);
+        let refused = PluginStatus::Failed(FailReason::NotAllowed {
+            source: policy.source.clone(),
+            invalid: policy.error.clone(),
+            contact: None,
+        });
+        assert_eq!(
+            refused.audit_text(),
+            format!(
+                "Failed: the administrator policy {}: invalid policy file: {reason}. eov \
+                 applies the most restrictive settings until it is fixed.",
+                path.display()
+            )
+        );
+        // The Plugins panel words why in the interface's language, also
+        // after a change of language.
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let PluginStatus::Failed(reason_shown) = &refused else {
+            unreachable!()
+        };
+        assert!(
+            reason_shown
+                .localized()
+                .contains(&format!("ungültige Richtliniendatei: {reason}")),
+            "{}",
+            reason_shown.localized()
         );
     }
 

@@ -1,0 +1,282 @@
+term	translation	note
+(register)	dumneavoastră în mesaje; imperativ (pers. a II-a sg.) la butoane și meniuri	As macOS, LibreOffice and Firefox do in Romanian: buttons, menu items and tool tips that name a command use the short imperative ("Deschide…", "Salvează o copie…", "Anulează"); sentences that address the user use the polite plural ("Deschideți o lamă pentru…", "Faceți clic…"), never "tu".
+(capitalisation)	majusculă doar la început	No English Title Case: "Export Image…" → "Exportă imaginea…". Product and format names keep their capitals. No capital after a colon.
+(diacritics)	ș ț (virgulă dedesubt), â î	Always ș/ț with comma below (U+0219, U+021B), never ş/ţ with cedilla; î at the start and end of words and after prefixes ("reîncearcă"), â inside words, "sunt".
+(quotation marks)	„ ”	Romanian quotes around names and inserted values: „{}”. Inner quotes « ». Keep straight quotes only inside code, commands and configuration examples.
+(errors)	Nu s-a putut + infinitiv; Nu se poate + infinitiv	"Could not open {}" → "Nu s-a putut deschide {}"; "Cannot remove the plugin" → "Pluginul nu poate fi eliminat" or "Nu se poate elimina pluginul". Lowercase error fragments stay lowercase.
+(plural forms)	1 / 2–19 / 20+ „de”	Three forms: n=1 ("1 lamă"), n=0, 2–19, 101–119… ("3 lame"), others take "de" ("20 de lame", "120 de lame").
+(time units)	h, min, s	"1h 02m" → "1 h 02 min"; "4m 05s" → "4 min 05 s"; "12s" → "12 s".
+(percent)	25%	No space before % (as in Romanian common and statistical usage); "{} %" → "{}%".
+(eov)	eov	Never inflected with an article ("eov-ul"); write "eov" as subject or "în eov", "versiunea eov", "depozitul de modele eov".
+For research and education. Not a medical device; not for primary diagnosis.	Pentru cercetare și educație. Nu este un dispozitiv medical; nu este destinat diagnosticului primar.	Safety text: translate in full, never shorten or soften.
+research use only (RUO)	numai pentru uz în cercetare (RUO)	Phrase printed on RUO reagents; keep RUO.
+intended use	utilizare prevăzută	Regulatory term ("scop propus" for MDR "intended purpose").
+medical device	dispozitiv medical	EU MDR term.
+primary diagnosis	diagnostic primar	The first, final diagnosis of a case.
+synthetic (image, channel, stain)	sintetic, sintetică	Computed by an algorithm; never "artificial", "fals" or "simulat".
+predicted	prezis, prezisă	As in a model's prediction ("canal prezis").
+generated	generat, generată	
+computed	calculat, calculată	
+slide	lamă	The glass slide and its scan; plural "lame", "lamele", "lamelor". Never "diapozitiv" or "slide". "lamă histologică" when it must be explicit.
+whole-slide image (WSI)	imagine de lamă întreagă (WSI)	Keep the abbreviation WSI ("fișiere WSI"). "Whole Slide Image Viewer" → "Vizualizator de imagini de lamă întreagă".
+slide viewer, viewer	vizualizator de lame, vizualizator	
+tab	filă	One open slide in a pane; plural "file" (as in Firefox, Chrome and Windows).
+pane	panou	One of the side-by-side viewing areas; plural "panouri". The same word serves side panels ("panoul Măsurători"); the context tells them apart.
+split the view	împarte vizualizarea	
+link / unlink panes	leagă / dezleagă panourile	"Panes linked" → "Panouri legate"; never "linkate".
+focused pane	panoul activ	
+view	vizualizare	What a pane shows: position, magnification, rotation; plural "vizualizări".
+viewport	zona de afișare	The area of a pane where the slide is drawn. "Viewport lock" (panes showing the same slide move together) → "Sincronizarea zonelor de afișare".
+minimap	minihartă	The overview image; plural "minihărți".
+scale bar	bară de scală	
+HUD	panou suprapus	The small panels floating over the slide; "Toggle metadata HUD" → "Afișează/ascunde panoul de metadate".
+overlay	suprapunere	Graphics drawn over the slide; plural "suprapuneri".
+layer	strat	A group of overlay graphics; "nivel" is reserved for pyramid levels.
+toolbar	bară de instrumente	
+sidebar	bară laterală	
+status bar	bară de stare	
+series bar	bara seriei	The strip of slides of the same folder or series.
+series	serie	DICOM series: "serie DICOM".
+Home screen	ecranul de pornire	The start page; the tab title "Home" → "Pornire" (as the Office "Home" tab).
+zoom	zoom	The screen scale; neuter ("zoomul"). 100% = one slide pixel per screen pixel.
+zoom in / zoom out	mărește / micșorează	Buttons and shortcuts; "Zoom to {}" → "Zoom la {}".
+fit (to window)	încadrează (în fereastră)	"Fit the slide to the pane" → "Încadrează lama în panou". The heat-map placements "Fit the slide" / "Fit the scanned region" (stretch the map over it) → "Pe toată lama" / "Pe regiunea scanată".
+magnification	mărire	Objective-equivalent optical magnification; 20× stays 20×. Not to be confused with "zoom".
+objective	obiectiv	The microscope objective (40×).
+objective power	puterea obiectivului	
+pixel size	dimensiunea pixelului	
+MPP	MPP	µm per pixel; do not translate.
+calibration	calibrare	
+level, pyramid level	nivel, nivel al piramidei	
+tile	dală	A square piece of the image loaded at a time; plural "dale" (as Windows "dale").
+patch (dataset)	patch	A small image cut from a slide for machine learning; plural "patch-uri", "20 de patch-uri". "Tile size" in the dataset dialog → "Dimensiunea patch-urilor".
+dataset	set de date	Plural "seturi de date".
+patch extraction	extragerea patch-urilor	
+stride	pas	Step between patches.
+white threshold	prag de alb	
+cache	cache	"memoria cache", "cache-ul".
+region of interest (ROI)	regiune de interes (ROI)	Keep ROI.
+region	regiune	
+measurement	măsurătoare	The result; plural "măsurători". The act is "măsurare".
+measure (tool)	instrumentul Măsurare	Tool name "Măsurare"; the move tool is "Navigare". Verb: "măsoară".
+distance	distanță	
+path length	lungimea traseului	
+area	arie	"Polygon area" → "Aria poligonului".
+angle	unghi	
+clockwise / counterclockwise	în sens orar / în sens antiorar	
+annotation	adnotare	A drawn mark with a meaning, not a free-text comment; plural "adnotări".
+class (annotation class)	clasă	
+cell count, counting	numărare a celulelor, numărare	
+high-power field (HPF)	câmp de mare putere (HPF)	Keep HPF.
+H&E	H&E	Do not translate (Romanian reports also write HE).
+hematoxylin	hematoxilină	One letter: H.
+eosin	eozină	One letter: E.
+IHC	IHC	Imunohistochimie; keep the abbreviation.
+DAB	DAB	
+stain (n.)	colorație	The staining of the tissue (H&E, IHC); a single dye is "colorant". "Stain: {}" → "Colorație: {}". In "Isolated stain: Hematoxylin" the dye is meant: "Colorant izolat".
+dye	colorant	Plural "coloranți".
+stain normalization	normalizarea colorației	Macenko and Vahadane are not translated. "Colour normalisation" → "normalizarea culorilor".
+stain target	țintă de colorație	The colours stain normalisation aims at; "reference stain target" → "ținta de colorație de referință".
+stain model	model de colorație	H&E, H-DAB, …
+stain vectors, stain fit	vectori de colorație, estimare	"Macenko fit" → "Estimare Macenko"; "fit the stains" → "estimează coloranții"; "reference stain vectors" → "vectorii de colorație de referință".
+stains of a stain model (count)	coloranți	The components of a stain model are dyes: "the stain model has 2 stains" → "modelul de colorație are 2 coloranți"; "Stain to measure" → "Colorant de măsurat"; "{} hidden" → "fără {}".
+preset (stain)	presetare	"H-DAB stain preset" → "presetarea de colorație H-DAB".
+isolated stain	colorant izolat	
+color deconvolution	deconvoluția culorilor	Ruifrok–Johnston.
+colour management, colour-managed	gestionarea culorilor, cu gestionarea culorilor	
+colour profile	profil de culoare	ICC profile → profil ICC.
+colours as scanned	culorile originale ale scanării	Colour management off: the colours the scanner captured.
+channel	canal	Plural "canale".
+multiplex immunofluorescence (mIF)	imunofluorescență multiplex (mIF)	
+marker	marker	Plural "markeri"; marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	plan focal (Z)	Plural "planuri focale".
+time point (T)	punct temporal (T)	Plural "puncte temporale".
+time series	serie temporală	
+Z-stack	stivă Z	
+heat map	hartă termică	Plural "hărți termice".
+colour map	hartă de culori	
+opacity	opacitate	
+tissue	țesut	
+tissue QC	controlul calității țesutului	Spelled out everywhere ("Ascunde controlul calității țesutului"); Romanian has no widely understood abbreviation.
+pen marks	urme de cerneală	Marker-pen ink on the glass; not "marcaje", which reads as bookmarks.
+folds	pliuri	
+blur, blurred, out of focus	neclaritate, neclar, nefocalizat	
+tissue detection	detectarea țesutului	
+tissue mask	mască de țesut	
+grid cell (tissue QC)	celulă de grilă	Always "celulă de grilă", never just "celulă" (a biological cell): "{n} tissue cells" → "{n} celule de grilă cu țesut".
+background	fundal	
+export	exportă (v.), export (n.)	
+Export Image…	Exportă imaginea…	Menu item, Ctrl+E.
+save a copy	salvează o copie	
+convert	convertește, conversie	
+de-identify	de-identifică (de-identificare)	Remove data that can identify a patient; not "anonimizare", which claims more.
+label image	imaginea etichetei	
+macro image	imagine macro	
+thumbnail	miniatură	
+associated image	imagine asociată	
+metadata	metadate	
+properties	proprietăți	
+vendor	producător	
+bookmark	marcaj	Plural "marcaje" (as in Firefox and Chrome).
+session	sesiune	
+plugin	plugin	Neuter; plural "pluginuri".
+package (.eop)	pachet	
+model	model	Machine-learning model; plural "modele".
+model store	depozitul de modele	"eov's model store" → "depozitul de modele eov".
+inference	inferență	
+render (v.), rendering	randează, randare	
+renderer	motor de randare	"the GPU renderer" → "motorul de randare GPU".
+backend	backend	Neuter ("backendul").
+GPU, CPU	GPU, CPU	
+graphics adapter	adaptor grafic	
+filtering (bilinear, trilinear, Lanczos)	filtrare (biliniară, triliniară, Lanczos)	
+sharpness, sharpen	claritate, accentuează claritatea	"Sharpened" → "Claritate accentuată".
+gamma	gamma	
+brightness	luminozitate	
+contrast	contrast	
+theme (dark, light, high contrast)	temă (întunecată, luminoasă, contrast ridicat)	
+notification	notificare	
+toast	notificare	Short pop-up message.
+keyboard shortcut	comandă rapidă de la tastatură	Plural "comenzi rapide"; the panel "Keyboard Shortcuts" → "Comenzi rapide de la tastatură".
+key	tastă	A keyboard key.
+language	limbă	Language names capitalised as list items ("Germană").
+update (n./v.)	actualizare / actualizează	
+Check for Updates…	Caută actualizări…	Asks before going online; never imply background updates.
+release (of eov)	versiune	"GitHub Releases" stays.
+prerelease	versiune preliminară	
+install / uninstall	instalează / dezinstalează	
+download	descarcă (v.), descărcare (n.)	
+Open	Deschide	
+Open…	Deschide…	
+Close	Închide	
+Cancel	Anulează	
+OK	OK	
+Save	Salvează	
+Save As…	Salvează ca…	
+Delete	Șterge	
+Remove	Elimină	
+Add	Adaugă	
+Rename	Redenumește	
+Edit	Editează	
+Settings	Setări	
+Preferences	Preferințe	
+Apply	Aplică	
+Reset	Resetează	
+Restore defaults	Restabilește valorile implicite	
+Default	implicit	
+Show / Hide	Afișează / Ascunde	
+Toggle …	Afișează/ascunde … (or Activează/dezactivează …)	
+Enable / Disable	Activează / Dezactivează	"Disabled" (status) → "Dezactivat".
+Import	Importă	
+Copy	Copiază	"Copied {}" → "S-a copiat {}".
+Paste	Lipește	
+Undo / Redo	Anulează / Refă	
+undo labels	substantiv articulat, cu literă mică	"Undo {}" → "Anulează {}" with a lowercase noun phrase: "Anulează ștergerea măsurătorii".
+Rotate	Rotește	"Rotate Right 90°" → "Rotește la dreapta cu 90°".
+Rotation	rotire	
+Flip	Oglindește	"Flip Horizontally" → "Oglindește orizontal".
+Select	Selectează	
+Select All	Selectează tot	
+Clear	Elimină / Golește	"Elimină" for things on the slide (ROI, landmarks, measurements); "Golește" for lists and messages (recent files).
+Search, Filter	Caută, Filtrează	
+Browse…	Răsfoiește…	
+Retry	Reîncearcă	
+Help	Ajutor	
+About eov	Despre eov	
+Quit	Ieși	"Quit eov" → "Ieși din eov"; the noun is "ieșire".
+Next / Previous	Următorul / Anteriorul	Agree in gender with the noun ("Lama următoare").
+Back / Forward	Înapoi / Înainte	
+Folder	folder	Plural "foldere" (as Windows).
+File	fișier	Plural "fișiere".
+Path	cale	
+Width / Height	lățime / înălțime	
+Resolution	rezoluție	
+Format	format	
+Quality	calitate	
+Loading…	Se încarcă…	
+Error	eroare	
+Warning	avertisment	
+Unknown	Necunoscut	Agree in gender where needed.
+N/A	N/D	"nedisponibil".
+Red, Green, Blue (one letter)	R, G, B	As in RGB.
+weak / moderate / strong (1+ / 2+ / 3+)	slab / moderat / intens	Staining intensity classes of the H-score; as labels feminine, agreeing with "colorație": "Slabă (1+)", "Moderată (2+)", "Intensă (3+)". "H-score" stays.
+landmark (alignment)	reper	Plural "repere"; "Align from Landmarks" → "Aliniază după repere".
+alignment	aliniere	
+downsample	subeșantionare	
+level-0 pixels	pixeli de nivel 0	
+intensity window (channels)	fereastră de intensitate	
+colour-blind safe	pentru daltoniști	Palette option "Colour-blind safe" → "Pentru daltoniști".
+lossless	fără pierderi	
+pyramidal TIFF	TIFF piramidal	
+file manager	managerul de fișiere	
+link (eov://…)	link	Plural "linkuri"; panes are "legate", not "linkate".
+update helper	programul de actualizare	
+self-update	autoactualizare	Only when eov updates itself on request; never imply background updates.
+policy (administrator)	politica administratorului	As Windows "Politică de grup".
+safe mode	mod de siguranță	
+crash, crashed	închidere neașteptată, s-a închis în mod neașteptat	eov: "eov s-a închis în mod neașteptat"; a plugin: "Pluginul {} a avut o eroare fatală"; "crash report" → "raport de eroare".
+staged (update)	se instalează la ieșire	Plugin status: the update helper installs it after eov exits.
+artifact (release)	artefact	A file published with a release; appears only in technical update messages ("artefactul [{}]").
+repository (GitHub)	depozit	"the plugin repository" → "depozitul pluginului".
+release vs. version	versiune / lansare	"release" is normally "versiune"; where "release" and "version" meet in one text, "release {tag}" → "lansarea {tag}".
+signature, release keys	semnătură, chei de versiune	"verified (key {})" → "verificată (cheia {})".
+sandbox	mediu izolat	Flatpak sandbox.
+thread	fir de execuție	"UI thread" → "firul UI"; "worker thread" → "fir de execuție auxiliar".
+hotkey	tastă rapidă	A plugin's single-key shortcut.
+byte	octet	Plural "octeți", "20 de octeți".
+manifest	manifest	Neuter ("manifestul").
+build	compilare	"this build" → "această compilare".
+click, right-click, drag	faceți clic, faceți clic dreapta, trageți	
+Done	Gata	Button; the status "Done" → "Finalizat".
+Confirm	Confirmă	
+Ready	Gata	
+Messages (panel)	Mesaje	"Open Log Folder" → "Deschide folderul de jurnale".
+log	jurnal	Plural "jurnale".
+frame (rendering)	cadru	Plural "cadre".
+job (plugin)	sarcină	Plural "sarcini".
+Shift+click, Alt+click, Ctrl+click	Shift+clic, Alt+clic, Ctrl+clic	As eov's "clic dreapta"; "double-click" → "dublu clic".
+undo label also used as a dialog title	substantiv articulat cu majusculă	Annotations reuses "Delete layer", "Delete class" and "Clear counts" as confirm-dialog titles and undo labels: "Ștergerea stratului", "Ștergerea clasei", "Eliminarea punctelor de numărare". Pure undo labels stay lowercase.
+layer (annotations)	strat	Plural "straturi"; tab "Layers" → "Straturi".
+Count (tab), Count tool	Numărare, instrumentul de numărare	Button "Count tool (C)" → "Instrument de numărare (C)"; "Counting {}" (status) → "Numărare: {}".
+count point	punct de numărare	Plural "puncte de numărare"; "Clear counts…" → "Elimină punctele de numărare…".
+HPF field	câmp HPF	Plural "câmpuri HPF"; heading "HIGH-POWER FIELDS" → "CÂMPURI DE MARE PUTERE"; tool "HPF field (H)" → "Câmp HPF (H)".
+field number (FN)	număr de câmp (FN)	The eyepiece's field number; the label "FN (mm)" keeps FN, as printed on eyepieces.
+combined positive score (CPS)	scor pozitiv combinat (CPS)	PD-L1; keep CPS.
+Unclassified	Neclasificat	Pseudo-class of annotations without a class; "they will show as unclassified" → "vor apărea ca neclasificate".
+review status: Draft / Verified / Rejected	Ciornă / Verificată / Respinsă	Feminine, agreeing with "adnotare"; "Mark verified" (undo) → "marcarea ca verificată".
+lock / unlock, locked	blochează / deblochează, blocat(ă)	Layers and annotations; "Locked" (annotation) → "Blocată".
+outline	contur	"The outline crossed itself" → "Conturul se intersecta cu el însuși".
+hole (of a polygon)	gol	Plural "goluri".
+even-odd rule	regula par-impar	
+brush / eraser / stroke	pensulă / radieră / trăsătură	
+read-only (database)	doar în citire	
+back up, backup	copie de rezervă	"Back up the database…" → "Salvează o copie de rezervă a bazei de date…"; button "Back up…" → "Copie de rezervă…".
+merge (database)	îmbină	"Merge…" → "Îmbină…".
+reader, second reader	evaluator, al doilea evaluator	A second pathologist reading the same slide.
+blinded copy	copie oarbă	An export without authors, comments, statuses, descriptions or properties, for an independent second read (as "studiu orb").
+DICOM bulk annotations	adnotări DICOM în bloc	The IOD name "Microscopy Bulk Simple Annotations" stays in English.
+unreadable (data in a file)	ilizibil	Compact reasons such as "punct ilizibil"; full sentences may say "nu poate fi citit".
+cell (Cellaris)	celulă de grilă	A small square of the model grid predicted at once, never a biological cell; "{n} cells" → "{n} celule de grilă".
+tissue block (Cellaris)	pătrat de țesut	A 5 µm square of tissue in the region readout; never "bloc", which reads as the paraffin block. "{n} blocks" → "{n} pătrate".
+window (model input)	fereastră	A square image the model predicts from; plural "ferestre".
+display window (marker)	fereastră de afișare	The value range a predicted marker's colour is drawn over.
+region readout (Cellaris)	măsurare pe regiune	Tool "Cellaris region readout" → "Măsurare pe regiune Cellaris"; heading "REGION READOUT" → "MĂSURARE PE REGIUNE".
+readout columns: mean / spread / density r²	medie / variație / r² densitate	Narrow columns.
+PREDICTED (banner)	PREDICȚIE	"PREDICTED — research use only, not for diagnosis" → "PREDICȚIE — numai pentru uz în cercetare, nu pentru diagnostic"; "predicted markers" → "markeri preziși".
+not for diagnosis	nu pentru diagnostic; nu este destinat diagnosticului	The short form in banners and labels, the full one in sentences; never omitted.
+bright-field	câmp luminos	"not bright-field" → "nu este în câmp luminos".
+your site's model / copy	modelul instituției / copia găzduită de instituția dvs.	A hospital's or lab's own copy of a model.
+batch (inference)	lot	"batch size" → "dimensiunea lotului"; "batch runs" (eov batch) → "rulări în lot".
+reconstruction error, error map	eroare de reconstrucție, harta erorilor	eovae.
+sidecar file	fișier însoțitor	A model's <model>.eovae.json.
+model card	fișa modelului	"built-in model card" → "fișa de model integrată".
+runtime (ONNX Runtime)	runtime	Neuter ("runtime-ul"); ONNX Runtime stays.
+weights (model)	ponderi	
+Viewport / Whole slide (eovae analysis)	Zona vizibilă / Toată lama	Button labels and job names; short enough for the four-button row.
+game controller, gamepad	controler de joc, gamepad	Plural "controlere", "gamepaduri".
+stick, trigger, shoulder button, D-pad	stick, trăgaci, buton de umăr, D-pad	Plural "stick-uri", "trăgace"; "Left Stick X" → "Stick stâng X".
+mappings (gamepad)	atribuiri	"Unassigned" → "Neatribuit"; "Map a stick to Move Pointer" → "Atribuiți unui stick acțiunea „Mută cursorul”".
+dead zone, response curve	zonă moartă, curbă de răspuns	
+pointer (mouse)	cursor	"System pointer" → "Cursorul sistemului".
+profile (gamepad)	profil	Plural "profiluri".
+marker (placed point, example plugin)	marcator	Plural "marcatori"; not a protein marker and not "marcaj" (bookmark).

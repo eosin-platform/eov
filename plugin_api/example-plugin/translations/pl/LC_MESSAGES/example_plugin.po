@@ -1,0 +1,127 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Polish\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"Prezentuje przyciski paska narzędzi, panel boczny, warstwy nakładek, "
+"narzędzie punktowe z możliwością cofania, filtr i zadania w tle."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "Przykładowa wtyczka"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "Przykładowe preparaty z szachownicą"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "Przykładowy panel boczny"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "Umieść znacznik"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "Odwróć kolory"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "Odwrócenie kolorów"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "Udział tkanki i średni kolor tkanki każdego preparatu"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "Odczytuj najdokładniejszy poziom mający najwyżej tyle pikseli"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "Znaczniki"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "Znacznik {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "Dodanie znacznika"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "Liczenie do dziesięciu"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} z {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "Dodaj znacznik tutaj"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "{n} znacznik na otwartych preparatach"
+msgstr[1] "{n} znaczniki na otwartych preparatach"
+msgstr[2] "{n} znaczników na otwartych preparatach"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "Przykładowa wtyczka"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "Brak preparatu"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} znacznik"
+msgstr[1] "{n} znaczniki"
+msgstr[2] "{n} znaczników"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "Wyczyść znaczniki"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "Odwróć kolory"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "Uruchom zadanie w tle"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "Opisz"

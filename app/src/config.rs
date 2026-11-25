@@ -9,6 +9,7 @@
 //! starts with defaults instead of refusing to start; unknown values of
 //! known keys are ignored with a warning (SH-3).
 
+use crate::shortcuts::Problem as ShortcutProblem;
 use anyhow::{Context, Result};
 use eov_common::{FilteringMode, RenderBackend};
 use parking_lot::Mutex;
@@ -319,6 +320,40 @@ pub fn save_theme(kind: crate::ThemeKind) -> Result<()> {
     save(|document| document["theme"] = value(kind.id()))
 }
 
+/// The language of the interface chosen in the settings (`language`, a tag
+/// such as `"de"` or `"pt-BR"`); `None` when it follows the system
+/// (`"auto"`, or no key). A value that is no language of eov is ignored
+/// with a warning.
+pub fn load_language() -> Option<&'static eov_plugin_api::i18n::Language> {
+    with_document(language_in).ok().flatten()
+}
+
+fn language_in(
+    path: &Path,
+    document: &DocumentMut,
+) -> Option<&'static eov_plugin_api::i18n::Language> {
+    let found = string(document, "language")?;
+    if found.trim().is_empty() || found.trim().eq_ignore_ascii_case("auto") {
+        return None;
+    }
+    let language = eov_plugin_api::i18n::by_tag(&found);
+    if language.is_none() {
+        ignore_value(path, "language", &found);
+    }
+    language
+}
+
+/// Keeps the language chosen in the settings; `None` follows the system
+/// again.
+pub fn save_language(language: Option<&eov_plugin_api::i18n::Language>) -> Result<()> {
+    save(|document| match language {
+        Some(language) => document["language"] = value(language.tag),
+        None => {
+            document.remove("language");
+        }
+    })
+}
+
 /// `series_case_pattern`: a regular expression whose first group is a
 /// slide's case in the series bar's Case order.
 pub fn load_series_case_pattern() -> Option<String> {
@@ -336,18 +371,23 @@ pub fn load_series_case_pattern() -> Option<String> {
 /// The `[shortcuts]` table: action ids with their keys (a key or a list of
 /// keys; an empty list leaves the action without one), and entries that
 /// are not keys, as problems for the user.
-pub fn load_shortcuts() -> (Vec<(String, Vec<String>)>, Vec<String>) {
+pub fn load_shortcuts() -> (Vec<(String, Vec<String>)>, Vec<ShortcutProblem>) {
     with_document(shortcuts_in).unwrap_or_default()
 }
 
-fn shortcuts_in(path: &Path, document: &DocumentMut) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+fn shortcuts_in(
+    path: &Path,
+    document: &DocumentMut,
+) -> (Vec<(String, Vec<String>)>, Vec<ShortcutProblem>) {
     let mut bindings = Vec::new();
     let mut problems = Vec::new();
     let Some(item) = document.get("shortcuts") else {
         return (bindings, problems);
     };
     let Some(table) = item.as_table_like() else {
-        problems.push(format!("shortcuts in {} is not a table", path.display()));
+        problems.push(ShortcutProblem::NotATable {
+            file: path.to_path_buf(),
+        });
         return (bindings, problems);
     };
     for (action, item) in table.iter() {
@@ -361,9 +401,9 @@ fn shortcuts_in(path: &Path, document: &DocumentMut) -> (Vec<(String, Vec<String
         };
         match keys {
             Some(keys) => bindings.push((action.to_string(), keys)),
-            None => problems.push(format!(
-                "[shortcuts] {action}: expected a key such as \"Ctrl+B\" or a list of keys"
-            )),
+            None => problems.push(ShortcutProblem::NotKeys {
+                action: action.to_string(),
+            }),
         }
     }
     (bindings, problems)
@@ -493,6 +533,39 @@ mod tests {
         );
         assert_eq!(read("theme = \"neon\""), None);
         assert_eq!(read("theme = 3"), None);
+    }
+
+    #[test]
+    fn the_language_is_read_by_tag() {
+        let read = |text: &str| {
+            language_in(Path::new("config.toml"), &text.parse().unwrap()).map(|l| l.tag)
+        };
+        assert_eq!(read(""), None);
+        assert_eq!(read("language = \"auto\""), None);
+        assert_eq!(read("language = \"ja\""), Some("ja"));
+        assert_eq!(read("language = \"pt_BR\""), Some("pt-BR"));
+        assert_eq!(read("language = \"zh-hant\""), Some("zh-Hant"));
+        assert_eq!(read("language = \"klingon\""), None);
+        assert_eq!(read("language = 3"), None);
+    }
+
+    #[test]
+    fn the_language_is_saved_and_cleared_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "# mine\ntheme = \"light\"\n").unwrap();
+        let mut document = read_document(&path, true).unwrap();
+        document["language"] = value("pt-BR");
+        write_atomically(&path, &document.to_string()).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# mine") && text.contains("language = \"pt-BR\""));
+        assert_eq!(
+            language_in(&path, &read_document(&path, false).unwrap()).map(|l| l.tag),
+            Some("pt-BR")
+        );
+        document.remove("language");
+        write_atomically(&path, &document.to_string()).unwrap();
+        assert!(!fs::read_to_string(&path).unwrap().contains("language"));
     }
 
     #[test]

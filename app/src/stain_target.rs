@@ -17,6 +17,7 @@
 //! too, named after its file.
 
 use eov_common::stain::{NormalizationTarget, StainEstimate};
+use eov_plugin_api::i18n::tr;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -71,30 +72,28 @@ impl StainTarget {
     }
 
     /// A target file, or a bare stain estimate named `fallback_name`.
-    pub(crate) fn from_json(text: &str, fallback_name: &str) -> Result<Self, String> {
+    pub(crate) fn from_json(text: &str, fallback_name: &str) -> Result<Self, TargetError> {
         let value: serde_json::Value =
-            serde_json::from_str(text).map_err(|e| format!("not a stain target: {e}"))?;
+            serde_json::from_str(text).map_err(|e| TargetError::NotATarget(e.to_string()))?;
         if value.get("format").and_then(|f| f.as_str()) == Some(FORMAT) {
-            let file: TargetFile =
-                serde_json::from_value(value).map_err(|e| format!("not a stain target: {e}"))?;
+            let file: TargetFile = serde_json::from_value(value)
+                .map_err(|e| TargetError::NotATarget(e.to_string()))?;
             if file.version > VERSION {
-                return Err(format!(
-                    "the stain target was saved by a newer eov (format {})",
-                    file.version
-                ));
+                return Err(TargetError::Newer(file.version));
             }
             // Validates the vectors and concentrations.
             let estimate = StainEstimate::from_json(
                 &serde_json::to_string(&file.estimate).unwrap_or_default(),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| TargetError::Unusable(e.to_string()))?;
             return Ok(Self {
                 name: file.name,
                 created_unix: file.created_unix,
                 estimate,
             });
         }
-        let estimate = StainEstimate::from_json(text).map_err(|e| e.to_string())?;
+        let estimate =
+            StainEstimate::from_json(text).map_err(|e| TargetError::Unusable(e.to_string()))?;
         Ok(Self::new(fallback_name, estimate))
     }
 
@@ -107,13 +106,62 @@ impl StainTarget {
         std::fs::rename(&temp, path).map_err(|e| e.to_string())
     }
 
+    /// The target in the file at `path`, or why not in the interface's
+    /// language (the window; the command line runs in English).
     pub(crate) fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        Self::read(path).map_err(|error| error.localized())
+    }
+
+    /// The target in the file at `path`, or why not.
+    fn read(path: &Path) -> Result<Self, TargetError> {
+        let text =
+            std::fs::read_to_string(path).map_err(|e| TargetError::Unusable(e.to_string()))?;
         let name = path
             .file_stem()
             .map(|stem| stem.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "Stain target".to_string());
+            .unwrap_or_else(|| tr!("Stain target"));
         Self::from_json(&text, &name)
+    }
+}
+
+/// Why a file is not a usable stain target. `Display` says it in English,
+/// for the log; [`TargetError::localized`] in the interface's language.
+/// What the system and the JSON reader say stays as they word it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TargetError {
+    /// Not JSON, or not a target's (the JSON reader's words).
+    NotATarget(String),
+    /// Saved by a newer eov, in this version of the format.
+    Newer(u32),
+    /// The file cannot be read, or its estimate is not valid (the system's
+    /// or the estimate's words).
+    Unusable(String),
+}
+
+impl std::fmt::Display for TargetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TargetError::NotATarget(error) => write!(f, "not a stain target: {error}"),
+            TargetError::Newer(version) => write!(
+                f,
+                "the stain target was saved by a newer eov (format {version})"
+            ),
+            TargetError::Unusable(error) => f.write_str(error),
+        }
+    }
+}
+
+impl TargetError {
+    /// Why, in the interface's language.
+    pub(crate) fn localized(&self) -> String {
+        match self {
+            TargetError::NotATarget(error) => tr!("not a stain target: {}", error),
+            TargetError::Newer(version) => tr!(
+                "the stain target was saved by a newer eov (format {})",
+                version
+            ),
+            TargetError::Unusable(error) => error.clone(),
+        }
     }
 }
 
@@ -129,7 +177,7 @@ pub(crate) fn current() -> Option<Arc<StainTarget>> {
     if let Some(current) = CURRENT.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
         return current.clone();
     }
-    let loaded = match StainTarget::load(&store_path()) {
+    let loaded = match StainTarget::read(&store_path()) {
         Ok(target) => Some(Arc::new(target)),
         Err(error) => {
             if store_path().exists() {
@@ -200,12 +248,49 @@ mod tests {
         assert_eq!(StainTarget::load(&bare).unwrap().name, "site-b");
         // Newer formats and garbage are refused.
         let newer = target.to_json().replace("\"version\": 1", "\"version\": 9");
-        assert!(
-            StainTarget::from_json(&newer, "x")
-                .unwrap_err()
-                .contains("newer")
+        assert_eq!(
+            StainTarget::from_json(&newer, "x").unwrap_err(),
+            TargetError::Newer(9)
         );
         assert!(StainTarget::from_json("{}", "x").is_err());
+    }
+
+    /// The log says why a saved target cannot be used in English; the
+    /// window says it in the interface's language.
+    #[test]
+    fn the_log_gets_the_reason_in_english() {
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] = [(
+            None,
+            "the stain target was saved by a newer eov (format {})",
+            &["das Färbeziel wurde von einem neueren eov gespeichert (Format {})"],
+        )];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        let newer = StainTarget::new("Reference H&E", estimate())
+            .to_json()
+            .replace("\"version\": 1", "\"version\": 9");
+        let error = StainTarget::from_json(&newer, "x").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "the stain target was saved by a newer eov (format 9)"
+        );
+        assert_eq!(
+            error.localized(),
+            "das Färbeziel wurde von einem neueren eov gespeichert (Format 9)"
+        );
+        let garbage = StainTarget::from_json("not json", "x").unwrap_err();
+        assert!(garbage.to_string().starts_with("not a stain target: "));
     }
 
     #[test]

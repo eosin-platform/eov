@@ -18,9 +18,13 @@
 //! [ui]                               # optional
 //! slint = ">=1.17"                   # Slint version the .slint files need
 //!
+//! [i18n]                             # optional: the plugin is translated
+//! catalogs = "translations"          # <catalogs>/<tag>/LC_MESSAGES/<domain>.po
+//! domain = "example_plugin"          # default: the plugin id
+//!
 //! [[slide_formats]]                  # optional, repeatable
 //! id = "gradient"                    # ^[a-z0-9][a-z0-9_-]{0,63}$, unique here
-//! name = "Synthetic gradient slide"  # shown in the file picker
+//! name = "Synthetic gradient slide"  # the format's name (not shown yet)
 //! extensions = ["gradient"]          # file extensions, without the dot
 //! schemes = []                       # URI schemes (`omero` for omero://…)
 //! ```
@@ -34,7 +38,7 @@
 use crate::{IconDescriptor, PluginError, PluginResult};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 /// Requirements on the host application.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,6 +65,41 @@ pub struct PluginUi {
     pub slint: Option<String>,
 }
 
+/// The plugin's translations (`[i18n]`): gettext catalogs in
+/// `<catalogs>/<tag>/LC_MESSAGES/<domain>.po`, one per language (see
+/// [`crate::i18n`]). eov compiles the plugin's surfaces with them, the SDK
+/// translates the plugin's [`tr!`](crate::tr!) texts with them, and the
+/// Plugins panel shows the plugin's name and description from them (the
+/// entries with the context `plugin.toml`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginI18n {
+    /// The folder of the catalogs, relative to the plugin root.
+    #[serde(default = "PluginI18n::default_catalogs")]
+    pub catalogs: PathBuf,
+    /// The catalogs' file name without `.po`; the plugin id when absent.
+    #[serde(default)]
+    pub domain: Option<String>,
+}
+
+impl PluginI18n {
+    fn default_catalogs() -> PathBuf {
+        PathBuf::from("translations")
+    }
+}
+
+impl Default for PluginI18n {
+    fn default() -> Self {
+        Self {
+            catalogs: Self::default_catalogs(),
+            domain: None,
+        }
+    }
+}
+
+/// The context of a manifest's texts (`name`, `description`, slide format
+/// names) in the plugin's catalogs.
+pub const MANIFEST_TRANSLATION_CONTEXT: &str = "plugin.toml";
+
 /// Most `[[slide_formats]]` a manifest may declare.
 pub const MAX_SLIDE_FORMATS: usize = 16;
 
@@ -80,7 +119,10 @@ pub struct SlideFormatSpec {
     /// Unique within the plugin (`^[a-z0-9][a-z0-9_-]{0,63}$`); the slide
     /// source learns which format matched from it.
     pub id: String,
-    /// Shown in the file picker, e.g. "Philips iSyntax".
+    /// The format's name, e.g. "Philips iSyntax". eov does not show it yet
+    /// (its file picker offers every slide format under one filter);
+    /// `tools/i18n` extracts it for translation, with the context
+    /// [`MANIFEST_TRANSLATION_CONTEXT`], for when it does.
     pub name: String,
     /// File extensions without the dot (`["isyntax"]`): 1–16 ASCII letters
     /// or digits, matched without regard to case.
@@ -176,7 +218,14 @@ impl SlideFormatSpec {
 }
 
 /// The parsed contents of a `plugin.toml` manifest.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// Read one with [`PluginManifest::from_toml`] or
+/// [`PluginManifest::from_file`], which validate it. `Default` gives an
+/// empty manifest to build on (`PluginManifest { id: …, name: …, version:
+/// …, ..Default::default() }`), so that code building one keeps compiling
+/// when a minor release adds a field; it is not valid until it has an id,
+/// a name and a version.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginManifest {
     /// Unique, stable identifier (`^[a-z0-9][a-z0-9_]{0,63}$`).
     pub id: String,
@@ -206,6 +255,9 @@ pub struct PluginManifest {
     /// Slide formats the plugin reads.
     #[serde(default)]
     pub slide_formats: Vec<SlideFormatSpec>,
+    /// The plugin's translations; `None` when it is English only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub i18n: Option<PluginI18n>,
 }
 
 /// Name of the manifest file inside each plugin directory.
@@ -306,6 +358,27 @@ impl PluginManifest {
             }
             _ => {}
         }
+        if let Some(i18n) = &self.i18n {
+            if !is_contained_relative_path(&i18n.catalogs) {
+                return Err(self.error(format!(
+                    "'i18n.catalogs' must be relative and stay inside the package, got '{}'",
+                    i18n.catalogs.display()
+                )));
+            }
+            if let Some(domain) = &i18n.domain {
+                let valid = !domain.is_empty()
+                    && domain.len() <= 64
+                    && domain
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+                    && !domain.starts_with('.');
+                if !valid {
+                    return Err(self.error(format!(
+                        "'i18n.domain' must be 1–64 letters, digits, '_', '-' or '.', got '{domain}'"
+                    )));
+                }
+            }
+        }
         if self.slide_formats.len() > MAX_SLIDE_FORMATS {
             return Err(self.error(format!(
                 "at most {MAX_SLIDE_FORMATS} [[slide_formats]] may be declared"
@@ -345,6 +418,16 @@ impl PluginManifest {
             .as_deref()
             .and_then(|req| VersionReq::parse(req).ok())
             .is_none_or(|req| req.matches(slint_version))
+    }
+
+    /// The folder and gettext domain of the plugin's catalogs, when it is
+    /// translated (`[i18n]`).
+    pub fn catalogs(&self, plugin_root: &Path) -> Option<(PathBuf, String)> {
+        let i18n = self.i18n.as_ref()?;
+        Some((
+            plugin_root.join(&i18n.catalogs),
+            i18n.domain.clone().unwrap_or_else(|| self.id.clone()),
+        ))
     }
 
     /// Checks that referenced files exist.
@@ -514,6 +597,60 @@ version = ">=0.4.1"
         assert!(m.declares_environment);
         assert_eq!(m.slide_formats.len(), 1);
         assert_eq!(m.slide_formats[0].extensions, ["gradient"]);
+        assert_eq!(
+            m.catalogs(Path::new("/root")),
+            Some((
+                PathBuf::from("/root/translations"),
+                "example_plugin".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn manifests_can_be_built_on_the_default() {
+        // As the README advises: code building a manifest keeps compiling
+        // when a minor release adds a field (1.1 added `i18n`).
+        let m = PluginManifest {
+            id: "built".into(),
+            name: "Built".into(),
+            version: "1.0.0".into(),
+            ..Default::default()
+        };
+        assert!(m.validate().is_ok());
+        assert!(!m.declares_environment);
+        assert!(m.accepts_host(&Version::new(1, 9, 0)));
+        assert_eq!(m.catalogs(Path::new("/p")), None);
+        assert!(PluginManifest::default().validate().is_err());
+    }
+
+    #[test]
+    fn translations_are_declared_and_validated() {
+        let base = "id = \"reader\"\nname = \"Reader\"\nversion = \"1.1.0\"\n";
+        // English only.
+        assert_eq!(parse(base).unwrap().catalogs(Path::new("/p")), None);
+        // An empty table takes the defaults.
+        let m = parse(&format!("{base}[i18n]\n")).unwrap();
+        assert_eq!(
+            m.catalogs(Path::new("/p")),
+            Some((PathBuf::from("/p/translations"), "reader".to_string()))
+        );
+        let m = parse(&format!(
+            "{base}[i18n]\ncatalogs = \"locale\"\ndomain = \"reader-ui\"\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            m.catalogs(Path::new("/p")),
+            Some((PathBuf::from("/p/locale"), "reader-ui".to_string()))
+        );
+        for bad in [
+            "[i18n]\ncatalogs = \"../elsewhere\"\n",
+            "[i18n]\ncatalogs = \"/etc\"\n",
+            "[i18n]\ndomain = \"\"\n",
+            "[i18n]\ndomain = \"a/b\"\n",
+            "[i18n]\ndomain = \"..\"\n",
+        ] {
+            assert!(parse(&format!("{base}{bad}")).is_err(), "accepted:\n{bad}");
+        }
     }
 
     #[test]

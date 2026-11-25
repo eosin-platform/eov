@@ -1,0 +1,1646 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: eovae\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Romanian\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < "
+"20)) ? 1 : 2);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "EOV VAE"
+msgstr "EOV VAE"
+
+#: plugin.toml
+#, fuzzy
+#| msgctxt "plugin.toml"
+#| msgid ""
+#| "Reconstruction-error (VAE anomaly) analysis with ONNX models: heat maps, "
+#| "reconstructions, error statistics and hot regions. Research use only; not "
+#| "for diagnosis."
+msgctxt "plugin.toml"
+msgid ""
+"Reconstruction-error analysis with ONNX VAE models, showing how unlike the "
+"training data the tissue looks: heat maps, reconstructions, error statistics "
+"and highest-error regions. Research use only; not for diagnosis."
+msgstr ""
+"Analiza erorii de reconstrucție (anomalii VAE) cu modele ONNX: hărți "
+"termice, reconstrucții, statistici ale erorilor și regiuni cu erori mari. "
+"Numai pentru uz în cercetare; nu este destinat diagnosticului."
+
+#: src/batch.rs:89
+msgid ""
+"VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and "
+"summary.json per slide"
+msgstr ""
+"Eroarea de reconstrucție VAE a fiecărei dale cu țesut: tiles.csv, heatmap."
+"png și summary.json pentru fiecare lamă"
+
+#: src/batch.rs:94
+msgid "the ONNX model (default: the one chosen in eov's VAE sidebar)"
+msgstr "modelul ONNX (implicit: cel ales în bara laterală VAE din eov)"
+
+#. Translators: a batch parameter: keep auto, cpu and cuda, the values typed
+#: src/batch.rs:104
+msgid "auto (CUDA, else the CPU), cpu or cuda"
+msgstr "auto (CUDA, altfel CPU), cpu sau cuda"
+
+#: src/batch.rs:109
+msgid "tiles per inference batch, for models without a fixed batch"
+msgstr "dale per lot de inferență, pentru modelele fără lot fix"
+
+#: src/batch.rs:114
+msgid "CPU inference threads (0: every core)"
+msgstr "fire de execuție CPU pentru inferență (0: toate nucleele)"
+
+#: src/batch.rs:119
+msgid "allow TF32 on CUDA (faster, slightly different results)"
+msgstr "permite TF32 pe CUDA (mai rapid, rezultate ușor diferite)"
+
+#. Translators: a batch parameter: keep auto, the value typed
+#: src/batch.rs:126
+msgid ""
+"auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that "
+"level's own pixels)"
+msgstr ""
+"auto (dale reeșantionate la rezoluția modelului, în µm/px) sau un factor de "
+"subeșantionare, de ex. 4 (pixelii proprii ai acelui nivel)"
+
+#: src/batch.rs:132
+msgid "skip glass tiles"
+msgstr "omite dalele care conțin doar sticlă"
+
+#. Translators: a batch parameter: keep auto and lo,hi, the values typed;
+#. p05–p95 is the 5th to 95th percentile
+#: src/batch.rs:140
+#, fuzzy
+#| msgid ""
+#| "error-map colours: auto (p05-p95 of each slide) or lo,hi (mean absolute "
+#| "error; the same scale for every slide)"
+msgid ""
+"error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute "
+"error; the same scale for every slide)"
+msgstr ""
+"culorile hărții erorilor: auto (p05-p95 pentru fiecare lamă) sau lo,hi "
+"(eroarea absolută medie; aceeași scală pentru toate lamele)"
+
+#. Translators: a batch parameter: keep off, store and reuse, the values typed
+#: src/batch.rs:148
+msgid ""
+"off; store (keep the results for eov's viewer); or reuse (also take tiles "
+"analysed before with the same model and settings)"
+msgstr ""
+"off; store (păstrează rezultatele pentru vizualizatorul eov); sau reuse "
+"(preia și dalele analizate anterior cu același model și aceleași setări)"
+
+#. Translators: {} is what was typed into the SHA-256 field; it is
+#. ignored and the field keeps its previous value.
+#: src/config.rs:159
+#, fuzzy
+#| msgid ""
+#| "'{}' is not a SHA-256 (64 hex digits); the reference model is downloaded"
+msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
+msgstr ""
+"„{}” nu este o sumă SHA-256 (64 de cifre hexazecimale); la descărcare se va "
+"folosi modelul de referință"
+
+#: src/contract.rs:162
+msgid "HistoVAE defaults"
+msgstr "valorile implicite HistoVAE"
+
+#: src/contract.rs:163
+msgid "built-in model card"
+msgstr "fișa de model integrată"
+
+#: src/contract.rs:164
+msgid "model metadata"
+msgstr "metadatele modelului"
+
+#: src/contract.rs:165
+msgid "sidecar file"
+msgstr "fișierul însoțitor"
+
+#. Translators: a value a model declares that eovae does not use
+#: src/contract.rs:196
+msgid "ignored {key} = '{value}'"
+msgstr "s-a ignorat {key} = „{value}”"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:201
+msgid "ignored mean/std with a non-positive std"
+msgstr ""
+"s-au ignorat media și abaterea standard, deoarece abaterea standard nu este "
+"pozitivă"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:203
+msgid "mean and std must be declared together"
+msgstr "media și abaterea standard trebuie declarate împreună"
+
+#: src/db.rs:526
+msgid "result cache: {}"
+msgstr "cache-ul de rezultate: {}"
+
+#. Translators: two errors: opening the cache, then a new one
+#: src/db.rs:559
+msgid "{error}; then {again}"
+msgstr "{error}; apoi {again}"
+
+#: src/db.rs:567
+msgid ""
+"the result cache was created by a newer eovae; results are kept in memory "
+"only"
+msgstr ""
+"cache-ul de rezultate a fost creat de o versiune mai nouă a eovae; "
+"rezultatele sunt păstrate doar în memorie"
+
+#: src/db.rs:573
+msgid "the result cache is unavailable ({}); results are kept in memory only"
+msgstr ""
+"cache-ul de rezultate nu este disponibil ({}); rezultatele sunt păstrate "
+"doar în memorie"
+
+#: src/db.rs:679
+msgid "the result cache is disabled"
+msgstr "cache-ul de rezultate este dezactivat"
+
+#: src/db.rs:683 src/db.rs:684
+msgid "the result cache stopped"
+msgstr "cache-ul de rezultate s-a oprit"
+
+#: src/engine.rs:107
+msgid "CPU · {n} thread"
+msgid_plural "CPU · {n} threads"
+msgstr[0] "CPU · {n} fir de execuție"
+msgstr[1] "CPU · {n} fire de execuție"
+msgstr[2] "CPU · {n} de fire de execuție"
+
+#: src/engine.rs:121
+msgid ""
+"this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
+msgstr ""
+"acest ONNX Runtime nu are suport CUDA (folosiți versiunea pentru GPU; "
+"consultați README)"
+
+#: src/lib.rs:91
+msgid ""
+"this eovae build has no ONNX Runtime support (built without the `onnx` "
+"feature)"
+msgstr ""
+"această compilare eovae nu are suport ONNX Runtime (compilată fără "
+"funcționalitatea `onnx`)"
+
+#: src/lib.rs:96
+msgid "no inference runtime in this build"
+msgstr "această compilare nu are un runtime de inferență"
+
+#. Translators: an error: the operation was cancelled
+#: src/message.rs:57
+msgid "cancelled"
+msgstr "anulat"
+
+#: src/model.rs:160
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles as the model "
+"declares."
+msgstr ""
+"Dimensiunea intrării este dinamică; se analizează dale de {size}×{size}, așa "
+"cum declară modelul."
+
+#: src/model.rs:167
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles (declare eovae."
+"tile_size to change)."
+msgstr ""
+"Dimensiunea intrării este dinamică; se analizează dale de {size}×{size} "
+"(declarați eovae.tile_size pentru a o schimba)."
+
+#: src/model.rs:171
+msgid ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgid_plural ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgstr[0] ""
+"Modelul are un lot fix de {n}: dalele sunt analizate câte {n} odată, iar "
+"ultimul lot al fiecărei rulări este completat. Exportați modelul cu o axă de "
+"lot dinamică pentru rulări mici în zona vizibilă."
+msgstr[1] ""
+"Modelul are un lot fix de {n}: dalele sunt analizate câte {n} odată, iar "
+"ultimul lot al fiecărei rulări este completat. Exportați modelul cu o axă de "
+"lot dinamică pentru rulări mici în zona vizibilă."
+msgstr[2] ""
+"Modelul are un lot fix de {n}: dalele sunt analizate câte {n} odată, iar "
+"ultimul lot al fiecărei rulări este completat. Exportați modelul cu o axă de "
+"lot dinamică pentru rulări mici în zona vizibilă."
+
+#: src/model.rs:175
+msgid "Float16 model: inputs are converted from float32."
+msgstr "Model float16: intrările sunt convertite din float32."
+
+#. Translators: "Model" is the sidebar's Model section
+#: src/model.rs:178
+msgid "{n} image output; using '{name}' (change it in the Model section)."
+msgid_plural ""
+"{n} image outputs; using '{name}' (change it in the Model section)."
+msgstr[0] ""
+"{n} ieșire de tip imagine; se folosește „{name}” (o puteți schimba în "
+"secțiunea Model)."
+msgstr[1] ""
+"{n} ieșiri de tip imagine; se folosește „{name}” (o puteți schimba în "
+"secțiunea Model)."
+msgstr[2] ""
+"{n} de ieșiri de tip imagine; se folosește „{name}” (o puteți schimba în "
+"secțiunea Model)."
+
+#: src/model.rs:183
+msgid "Model metadata: {}."
+msgstr "Metadatele modelului: {}."
+
+#. Translators: the sidecar is a model's <model>.eovae.json file
+#: src/model.rs:185
+msgid "Sidecar: {}."
+msgstr "Fișier însoțitor: {}."
+
+#: src/model.rs:187
+msgid "Ignored {}: the sidecar must be a JSON object."
+msgstr "S-a ignorat {}: fișierul însoțitor trebuie să fie un obiect JSON."
+
+#: src/model.rs:191
+msgid "Ignored {file}: {error}."
+msgstr "S-a ignorat {file}: {error}."
+
+#: src/model.rs:196
+msgid ""
+"The model does not declare the resolution it was trained at (eovae.mpp); "
+"errors depend on the level you choose."
+msgstr ""
+"Modelul nu declară rezoluția la care a fost antrenat (eovae.mpp); erorile "
+"depind de nivelul ales."
+
+#. Translators: "Preprocessing" is the sidebar's section of that name
+#: src/model.rs:200
+msgid ""
+"No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check "
+"it in Preprocessing."
+msgstr ""
+"Nu este declarată nicio preprocesare: se folosește cea din HistoVAE ([-1, "
+"1], alfa pe alb). Verificați-o în secțiunea Preprocesare."
+
+#. Translators: about the model's input tensor; the words in
+#. parentheses name its four axes in order and may be translated.
+#: src/model.rs:304
+msgid ""
+"it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
+msgid_plural ""
+"it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
+msgstr[0] ""
+"are {n} dimensiune; un tensor de imagine are 4 (lot, canale, înălțime, "
+"lățime)"
+msgstr[1] ""
+"are {n} dimensiuni; un tensor de imagine are 4 (lot, canale, înălțime, "
+"lățime)"
+msgstr[2] ""
+"are {n} de dimensiuni; un tensor de imagine are 4 (lot, canale, înălțime, "
+"lățime)"
+
+#: src/model.rs:326
+msgid "it has {n} channel; eovae feeds RGB (3 channels)"
+msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
+msgstr[0] "are {n} canal; eovae furnizează RGB (3 canale)"
+msgstr[1] "are {n} canale; eovae furnizează RGB (3 canale)"
+msgstr[2] "are {n} de canale; eovae furnizează RGB (3 canale)"
+
+#: src/model.rs:329
+msgid "its channel dimension is not 3 (RGB)"
+msgstr "dimensiunea canalelor nu este 3 (RGB)"
+
+#: src/model.rs:372
+msgid "the model has no inputs"
+msgstr "modelul nu are intrări"
+
+#: src/model.rs:381
+msgid ""
+"the model needs {n} input ({names}); eovae feeds exactly one image input"
+msgid_plural ""
+"the model needs {n} inputs ({names}); eovae feeds exactly one image input"
+msgstr[0] ""
+"modelul necesită {n} intrare ({names}); eovae furnizează exact o intrare de "
+"tip imagine"
+msgstr[1] ""
+"modelul necesită {n} intrări ({names}); eovae furnizează exact o intrare de "
+"tip imagine"
+msgstr[2] ""
+"modelul necesită {n} de intrări ({names}); eovae furnizează exact o intrare "
+"de tip imagine"
+
+#: src/model.rs:394
+msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
+msgstr ""
+"intrarea „{name}” este de tip {kind}; eovae furnizează float32 sau float16"
+
+#: src/model.rs:403
+msgid "input '{}' does not declare its shape"
+msgstr "intrarea „{}” nu își declară forma"
+
+#: src/model.rs:407
+msgid "input '{name}' is not an image: {error}"
+msgstr "intrarea „{name}” nu este o imagine: {error}"
+
+#: src/model.rs:418
+msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
+msgstr "intrarea „{name}” are {height}×{width}; eovae analizează dale pătrate"
+
+#: src/model.rs:437
+msgid "tiles of {} px are not supported (16–2048)"
+msgstr "dalele de {} px nu sunt acceptate (16–2048)"
+
+#. Translators: an output of the model (its name) that declares no shape
+#: src/model.rs:465
+msgid "{} (no shape)"
+msgstr "{} (fără formă)"
+
+#: src/model.rs:499
+msgid ""
+"the model only encodes (outputs mu and logvar); export the reconstruction "
+"model (HistoVAE: create_onnx --mode reconstruct)"
+msgstr ""
+"modelul doar codifică (produce mu și logvar); exportați modelul de "
+"reconstrucție (HistoVAE: create_onnx --mode reconstruct)"
+
+#: src/model.rs:510
+msgid ""
+"no output is an RGB image matching the input {shape} (outputs: {outputs})"
+msgstr ""
+"nicio ieșire nu este o imagine RGB care să corespundă intrării {shape} "
+"(ieșiri: {outputs})"
+
+#: src/model.rs:666
+msgid "only .onnx models are supported"
+msgstr "sunt acceptate doar modele .onnx"
+
+#: src/model.rs:670
+msgid "{} does not exist"
+msgstr "{} nu există"
+
+#. The detail is technical, and English like a library's.
+#: src/model.rs:676
+msgid "not a valid ONNX model: {}"
+msgstr "nu este un model ONNX valid: {}"
+
+#: src/model.rs:688
+msgid "the model's weights point outside its folder ('{}')"
+msgstr "ponderile modelului indică în afara folderului său („{}”)"
+
+#: src/model.rs:697
+msgid ""
+"the model's weights file '{}' is missing; keep it next to the .onnx file"
+msgstr ""
+"fișierul de ponderi al modelului („{}”) lipsește; păstrați-l lângă fișierul ."
+"onnx"
+
+#: src/ort_backend.rs:153
+msgid "it could not be opened: {}"
+msgstr "nu s-a putut deschide: {}"
+
+#: src/ort_backend.rs:157
+msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
+msgstr "nu este ONNX Runtime (nu are OrtGetApiBase)"
+
+#: src/ort_backend.rs:162
+msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
+msgstr "nu este ONNX Runtime (OrtGetApiBase nu a returnat nimic)"
+
+#: src/ort_backend.rs:177
+msgid "it is ONNX Runtime {version}, older than {oldest}"
+msgstr "este ONNX Runtime {version}, mai vechi decât {oldest}"
+
+#: src/ort_backend.rs:292
+msgid "{path}: opening it crashed ({error})"
+msgstr "{path}: deschiderea a provocat o eroare fatală ({error})"
+
+#: src/ort_backend.rs:318
+msgid "loading it crashed ({})"
+msgstr "încărcarea a provocat o eroare fatală ({})"
+
+#: src/ort_backend.rs:323
+msgid ""
+"ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
+"again."
+msgstr ""
+"ONNX Runtime de la {path} nu a putut fi încărcat: {error}. Reporniți eov "
+"pentru a încerca din nou."
+
+#. Translators: {variable} is an environment variable; "Model →
+#. Runtime" is the Runtime… button in the sidebar's Model section
+#: src/ort_backend.rs:342
+msgid ""
+"ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
+"the library, or choose it under Model → Runtime. Tried: {tried}"
+msgstr ""
+"ONNX Runtime (1.22 sau mai nou) nu a fost găsit. Instalați-l, setați "
+"{variable} la calea bibliotecii sau alegeți-l din Model → Runtime. S-au "
+"încercat: {tried}"
+
+#. Translators: a library that was loaded, as a note after an error
+#: src/ort_backend.rs:381
+msgid "loaded {}"
+msgstr "s-a încărcat {}"
+
+#: src/ort_backend.rs:453
+msgid "building the session took longer than {} s"
+msgstr "crearea sesiunii a durat mai mult de {} s"
+
+#: src/ort_backend.rs:472
+msgid "Building CPU session…"
+msgstr "Se creează sesiunea CPU…"
+
+#: src/ort_backend.rs:473
+msgid "Building CUDA session…"
+msgstr "Se creează sesiunea CUDA…"
+
+#: src/ort_backend.rs:483
+msgid "ONNX Runtime does not see input '{}'"
+msgstr "ONNX Runtime nu vede intrarea „{}”"
+
+#: src/ort_backend.rs:491
+msgid "unknown output '{}'"
+msgstr "ieșire necunoscută: „{}”"
+
+#: src/ort_backend.rs:497
+msgid "ONNX Runtime does not see output '{}'"
+msgstr "ONNX Runtime nu vede ieșirea „{}”"
+
+#: src/ort_backend.rs:553
+msgid "Checking the model…"
+msgstr "Se verifică modelul…"
+
+#: src/ort_backend.rs:554
+msgid "Warming up CUDA…"
+msgstr "Se inițializează CUDA…"
+
+#: src/ort_backend.rs:560
+msgid "test run failed: {}"
+msgstr "rularea de test a eșuat: {}"
+
+#. Translators: the model's output has the wrong size;
+#. {returned} and {expected} are bare numbers of values.
+#: src/ort_backend.rs:569
+#, fuzzy
+#| msgid ""
+#| "the model returned {returned} values for a batch of {n} tile; expected "
+#| "{expected}"
+#| msgid_plural ""
+#| "the model returned {returned} values for a batch of {n} tiles; expected "
+#| "{expected}"
+msgid ""
+"the model returned the wrong number of values for {n} tile: {returned} "
+"instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for {n} tiles: {returned} "
+"instead of {expected}"
+msgstr[0] ""
+"valori returnate de model pentru un lot de {n} dală: {returned}; se așteptau "
+"{expected}"
+msgstr[1] ""
+"valori returnate de model pentru un lot de {n} dale: {returned}; se așteptau "
+"{expected}"
+msgstr[2] ""
+"valori returnate de model pentru un lot de {n} de dale: {returned}; se "
+"așteptau {expected}"
+
+#: src/ort_backend.rs:598
+msgid "Loading ONNX Runtime…"
+msgstr "Se încarcă ONNX Runtime…"
+
+#: src/ort_backend.rs:638
+msgid "CUDA is unavailable: {}"
+msgstr "CUDA nu este disponibil: {}"
+
+#: src/ort_backend.rs:660
+msgid "ONNX Runtime: {}"
+msgstr "ONNX Runtime: {}"
+
+#: src/ort_backend.rs:661
+msgid "ONNX Runtime is loaded with the first model."
+msgstr "ONNX Runtime se încarcă odată cu primul model."
+
+#: src/ort_backend.rs:821
+msgid "the model produced no '{}'"
+msgstr "modelul nu a produs „{}”"
+
+#. Translators: why an analysis failed: the
+#. host (eov) gave {n} bytes of pixel data,
+#. the wrong size for a region of {tile} ×
+#. {tile} pixels.
+#: src/pipeline.rs:317
+msgid "the host returned {n} byte for a {tile}×{tile} region"
+msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/pipeline.rs:335
+msgid "{n} tile could not be read (level {level}); last error: {error}"
+msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
+msgstr[0] ""
+"{n} dală nu a putut fi citită (nivelul {level}); ultima eroare: {error}"
+msgstr[1] ""
+"{n} dale nu au putut fi citite (nivelul {level}); ultima eroare: {error}"
+msgstr[2] ""
+"{n} de dale nu au putut fi citite (nivelul {level}); ultima eroare: {error}"
+
+#. Translators: why an analysis failed: it ended before every
+#. tile was done ({done} of the {total} tiles were).
+#: src/pipeline.rs:440
+msgid "it stopped before every tile was done ({done} of {total})"
+msgstr ""
+
+#: src/pipeline.rs:480
+msgid "inference failed: {}"
+msgstr "inferența a eșuat: {}"
+
+#. Translators: the model's output has the wrong size; {returned}
+#. and {expected} are bare numbers of values.
+#: src/pipeline.rs:492
+#, fuzzy
+#| msgid ""
+#| "the model returned {returned} values for a batch of {n} tile; expected "
+#| "{expected}"
+#| msgid_plural ""
+#| "the model returned {returned} values for a batch of {n} tiles; expected "
+#| "{expected}"
+msgid ""
+"the model returned the wrong number of values for a batch of {n} tile: "
+"{returned} instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for a batch of {n} tiles: "
+"{returned} instead of {expected}"
+msgstr[0] ""
+"valori returnate de model pentru un lot de {n} dală: {returned}; se așteptau "
+"{expected}"
+msgstr[1] ""
+"valori returnate de model pentru un lot de {n} dale: {returned}; se așteptau "
+"{expected}"
+msgstr[2] ""
+"valori returnate de model pentru un lot de {n} de dale: {returned}; se "
+"așteptau {expected}"
+
+#: src/plugin.rs:57
+msgid "VAE reconstruction analysis"
+msgstr "Analiza reconstrucției VAE"
+
+#: src/plugin.rs:61 src/presenter.rs:794
+msgid "VAE tile grid"
+msgstr "Grila de dale VAE"
+
+#: src/plugin.rs:65 src/presenter.rs:790
+msgid "VAE overlay"
+msgstr "Suprapunere VAE"
+
+#: src/plugin.rs:227 src/plugin.rs:239
+msgid "Whole slide"
+msgstr "Toată lama"
+
+#: src/plugin.rs:228 src/plugin.rs:240
+msgid "Viewport"
+msgstr "Zona vizibilă"
+
+#: src/plugin.rs:229 src/plugin.rs:241
+msgid "Region of interest"
+msgstr "Regiune de interes"
+
+#: src/plugin.rs:230
+msgid "Visible tiles"
+msgstr "Dale vizibile"
+
+#: src/plugin.rs:242
+msgid "Automatic analysis"
+msgstr "Analiză automată"
+
+#: src/plugin.rs:516
+msgid "Load an ONNX model first."
+msgstr "Încărcați mai întâi un model ONNX."
+
+#: src/plugin.rs:517
+msgid "The model is still loading."
+msgstr "Modelul încă se încarcă."
+
+#: src/plugin.rs:518
+msgid "The model could not be loaded: {}"
+msgstr "Modelul nu a putut fi încărcat: {}"
+
+#: src/plugin.rs:519
+msgid "Preparing the inference engine…"
+msgstr "Se pregătește motorul de inferență…"
+
+#. Translators: eovae is working out which slide file this is (its
+#. content fingerprint), to find its stored results; it does not
+#. identify a patient.
+#: src/plugin.rs:524
+msgid "Identifying the slide…"
+msgstr "Se identifică lama…"
+
+#: src/plugin.rs:525
+msgid "The slide reports no pyramid levels."
+msgstr "Lama nu raportează niciun nivel al piramidei."
+
+#: src/plugin.rs:526
+msgid "The slide is not open."
+msgstr "Lama nu este deschisă."
+
+#. Translators: eovae is this plugin's name; {} says why, in English
+#: src/plugin.rs:753
+msgid "eovae settings were unreadable and were reset ({})"
+msgstr ""
+
+#. Translators: the title of an error notification; eovae is
+#. this plugin's name
+#: src/plugin.rs:804
+#, fuzzy
+#| msgid "the inference engine failed unexpectedly"
+msgid "An eovae worker thread failed unexpectedly"
+msgstr "motorul de inferență a eșuat în mod neașteptat"
+
+#: src/plugin.rs:1120
+msgid ""
+"This eov cannot show layers in some panes only: every pane of a slide shows "
+"the same VAE overlay."
+msgstr ""
+
+#: src/plugin.rs:1260
+msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
+msgstr ""
+"Încărcați un model ONNX în bara laterală VAE pentru a analiza această lamă."
+
+#: src/plugin.rs:1305
+msgid "VAE analysis"
+msgstr "Analiză VAE"
+
+#: src/plugin.rs:1351
+msgid ""
+"The ONNX Runtime library is used from the next start of eov if a runtime is "
+"already loaded."
+msgstr ""
+"Dacă un runtime este deja încărcat, biblioteca ONNX Runtime va fi folosită "
+"de la următoarea pornire a eov."
+
+#: src/plugin.rs:1378
+msgid "The VAE result cache was cleared."
+msgstr "Cache-ul de rezultate VAE a fost golit."
+
+#: src/plugin.rs:1382
+msgid "Could not clear the VAE result cache"
+msgstr "Nu s-a putut goli cache-ul de rezultate VAE"
+
+#: src/plugin.rs:1411
+msgid "the model file could not be read"
+msgstr "fișierul modelului nu a putut fi citit"
+
+#: src/plugin.rs:1440
+msgid "The VAE model could not be loaded"
+msgstr "Modelul VAE nu a putut fi încărcat"
+
+#. Translators: "Load ONNX…" is the sidebar's button of that name
+#: src/plugin.rs:1496
+msgid "This eov cannot download models: load the model file with Load ONNX…"
+msgstr ""
+"Această versiune eov nu poate descărca modele: încărcați fișierul modelului "
+"cu „Încarcă ONNX…”"
+
+#: src/plugin.rs:1620
+msgid "the inference engine failed unexpectedly"
+msgstr "motorul de inferență a eșuat în mod neașteptat"
+
+#: src/plugin.rs:1666
+msgid "VAE inference runs on the CPU: {}"
+msgstr "Inferența VAE rulează pe CPU: {}"
+
+#: src/plugin.rs:1673
+msgid "The VAE model cannot run"
+msgstr "Modelul VAE nu poate rula"
+
+#: src/plugin.rs:1754
+msgid "Starting…"
+msgstr "Se pornește…"
+
+#: src/plugin.rs:1810
+msgid "Preparing the model…"
+msgstr "Se pregătește modelul…"
+
+#: src/plugin.rs:1865
+msgid "Draw a region of interest on the slide first."
+msgstr "Desenați mai întâi o regiune de interes pe lamă."
+
+#: src/plugin.rs:1884
+msgid "The slide is not shown in a pane."
+msgstr "Lama nu este afișată în niciun panou."
+
+#: src/plugin.rs:1939
+msgid "VAE: whole slide"
+msgstr "VAE: toată lama"
+
+#: src/plugin.rs:1940
+msgid "VAE: region of interest"
+msgstr "VAE: regiune de interes"
+
+#: src/plugin.rs:1941
+msgid "VAE: viewport"
+msgstr "VAE: zona vizibilă"
+
+#: src/plugin.rs:1951
+msgid "Analysing on {}"
+msgstr "Se analizează pe {}"
+
+#: src/plugin.rs:1983
+msgid "internal error while analysing tiles"
+msgstr "eroare internă la analizarea dalelor"
+
+#: src/plugin.rs:2031
+msgid "internal error: {}"
+msgstr "eroare internă: {}"
+
+#: src/plugin.rs:2069
+msgid "VAE analysis failed"
+msgstr "Analiza VAE a eșuat"
+
+#: src/plugin.rs:2097
+msgid "Nothing to export"
+msgstr "Nimic de exportat"
+
+#: src/plugin.rs:2156
+msgid "Exported {n} tile to {file}"
+msgid_plural "Exported {n} tiles to {file}"
+msgstr[0] "S-a exportat {n} dală în {file}"
+msgstr[1] "S-au exportat {n} dale în {file}"
+msgstr[2] "S-au exportat {n} de dale în {file}"
+
+#: src/plugin.rs:2162
+msgid "The export failed"
+msgstr "Exportul a eșuat"
+
+#. Translators: eovae is this plugin's name; {} is eov's reason, in English
+#: src/plugin.rs:2180
+#, fuzzy
+#| msgid "The model could not be loaded: {}"
+msgid "eovae settings could not be saved: {}"
+msgstr "Modelul nu a putut fi încărcat: {}"
+
+#. Translators: a duration in seconds
+#: src/plugin.rs:2232
+msgid "{} s"
+msgstr "{} s"
+
+#. Translators: a duration in minutes and seconds, e.g. "3m 05s"
+#: src/plugin.rs:2235
+msgid "{minutes}m {seconds}s"
+msgstr "{minutes} min {seconds} s"
+
+#. Translators: a duration in hours and minutes, e.g. "1h 02m"
+#: src/plugin.rs:2241
+msgid "{hours}h {minutes}m"
+msgstr "{hours} h {minutes} min"
+
+#: src/plugin.rs:2252
+msgid "about {} left"
+msgstr "încă aproximativ {}"
+
+#: src/plugin.rs:2260
+msgid "{analysed} analysed"
+msgstr "analizate: {analysed}"
+
+#: src/plugin.rs:2262
+msgid "{analysed} analysed, {background} background"
+msgstr "analizate: {analysed}, fundal: {background}"
+
+#: src/plugin.rs:2267
+msgid "{analysed} analysed, {unreadable} unreadable"
+msgstr "analizate: {analysed}, ilizibile: {unreadable}"
+
+#: src/plugin.rs:2272
+msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
+msgstr "analizate: {analysed}, fundal: {background}, ilizibile: {unreadable}"
+
+#. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
+#: src/plugin.rs:2301
+msgid "{what}: everything was already analysed."
+msgstr "{what}: totul era deja analizat."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2305
+#, fuzzy
+#| msgid "{what} finished in {duration}: {counts}."
+msgid "Whole slide finished in {duration}: {counts}."
+msgstr "{what}: finalizat în {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2311
+#, fuzzy
+#| msgid "{what} finished in {duration}: {counts}."
+msgid "Viewport finished in {duration}: {counts}."
+msgstr "{what}: finalizat în {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2317
+#, fuzzy
+#| msgid "{what} finished in {duration}: {counts}."
+msgid "Region of interest finished in {duration}: {counts}."
+msgstr "{what}: finalizat în {duration} ({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2323
+#, fuzzy
+#| msgid "{what} finished in {duration}: {counts}."
+msgid "Automatic analysis finished in {duration}: {counts}."
+msgstr "{what}: finalizat în {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2329
+#, fuzzy
+#| msgid "{what} cancelled after {duration}: {counts}."
+msgid "Whole slide cancelled after {duration}: {counts}."
+msgstr "{what}: anulat după {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2335
+#, fuzzy
+#| msgid "{what} cancelled after {duration}: {counts}."
+msgid "Viewport cancelled after {duration}: {counts}."
+msgstr "{what}: anulat după {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2341
+#, fuzzy
+#| msgid "{what} cancelled after {duration}: {counts}."
+msgid "Region of interest cancelled after {duration}: {counts}."
+msgstr "{what}: anulat după {duration} ({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2347
+#, fuzzy
+#| msgid "{what} cancelled after {duration}: {counts}."
+msgid "Automatic analysis cancelled after {duration}: {counts}."
+msgstr "{what}: anulat după {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2353
+#, fuzzy
+#| msgid "{what} failed ({counts}): {error}"
+msgid "Whole slide failed ({counts}): {error}"
+msgstr "{what}: eșuat ({counts}): {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2357
+#, fuzzy
+#| msgid "{what} failed ({counts}): {error}"
+msgid "Viewport failed ({counts}): {error}"
+msgstr "{what}: eșuat ({counts}): {error}"
+
+#. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2362
+#, fuzzy
+#| msgid "{what} failed ({counts}): {error}"
+msgid "Region of interest failed ({counts}): {error}"
+msgstr "{what}: eșuat ({counts}): {error}"
+
+#. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2370
+#, fuzzy
+#| msgid "{what} failed ({counts}): {error}"
+msgid "Automatic analysis failed ({counts}): {error}"
+msgstr "{what}: eșuat ({counts}): {error}"
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
+#: src/plugin.rs:2377
+#, fuzzy
+#| msgid "{what} failed: {error}"
+msgid "Whole slide failed: {error}"
+msgstr "{what}: eșuat: {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
+#: src/plugin.rs:2381
+#, fuzzy
+#| msgid "{what} failed: {error}"
+msgid "Viewport failed: {error}"
+msgstr "{what}: eșuat: {error}"
+
+#. Translators: the analysis of the region of interest failed; {error}: why
+#: src/plugin.rs:2385
+#, fuzzy
+#| msgid "Region of interest"
+msgid "Region of interest failed: {error}"
+msgstr "Regiune de interes"
+
+#. Translators: {error}: why
+#: src/plugin.rs:2389
+#, fuzzy
+#| msgid "Automatic analysis"
+msgid "Automatic analysis failed: {error}"
+msgstr "Analiză automată"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave an image of another size than asked for, in
+#. pixels.
+#: src/plugin.rs:2417
+msgid ""
+"the host returned {width}×{height} for a {asked_width}×{asked_height} region"
+msgstr ""
+
+#. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
+#: src/plugin.rs:2493
+msgid "{done} of {n} tile"
+msgid_plural "{done} of {n} tiles"
+msgstr[0] "{done} din {n} dală"
+msgstr[1] "{done} din {n} dale"
+msgstr[2] "{done} din {n} de dale"
+
+#. Translators: {eta} is the time left, e.g. "about 2m 05s left"
+#: src/plugin.rs:2499
+msgid "{done} of {n} tile, {eta}"
+msgid_plural "{done} of {n} tiles, {eta}"
+msgstr[0] "{done} din {n} dală, {eta}"
+msgstr[1] "{done} din {n} dale, {eta}"
+msgstr[2] "{done} din {n} de dale, {eta}"
+
+#. Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
+#: src/presenter.rs:381
+msgid "VAE {done} / {n} tile"
+msgid_plural "VAE {done} / {n} tiles"
+msgstr[0] "VAE {done} / {n} dală"
+msgstr[1] "VAE {done} / {n} dale"
+msgstr[2] "VAE {done} / {n} de dale"
+
+#. Translators: the status bar: how the inference engine is being prepared
+#: src/presenter.rs:385 src/presenter.rs:387
+msgid "VAE: {}"
+msgstr "VAE: {}"
+
+#: src/presenter.rs:781
+msgid "VAE error map"
+msgstr "Harta erorilor VAE"
+
+#. Translators: the outline of the region under the pointer
+#: src/presenter.rs:786
+msgid "VAE highlight"
+msgstr "Evidențiere VAE"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for
+#. rows of a region of {width} × {height} pixels.
+#: src/resample.rs:129
+msgid "the host returned {n} byte for rows of a {width}×{height} region"
+msgid_plural ""
+"the host returned {n} bytes for rows of a {width}×{height} region"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for a
+#. region of {width} × {height} pixels.
+#: src/resample.rs:216
+msgid "the host returned {n} byte for a {width}×{height} region"
+msgid_plural "the host returned {n} bytes for a {width}×{height} region"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu)
+#: src/sidebar.rs:35
+msgid ""
+"This eov does not report its display adjustments: reconstructions are shown "
+"without them, so reset gamma, contrast and stain normalisation before "
+"comparing Original and Reconstruction."
+msgstr ""
+"Această versiune eov nu raportează ajustările de afișare: reconstrucțiile "
+"sunt afișate fără ele, așa că resetați gamma, contrastul și normalizarea "
+"colorației înainte de a compara „Original” și „Reconstrucție”."
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu); {} names the stain processing
+#: src/sidebar.rs:43
+msgid ""
+"Reconstructions get this pane's gamma, brightness, contrast and sharpening, "
+"but not its stain processing ({}): turn that off before comparing Original "
+"and Reconstruction."
+msgstr ""
+"Reconstrucțiile preiau gamma, luminozitatea, contrastul și accentuarea "
+"clarității acestui panou, dar nu și procesarea colorației ({}): dezactivați-"
+"o înainte de a compara „Original” și „Reconstrucție”."
+
+#: src/sidebar.rs:50
+msgid ""
+"Reconstructions are shown with this pane's display adjustments, like the "
+"slide."
+msgstr ""
+"Reconstrucțiile sunt afișate cu ajustările de afișare ale acestui panou, la "
+"fel ca lama."
+
+#: src/sidebar.rs:58
+msgid ""
+"Errors are measured on the slide's own pixels; display adjustments do not "
+"change them."
+msgstr ""
+"Erorile sunt măsurate pe pixelii proprii ai lamei; ajustările de afișare nu "
+"le modifică."
+
+#. Translators: {} is the method's name: Macenko or Vahadane
+#: src/sidebar.rs:90
+msgid "{} normalisation"
+msgstr "normalizare {}"
+
+#: src/sidebar.rs:163
+msgid "Download the reference model"
+msgstr "Descarcă modelul de referință"
+
+#: src/sidebar.rs:164
+msgid "Use the reference model"
+msgstr "Folosește modelul de referință"
+
+#: src/sidebar.rs:165
+msgid "Download your site's model"
+msgstr "Descarcă modelul instituției"
+
+#: src/sidebar.rs:166
+msgid "Use your site's model"
+msgstr "Folosește modelul instituției"
+
+#. Translators: {} is the start of the model's SHA-256 checksum
+#: src/sidebar.rs:171
+msgid "Your site's model (SHA-256 {}…)"
+msgstr "Modelul instituției (SHA-256 {}…)"
+
+#. Translators: eov first asks the user whether to download the model
+#. (nothing is downloaded without that answer), then downloads it.
+#: src/sidebar.rs:182
+#, fuzzy
+#| msgid "eov is asking you, or downloading it (see the status bar)…"
+msgid ""
+"eov is asking you whether to download the model, or downloading it (see the "
+"status bar)…"
+msgstr ""
+"eov vă cere confirmarea sau descarcă modelul (consultați bara de stare)…"
+
+#. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
+#: src/sidebar.rs:188
+msgid "{} is in eov's model store."
+msgstr "{} se află în depozitul de modele eov."
+
+#. Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
+#: src/sidebar.rs:193
+msgid "{what}, from {server}."
+msgstr "{what}, de pe {server}."
+
+#. Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
+#: src/sidebar.rs:202
+msgid ""
+"{}: from your site's copy. Set its address (Address…), unless your "
+"administrator has given it to eov."
+msgstr ""
+"{}: din copia instituției. Setați adresa acesteia („Adresă…”), cu excepția "
+"cazului în care administratorul dvs. a configurat-o deja în eov."
+
+#. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
+#: src/sidebar.rs:260
+msgid "Changed by you (model declares: {})"
+msgstr "Modificat de dvs. (modelul declară: {})"
+
+#: src/sidebar.rs:263
+msgid "From HistoVAE defaults"
+msgstr "Din valorile implicite HistoVAE"
+
+#: src/sidebar.rs:264
+msgid "From built-in model card"
+msgstr "Din fișa de model integrată"
+
+#: src/sidebar.rs:265
+msgid "From model metadata"
+msgstr "Din metadatele modelului"
+
+#. Translators: the sidecar is the model's <model>.eovae.json file
+#: src/sidebar.rs:267
+msgid "From sidecar file"
+msgstr "Din fișierul însoțitor"
+
+#: src/sidebar.rs:289
+msgid "No model loaded."
+msgstr "Niciun model încărcat."
+
+#: src/sidebar.rs:295
+msgid "Reading and hashing the model…"
+msgstr "Se citește modelul și se calculează suma de control…"
+
+#: src/sidebar.rs:348
+msgid "CUDA unavailable: {}"
+msgstr "CUDA indisponibil: {}"
+
+#. Translators: the model's fixed batch size (tiles per inference run)
+#: src/sidebar.rs:374
+msgid "batch {}"
+msgstr "lot {}"
+
+#. Translators: the model takes any number of tiles per inference run
+#: src/sidebar.rs:376
+msgid "dynamic batch"
+msgstr "lot dinamic"
+
+#: src/sidebar.rs:423
+msgid "Embeddings from '{name}' ({n} value) are stored with results."
+msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
+msgstr[0] ""
+"Embedding-urile din „{name}” ({n} valoare) sunt stocate împreună cu "
+"rezultatele."
+msgstr[1] ""
+"Embedding-urile din „{name}” ({n} valori) sunt stocate împreună cu "
+"rezultatele."
+msgstr[2] ""
+"Embedding-urile din „{name}” ({n} de valori) sunt stocate împreună cu "
+"rezultatele."
+
+#. Translators: the Threads field's hint: keep "auto", the word typed there
+#: src/sidebar.rs:503
+msgid "1–{}, or auto"
+msgstr "1–{} sau auto"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:527
+msgid "Auto: the model's {mpp}, resampled from level {level}"
+msgstr "Auto: rezoluția modelului ({mpp}), reeșantionată de la nivelul {level}"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:533
+msgid "Auto: the model's {mpp} = level {level}"
+msgstr "Auto: rezoluția modelului ({mpp}) = nivelul {level}"
+
+#. Translators: a resolution choice
+#: src/sidebar.rs:538
+msgid "Auto (level 0)"
+msgstr "Auto (nivelul 0)"
+
+#. Translators: a level of the slide's pyramid, in the resolution choices
+#: src/sidebar.rs:548
+msgid "Level {}"
+msgstr "Nivelul {}"
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:574
+#, fuzzy
+#| msgid ""
+#| "The slide's finest level is {level}, coarser than the model's {model}: "
+#| "tiles are interpolated and errors will be inflated."
+msgid ""
+"The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
+"are interpolated and errors will be inflated."
+msgstr ""
+"Cel mai fin nivel al lamei are {level}, o rezoluție mai grosieră decât cea a "
+"modelului ({model}): dalele sunt interpolate, iar erorile vor fi "
+"supraestimate."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:583
+msgid ""
+"Level {level} is {mpp} but the model was trained at {model}; errors will be "
+"inflated."
+msgstr ""
+"Nivelul {level} are {mpp}, dar modelul a fost antrenat la {model}; erorile "
+"vor fi supraestimate."
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:593
+msgid ""
+"Tiles are read from level {level} ({mpp}) and resampled to the model's "
+"{model}."
+msgstr ""
+"Dalele sunt citite de la nivelul {level} ({mpp}) și reeșantionate la "
+"rezoluția modelului ({model})."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:604
+msgid "Level {level} at {mpp} (model {model})."
+msgstr "Nivelul {level}, la {mpp} (modelul: {model})."
+
+#. Translators: {mpp} is a resolution like "0.23 µm/px"
+#: src/sidebar.rs:611
+msgid "Level {level} at {mpp}."
+msgstr "Nivelul {level}, la {mpp}."
+
+#: src/sidebar.rs:616
+msgid "Level {} (the slide is not calibrated)."
+msgstr "Nivelul {} (lama nu este calibrată)."
+
+#: src/sidebar.rs:629 src/sidebar.rs:886
+msgid "Open a slide."
+msgstr "Deschideți o lamă."
+
+#: src/sidebar.rs:651
+msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
+msgid_plural ""
+"{done} of {n} tiles · {background} background · {unreadable} unreadable"
+msgstr[0] ""
+"{done} din {n} dală · fundal: {background} · ilizibile: {unreadable}"
+msgstr[1] ""
+"{done} din {n} dale · fundal: {background} · ilizibile: {unreadable}"
+msgstr[2] ""
+"{done} din {n} de dale · fundal: {background} · ilizibile: {unreadable}"
+
+#. Translators: Viewport and Whole slide are the buttons of the same names
+#: src/sidebar.rs:699
+msgid ""
+"Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
+"Whole slide."
+msgid_plural ""
+"Zoom in to analyse automatically ({n} tiles visible), or run Viewport or "
+"Whole slide."
+msgstr[0] ""
+"Măriți pentru analiza automată ({n} dală vizibilă) sau rulați „Zona "
+"vizibilă” ori „Toată lama”."
+msgstr[1] ""
+"Măriți pentru analiza automată ({n} dale vizibile) sau rulați „Zona "
+"vizibilă” ori „Toată lama”."
+msgstr[2] ""
+"Măriți pentru analiza automată ({n} de dale vizibile) sau rulați „Zona "
+"vizibilă” ori „Toată lama”."
+
+#: src/sidebar.rs:748
+msgid ""
+"{n} tissue tile scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgid_plural ""
+"{n} tissue tiles scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgstr[0] ""
+"{n} dală de țesut evaluată, fundal: {background}, ilizibile: {unreadable} — "
+"{percent}% din dalele de la nivelul {level} (total: {total})."
+msgstr[1] ""
+"{n} dale de țesut evaluate, fundal: {background}, ilizibile: {unreadable} — "
+"{percent}% din dalele de la nivelul {level} (total: {total})."
+msgstr[2] ""
+"{n} de dale de țesut evaluate, fundal: {background}, ilizibile: {unreadable} "
+"— {percent}% din dalele de la nivelul {level} (total: {total})."
+
+#. Translators: MAE is the mean absolute error; p95 the 95th percentile
+#: src/sidebar.rs:768
+msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
+msgstr "MAE pe dală: medie {mean} · mediană {median} · p95 {p95} · max. {max}"
+
+#. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
+#: src/sidebar.rs:788
+msgid "{lo}–{hi}: {n} tile"
+msgid_plural "{lo}–{hi}: {n} tiles"
+msgstr[0] "{lo}–{hi}: {n} dală"
+msgstr[1] "{lo}–{hi}: {n} dale"
+msgstr[2] "{lo}–{hi}: {n} de dale"
+
+#. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
+#: src/sidebar.rs:845
+msgid "MAE {mae} · max {max}"
+msgstr "MAE {mae} · max. {max}"
+
+#. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
+#: src/sidebar.rs:859
+msgid "Tile MAE (p05–p95)"
+msgstr "MAE pe dală (p05–p95)"
+
+#: src/sidebar.rs:866
+msgid "Pixel error"
+msgstr "Eroare pe pixel"
+
+#: src/sidebar.rs:885
+msgid "Nothing analysed on this slide with these settings yet."
+msgstr "Încă nu s-a analizat nimic pe această lamă cu aceste setări."
+
+#. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
+#: src/sidebar.rs:913
+msgid "{used} of {budget} on disk · {n} run"
+msgid_plural "{used} of {budget} on disk · {n} runs"
+msgstr[0] "{used} din {budget} pe disc · {n} rulare"
+msgstr[1] "{used} din {budget} pe disc · {n} rulări"
+msgstr[2] "{used} din {budget} pe disc · {n} de rulări"
+
+#: src/sidebar.rs:919
+msgid "Disk cache disabled"
+msgstr "Cache-ul pe disc este dezactivat"
+
+#: src/sidebar.rs:927
+msgid "Tile pixels in memory: {used} of {limit}"
+msgstr "Pixeli de dale în memorie: {used} din {limit}"
+
+#: src/sidebar.rs:995
+msgid "Open an ONNX model"
+msgstr "Deschide un model ONNX"
+
+#: src/sidebar.rs:997
+msgid "ONNX models"
+msgstr "Modele ONNX"
+
+#: src/sidebar.rs:1024
+msgid "Choose the ONNX Runtime library"
+msgstr "Alege biblioteca ONNX Runtime"
+
+#: src/sidebar.rs:1272
+msgid "Open a slide first."
+msgstr "Deschideți mai întâi o lamă."
+
+#: src/sidebar.rs:1366
+msgid "Export tile scores"
+msgstr "Exportă scorurile dalelor"
+
+#: src/sidebar.rs:1383
+msgid "Clear the VAE result cache?"
+msgstr "Goliți cache-ul de rezultate VAE?"
+
+#. Translators: {} is a size, e.g. "120 MB"
+#: src/sidebar.rs:1386
+msgid ""
+"This deletes {} of stored results for every slide. Results are recomputed "
+"when needed."
+msgstr ""
+"Se vor șterge rezultatele stocate pentru toate lamele ({}). Rezultatele se "
+"recalculează la nevoie."
+
+#: src/sidebar.rs:1389
+msgid "Clear"
+msgstr "Golește"
+
+#: src/sidebar.rs:1390
+msgid "Cancel"
+msgstr "Anulează"
+
+#: ui/eovae-sidebar.slint:201
+msgctxt "EovaeSidebar"
+msgid "No model loaded."
+msgstr "Niciun model încărcat."
+
+#: ui/eovae-sidebar.slint:221
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "Medie/abatere standard ImageNet"
+
+#. Translators: inference device: CUDA when it works, else the CPU
+#: ui/eovae-sidebar.slint:230
+msgctxt "Device"
+msgid "Auto"
+msgstr "Auto"
+
+#: ui/eovae-sidebar.slint:232
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "Auto"
+
+#: ui/eovae-sidebar.slint:258
+msgctxt "Overlay"
+msgid "Original"
+msgstr "Original"
+
+#: ui/eovae-sidebar.slint:259
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "Reconstrucție"
+
+#: ui/eovae-sidebar.slint:260
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "Harta erorilor"
+
+#: ui/eovae-sidebar.slint:261
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "Diferență"
+
+#. Translators: the sidebar's section about the ONNX model
+#: ui/eovae-sidebar.slint:333
+msgctxt "EovaeSidebar"
+msgid "Model"
+msgstr "Model"
+
+#: ui/eovae-sidebar.slint:347
+msgctxt "EovaeSidebar"
+msgid "No model"
+msgstr "Niciun model"
+
+#. Translators: {} is the inference device, e.g. CPU · 8 threads
+#: ui/eovae-sidebar.slint:362
+msgctxt "EovaeSidebar"
+msgid "Running on {}"
+msgstr "Rulează pe {}"
+
+#: ui/eovae-sidebar.slint:369
+msgctxt "EovaeSidebar"
+msgid "Load ONNX…"
+msgstr "Încarcă ONNX…"
+
+#. Translators: unloads the model
+#: ui/eovae-sidebar.slint:378
+msgctxt "EovaeSidebar"
+msgid "Clear"
+msgstr "Elimină"
+
+#. Translators: chooses the ONNX Runtime library
+#: ui/eovae-sidebar.slint:385
+msgctxt "EovaeSidebar"
+msgid "Runtime…"
+msgstr "Runtime…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Address…"
+msgstr "Adresă…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Hide address"
+msgstr "Ascunde adresa"
+
+#: ui/eovae-sidebar.slint:423
+msgctxt "EovaeSidebar"
+msgid ""
+"Your site's copy of the model (the .onnx file; the reference model's .onnx."
+"data comes from the same folder):"
+msgstr ""
+"Copia modelului găzduită de instituția dvs. (fișierul .onnx; fișierul .onnx."
+"data al modelului de referință se descarcă din același folder):"
+
+#: ui/eovae-sidebar.slint:438
+msgctxt "EovaeSidebar"
+msgid ""
+"SHA-256 of your own model at that address (empty: the reference model, "
+"checked against the SHA-256 eovae knows):"
+msgstr ""
+"Suma SHA-256 a propriului model de la acea adresă (gol: modelul de "
+"referință, verificat pe baza sumei SHA-256 cunoscute de eovae):"
+
+#: ui/eovae-sidebar.slint:443
+msgctxt "EovaeSidebar"
+msgid "64 hex digits"
+msgstr "64 de cifre hexazecimale"
+
+#. Translators: {} is the model's input: name · type · shape
+#: ui/eovae-sidebar.slint:458
+msgctxt "EovaeSidebar"
+msgid "Input: {}"
+msgstr "Intrare: {}"
+
+#. Translators: the model's output the sidebar reads
+#: ui/eovae-sidebar.slint:462
+msgctxt "EovaeSidebar"
+msgid "Output"
+msgstr "Ieșire"
+
+#: ui/eovae-sidebar.slint:484
+msgctxt "EovaeSidebar"
+msgid "Preprocessing"
+msgstr "Preprocesare"
+
+#: ui/eovae-sidebar.slint:494
+msgctxt "EovaeSidebar"
+msgid "Input range"
+msgstr "Interval de intrare"
+
+#: ui/eovae-sidebar.slint:506
+msgctxt "EovaeSidebar"
+msgid "Output range"
+msgstr "Interval de ieșire"
+
+#: ui/eovae-sidebar.slint:518
+msgctxt "EovaeSidebar"
+msgid "Composite transparency onto white"
+msgstr "Compune transparența pe fond alb"
+
+#: ui/eovae-sidebar.slint:524
+msgctxt "EovaeSidebar"
+msgid "Turn near-black pixels white"
+msgstr "Transformă pixelii aproape negri în albi"
+
+#: ui/eovae-sidebar.slint:532
+msgctxt "EovaeSidebar"
+msgid "Use the model's preprocessing"
+msgstr "Folosește preprocesarea modelului"
+
+#: ui/eovae-sidebar.slint:544
+msgctxt "EovaeSidebar"
+msgid "Analysis"
+msgstr "Analiză"
+
+#. Translators: the inference device (CPU or CUDA)
+#: ui/eovae-sidebar.slint:559
+msgctxt "EovaeSidebar"
+msgid "Device"
+msgstr "Dispozitiv"
+
+#. Translators: the pyramid level tiles are read from
+#: ui/eovae-sidebar.slint:572
+msgctxt "EovaeSidebar"
+msgid "Resolution"
+msgstr "Rezoluție"
+
+#. Translators: CPU inference threads
+#: ui/eovae-sidebar.slint:590
+msgctxt "EovaeSidebar"
+msgid "Threads"
+msgstr "Fire de execuție"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch"
+msgstr "Lot"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch (model)"
+msgstr "Lot (model)"
+
+#. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
+#. (CUDA); the computed errors change slightly.
+#: ui/eovae-sidebar.slint:622
+#, fuzzy
+#| msgctxt "EovaeSidebar"
+#| msgid "Allow TF32 on CUDA (faster)"
+msgctxt "EovaeSidebar"
+msgid "Allow TF32 on CUDA (faster, less precise)"
+msgstr "Permite TF32 pe CUDA (mai rapid)"
+
+#: ui/eovae-sidebar.slint:628
+msgctxt "EovaeSidebar"
+msgid "Skip background tiles"
+msgstr "Omite dalele de fundal"
+
+#: ui/eovae-sidebar.slint:634
+msgctxt "EovaeSidebar"
+msgid "Analyse visible tiles automatically"
+msgstr "Analizează automat dalele vizibile"
+
+#. Translators: analyses the visible part of the slide
+#: ui/eovae-sidebar.slint:645
+msgctxt "EovaeSidebar"
+msgid "Viewport"
+msgstr "Zona vizibilă"
+
+#. Translators: analyses the region of interest drawn on the slide
+#: ui/eovae-sidebar.slint:655
+msgctxt "EovaeSidebar"
+msgid "ROI"
+msgstr "ROI"
+
+#: ui/eovae-sidebar.slint:664
+msgctxt "EovaeSidebar"
+msgid "Whole slide"
+msgstr "Toată lama"
+
+#. Translators: stops the running analysis
+#: ui/eovae-sidebar.slint:674
+msgctxt "EovaeSidebar"
+msgid "Cancel"
+msgstr "Anulează"
+
+#: ui/eovae-sidebar.slint:722
+msgctxt "EovaeSidebar"
+msgid "Results"
+msgstr "Rezultate"
+
+#. Translators: what the overlay shows: Original, Reconstruction, …
+#: ui/eovae-sidebar.slint:737
+msgctxt "EovaeSidebar"
+msgid "Overlay"
+msgstr "Suprapunere"
+
+#: ui/eovae-sidebar.slint:824
+msgctxt "EovaeSidebar"
+msgid "Highest-error regions"
+msgstr "Regiunile cu eroarea cea mai mare"
+
+#: ui/eovae-sidebar.slint:840
+msgctxt "EovaeSidebar"
+msgid "Export CSV…"
+msgstr "Exportă CSV…"
+
+#. Translators: the intended use: keep its meaning exactly
+#: ui/eovae-sidebar.slint:848
+msgctxt "EovaeSidebar"
+msgid "Research use only; not for diagnosis."
+msgstr "Numai pentru uz în cercetare; nu este destinat diagnosticului."
+
+#. Translators: the section about eovae's stored results
+#: ui/eovae-sidebar.slint:856
+msgctxt "EovaeSidebar"
+msgid "Cache"
+msgstr "Cache"
+
+#: ui/eovae-sidebar.slint:874
+msgctxt "EovaeSidebar"
+msgid "Keep reconstructions on disk (large)"
+msgstr "Păstrează reconstrucțiile pe disc (ocupă mult spațiu)"
+
+#: ui/eovae-sidebar.slint:883
+msgctxt "EovaeSidebar"
+msgid "Clear cache…"
+msgstr "Golește cache-ul…"

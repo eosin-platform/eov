@@ -1,0 +1,292 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Tutkimus- ja opetuskäyttöön. Ei ole lääkinnällinen laite; ei saa käyttää primaaridiagnostiikkaan.	Safety text: translate in full, never shorten or soften.
+research use only (RUO)	vain tutkimuskäyttöön (RUO)	The phrase printed on RUO reagents in Finland.
+not for diagnosis	ei diagnostiikkaan; ei saa käyttää diagnostiikkaan	Keep the prohibition explicit.
+medical device	lääkinnällinen laite	EU MDR/IVDR term.
+primary diagnosis	primaaridiagnostiikka	"not for primary diagnosis" = ei saa käyttää primaaridiagnostiikkaan.
+synthetic (image, channel, stain)	synteettinen, laskennallisesti tuotettu	Pixels computed by an algorithm. Never "keinotekoinen", "väärennetty" or "simuloitu".
+predicted	ennustettu	PREDICTED (label) = ENNUSTETTU.
+generated	tuotettu, laskennallisesti tuotettu	Avoid "generoitu" in running text.
+slide	näytelasi	The glass slide and its scan. Never "dia", never "lasi" alone. Genitive näytelasin, partitive näytelasia, plural näytelasit.
+whole-slide image (WSI)	kokolasikuva (WSI)	Keep the abbreviation: WSI-tiedostot, WSI-työkalut.
+whole-slide image viewer	kokolasikuvien katseluohjelma	
+slide viewer, viewer	katseluohjelma	
+tab	välilehti	
+pane	ruutu	A side-by-side viewing area (Microsoft: pane = ruutu). Split Right = Jaa oikealle.
+view	näkymä	
+viewport	katselualue	The area of a pane where the slide is drawn.
+minimap	pienoiskartta	
+scale bar	mittajana	As in Finnish figure legends ("mittajana 50 µm").
+HUD	paneeli (päällyspaneeli)	metadata HUD = metatietopaneeli.
+overlay panel	päällyspaneeli	
+toolbar	työkalurivi	
+sidebar	sivupalkki	
+status bar	tilarivi	
+series bar	sarjapalkki	The strip of slides and folders of the current folder.
+tooltip	työkaluvihje	
+zoom (screen scale)	zoomaus	Zoom to … = Zoomaa …; 100 % = one slide pixel per screen pixel.
+zoom in / zoom out	lähennä / loitonna	As in Microsoft and Apple Finnish UIs.
+magnification (20×)	suurennos (20×)	Objective-equivalent optical magnification; 20× stays 20×.
+objective	objektiivi	objective power = objektiivin suurennos.
+digital zoom	digitaalinen zoomaus	
+pixel size	pikselikoko	
+MPP (µm per pixel)	MPP (µm/px)	Keep MPP; "mikrometriä pikseliä kohden" when spelled out.
+calibration	kalibrointi	
+level, pyramid level	taso, pyramiditaso	L0 = täysi resoluutio.
+resolution (of a slide)	resoluutio	Export DPI = tarkkuus (DPI).
+tile	tiili	A square piece of the image pyramid (as in karttatiili).
+patch (dataset tile)	kuvapala, pala	"Tile Size" of the dataset dialog = Palan koko.
+stride	askelväli	The step between patches.
+patch extraction	kuvapalojen irrotus	
+dataset	aineisto	Export Dataset = Vie aineisto.
+cache	välimuisti	disk cache = levyvälimuisti.
+region of interest (ROI)	tarkastelualue (ROI)	Keep ROI as the abbreviation where English uses it.
+region	alue	
+measurement	mittaus	
+measure (tool)	mittaus (työkalu); mittaa (verb)	Tool name: Mittaus.
+navigate (tool)	navigointi (työkalu)	
+distance	etäisyys	
+length	pituus	path length = polun pituus.
+area (measured)	pinta-ala	Polygon area = monikulmion pinta-ala.
+perimeter	piiri	
+angle	kulma	
+point	piste	
+line	viiva	
+arrow	nuoli	
+polygon	monikulmio	
+rectangle	suorakulmio	
+ellipse	ellipsi	
+brush	sivellin	brush size = siveltimen koko.
+outline	ääriviiva	
+annotation	annotaatio	A drawn mark with a meaning; not a comment. "merkintä" is kept for pen marks.
+annotation class, class	annotaatioluokka, luokka	Unclassified = luokittelematon.
+layer	kerros	Never "taso" (taso = pyramid level).
+comment	kommentti	
+draft / verified / rejected	luonnos / vahvistettu / hylätty	Review states of annotations.
+second reader	toinen arvioija	
+lock / unlock	lukitse / avaa lukitus	locked = lukittu.
+cell count, counting	solulaskenta, laskenta	count cell = laske solu.
+cell	solu	
+nucleus, nuclei	tuma, tumat	
+high-power field (HPF)	suurennoskenttä (HPF)	Keep HPF as the abbreviation.
+field (counting field)	kenttä	
+H&E	H&E	Keep as written (H&E-värjäys).
+hematoxylin	hematoksyliini	One letter: H.
+eosin	eosiini	One letter: E.
+IHC	IHC (immunohistokemia)	immunohistokemiallinen värjäys.
+DAB	DAB	DAB-positiivinen.
+chromogen	kromogeeni	
+stain (of a slide)	värjäys	"Stain: H&E" = Värjäys: H&E.
+stain (dye component)	väriaine	In deconvolution and normalisation: isolated stain = eristetty väriaine.
+stain model	värjäysmalli	
+stain vectors	väriainevektorit	
+stain fit	väriainesovitus	"the stains are being fitted" = väriaineita sovitetaan.
+stain normalization	värjäyksen normalisointi	Macenko and Vahadane unchanged.
+colour normalisation	värien normalisointi	
+stain target	kohdevärjäys	The appearance stain normalisation maps slides onto.
+reference stain target	viitekohdevärjäys	The built-in Macenko H&E reference.
+color deconvolution	väridekonvoluutio	Ruifrok–Johnston.
+quantify (a stain)	kvantifioi; kvantifiointi	Quantify Stain = Kvantifioi värjäys.
+intensity	intensiteetti	
+optical density	optinen tiheys	
+H-score	H-score	Keep; weak/moderate/strong (1+/2+/3+) = heikko/kohtalainen/voimakas.
+threshold	kynnysarvo	
+channel	kanava	
+multiplex immunofluorescence (mIF)	multipleksi-immunofluoresenssi (mIF)	
+marker	merkkiaine	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	polttotaso (Z)	
+Z-stack	Z-pino	
+time point (T)	aikapiste (T)	
+time series	aikasarja	
+heat map	lämpökartta	
+overlay	peittokuva	
+opacity	peittävyys	
+colour map, colour scale	väriskaala	
+tissue	kudos	
+tissue QC	kudoksen laaduntarkastus	QC may stay as an abbreviation in short labels.
+pen marks	tussimerkinnät	
+folds	laskokset	
+blur, out of focus	epätarkkuus, epätarkka	
+tissue detection	kudoksen tunnistus	
+tissue mask	kudosmaski	
+background	tausta	
+export	vienti; vie (command)	Export Image… = Vie kuva…
+import	tuonti; tuo (command)	
+save a copy	tallenna kopio	
+convert	muunna	
+de-identify	poista tunnistetiedot	de-identified = tunnistetiedot poistettu.
+label image	etikettikuva	label = etiketti.
+macro image	makrokuva	
+thumbnail	pikkukuva	
+associated image	liitekuva	label, macro and thumbnail images.
+bookmark	kirjanmerkki	
+session	istunto	
+plugin	laajennus	
+package (.eop)	paketti, laajennuspaketti	
+model	malli	
+model store	mallivarasto	
+inference	päättely	
+batch	erä	
+reconstruction	rekonstruktio	
+render	piirtää, renderöidä	
+renderer	renderöijä	GPU-renderöijä, CPU-renderöijä.
+backend (CPU, GPU)	taustajärjestelmä	
+filtering	suodatus	bilinear = bilineaarinen, trilinear = trilineaarinen; Lanczos unchanged.
+sharpness	terävyys	
+gamma	gamma	
+brightness	kirkkaus	
+contrast	kontrasti	
+theme	teema	dark = tumma, light = vaalea, high contrast = suuri kontrasti.
+Home screen	aloitusnäkymä	Home tab = Aloitus.
+colour management	värinhallinta	Colour-managed = värinhallinta käytössä.
+colour profile, ICC profile	väriprofiili, ICC-profiili	
+as scanned (colours)	skannatun mukaiset	Show Colours as Scanned = Näytä värit skannatun mukaisina.
+convert to sRGB	muunna sRGB-muotoon	
+alignment, align	kohdistus, kohdista	
+landmark (alignment)	kohdistuspiste	
+link / unlink (panes)	linkitä / pura linkitys	
+series	sarja	DICOM series = DICOM-sarja.
+case	tapaus	The patient case (accession) slides belong to.
+metadata	metatiedot	
+property	ominaisuus	
+vendor	valmistaja	
+scanner	skanneri	
+update	päivitys; päivitä (command)	
+update helper	päivitysapuohjelma	
+release	julkaisu	release notes = julkaisutiedot.
+signature	allekirjoitus	signed = allekirjoitettu.
+administrator policy	ylläpitäjän käytäntö	policy file = käytäntötiedosto.
+safe mode	vikasietotila	
+log folder	lokikansio	
+crash report	kaatumisraportti	
+clipboard	leikepöytä	
+file manager	tiedostonhallinta	
+keyboard shortcut, hotkey	pikanäppäin	Keyboard Shortcuts = Pikanäppäimet.
+key (keyboard)	näppäin	Ctrl, Shift, Alt, Esc, Enter, F1 unchanged.
+right-click	napsauta hiiren kakkospainikkeella	
+message, notification	viesti	Messages = Viestit.
+gamepad	peliohjain	
+stick	ohjaussauva	
+trigger (gamepad)	liipaisin	
+dead zone	kuollut alue	
+pointer	osoitin	
+profile (gamepad)	profiili	
+database	tietokanta	
+Open	Avaa	Commands use the singular imperative.
+Close	Sulje	
+Cancel	Peruuta	
+OK	OK	
+Confirm	Vahvista	
+Save, Save…	Tallenna, Tallenna…	
+Delete	Poista	
+Remove	Poista	
+Settings	Asetukset	
+Apply	Käytä	
+Reset	Palauta	Reset to Defaults = Palauta oletukset.
+Show / Hide	Näytä / Piilota	
+Toggle …	… päälle/pois	Tooltip of a toggle button.
+Copy	Kopioi	
+Undo / Redo	Kumoa / Tee uudelleen	
+Fit	Sovita	
+Rotate	Kierrä	Rotate Right 90° = Kierrä oikealle 90°.
+Flip horizontally	Käännä vaakasuunnassa	
+Enable / Disable	Ota käyttöön / Poista käytöstä	
+Download	Lataa	
+Load	Lataa	
+Install / Uninstall	Asenna / Poista asennus	
+Restart	Käynnistä uudelleen	
+Quit	Lopeta	
+Full screen	Koko näyttö	
+Clear	Tyhjennä	Clear a region or landmarks = Poista.
+Done	Valmis	
+Ready	Valmis	Status bar.
+Add	Lisää	
+Edit	Muokkaa	
+Rename	Nimeä uudelleen	
+Filter	Suodata; suodatin	
+Retry	Yritä uudelleen	
+Folder	Kansio	
+File	Tiedosto	
+Recent files	Viimeisimmät tiedostot	
+Preview	Esikatselu	
+Format	Muoto	file format = tiedostomuoto.
+Quality	Laatu	
+Compression	Pakkaus	lossless = häviötön.
+Loading…	Ladataan…	
+Error / Warning / Information	Virhe / Varoitus / Tiedote	
+Language	Kieli	
+Automatic (System Default)	Automaattinen (järjestelmän oletus)	
+Units	Yksiköt	
+units and symbols	µm, mm, px, MB, GiB, °, ×	Unchanged. Finnish puts a space before the percent sign: 12,5 %.
+quotation marks	”…”	Finnish uses ” on both sides; TOML and command examples keep their own quotes.
+ellipsis	…	Keep at the end of commands that open a dialog.
+register	imperative singular; passive	Commands use the singular imperative (Avaa, Tallenna); messages prefer the passive or impersonal forms; address the user with "sinä" (Haluatko…?) as Microsoft and Apple Finnish UIs do, never with "Te".
+capitalisation	sentence case	Only the first word of a button, menu item or title is capitalised.
+eov	eov	Always lowercase, also at the start of a sentence. Inflect with a colon (eov:n, eov:lle); prefer nominative and genitive.
+placeholders with names	appositive or colon	A file or plugin name cannot take case endings: write "tiedosto {}", "laajennuksen {} …" or "Avattu: {}".
+focused (pane, slide)	aktiivinen	the focused pane = aktiivinen ruutu.
+Undo {} / Redo {}	Kumoa: {} / Tee uudelleen: {}	Undo labels are command names in the imperative (Lisää mittaus, Aseta tarkastelualue), shown after the colon.
+A–Z (sort order)	A–Ö	The Finnish alphabet ends with Ö.
+white threshold	valkoisuuskynnys	Dataset export: pixels above it count as background.
+Stain Norm (short HUD label)	Normalisointi	
+staged (plugin update)	odottaa asennusta	Installed by the update helper after eov exits.
+self-update	itsepäivitys	
+build (of eov)	koontiversio	development build = kehitysversio.
+prerelease	esijulkaisu	
+manifest, release manifest	manifesti, julkaisumanifesti	
+repository	repositorio	
+artifact (release file)	artefakti	
+SHA-256 (checksum)	SHA-256-tiiviste	
+command-line option	valitsin	valitsimella --language; options themselves are never translated.
+hold (a key)	pidä pohjassa	
+label (of a slide)	etiketti	label image = etikettikuva; Hide label = Piilota etiketti.
+administrator (operating system)	järjestelmänvalvoja	OS rights: järjestelmänvalvojan oikeudet; the organisation's policy admin = ylläpitäjä.
+count point (annotations)	laskentapiste	Points placed with the Count tool (laskentatyökalu). Count tab = Laskenta; Clear counts = Tyhjennä laskenta.
+HPF field	HPF-kenttä	HPF field tool (H) = HPF-kenttätyökalu; HIGH-POWER FIELDS heading = SUURENNOSKENTÄT.
+field number (FN)	kenttäluku (FN)	Eyepiece field number in mm; FN (mm) stays as a short label.
+text label (annotation)	tekstiselite	A text annotation drawn on the slide; not the slide's paper label (etiketti).
+freehand outline	ääriviiva vapaalla kädellä	
+eraser; erase	pyyhekumi; pyyhi	Brush stroke = siveltimen veto.
+even-odd rule	parillisuussääntö (even-odd)	Fill rule for self-crossing outlines.
+merge (a database); back up	yhdistä; varmuuskopioi	Merge… = Yhdistä…; Back up… = Varmuuskopioi…
+attach (annotations to a slide)	liitä	Attach the annotations of an older slide = Liitä vanhemman näytelasin annotaatiot.
+review status	tarkastustila	Mark draft/verified/rejected = Merkitse luonnokseksi/vahvistetuksi/hylätyksi.
+blinded copy	sokkoutettu kopio	Second-reader export; another reader = toinen arvioija.
+DICOM bulk annotations	DICOM-joukkoannotaatiot	The IOD name Microscopy Bulk Simple Annotations stays in English.
+combined positive score (CPS)	yhdistetty positiivisuuspistemäärä (CPS)	PD-L1; tumour cells = kasvainsolut, immune cells = immuunisolut.
+{class} index (Ki-67 index)	{class} -indeksi	Space before the hyphen because the class name may be several words or end in a symbol.
+eov before 1.0, pre-1.0	eov:n alle 1.0 -versiot	pre-1.0 format = alle 1.0 -versioiden muoto.
+readout (Cellaris)	lukema; aluelukema	Region readout = aluelukema. Not "mittaus", so as not to contradict "predictions are not measurements".
+cell (Cellaris grid square)	ruutu	A small square of the slide predicted at once; never "solu" (biological cell) in Cellaris texts.
+tissue block (Cellaris, 5 µm square)	kudosneliö; neliö	Not "lohko" (lobe) or "blokki" (paraffin block).
+window (model input)	ikkuna, ennusteikkuna	{seconds} s per window = {seconds} s/ikkuna.
+display window (marker)	näyttöväli	The value range a marker's colour is drawn over.
+legend	selite	
+model card	mallikortti	Built-in model card = sisäänrakennettu mallikortti.
+runtime (ONNX Runtime library)	suoritusympäristö	ONNX Runtime stays; the library = ONNX Runtime -kirjasto. Choose runtime… = Valitse suoritusympäristö…
+model input / output	syöte / tuloste	
+training data; trained at	opetusaineisto; opetustarkkuus	the model was trained at = malli on opetettu tarkkuudella …
+bright-field	kirkaskenttä	
+reconstruction error	rekonstruktiovirhe	Error map = virhekartta; Original/Reconstruction/Difference = Alkuperäinen/Rekonstruktio/Erotus.
+highest-error (hot) regions	suurimman virheen alueet	
+result cache	tulosvälimuisti	
+sidecar file	sivutiedosto	<model>.eovae.json.
+preprocessing	esikäsittely	
+inference engine	päättelymoottori	
+thread	säie	CPU · 8 threads = CPU · 8 säiettä.
+upsampled; resampled	ylösnäytteistetty; uudelleennäytteistetty	
+embeddings	upotusvektorit	
+reference model; your site's model	viitemalli; organisaatiosi malli	
+tissue tile (eovae)	kudostiili	Background tiles = taustatiilet; tile grid = tiiliruudukko.
+Auto (a choice)	Automaattinen	The typed value auto stays as written.
+D-pad	ristiohjain	D-Pad Up = Ristiohjain ylös.
+shoulder button; face buttons	olkapainike; alapainike, oikea painike, yläpainike, vasen painike	Face buttons are named by position (South/East/North/West).
+mappings (gamepad)	ohjainmääritykset	Map a stick to … = määritä ohjaussauvalle toiminto …
+response curve	vastekäyrä	
+stick drift	ohjaussauvan ryömintä	
+Remote Desktop portal; Accessibility (macOS)	etätyöpöytäportaali; Käyttöapu	macOS path: Järjestelmäasetukset › Tietosuoja ja turvallisuus › Käyttöapu.
+marker (example plugin point)	merkki	A placed point in the example plugin; not merkkiaine.
+host (of a plugin, i.e. eov)	isäntäohjelma	Plugin error texts: "the host returned …" = isäntäohjelma palautti …
+worker thread	työsäie	Could not start a worker thread = Työsäiettä ei voitu käynnistää.
+compute (predictions, a readout)	laskea; laskenta	Compute = Laske; Computing: … = Lasketaan: …; never "mitata" for Cellaris readouts.
+<maker/format> whole-slide image (file type name)	<nimi>-kokolasikuva; <monisanainen nimi> -kokolasikuva	Aperio-kokolasikuva, MIRAX-kokolasikuva; space before the hyphen after a multi-word name: Hamamatsu NDPI -kokolasikuva.

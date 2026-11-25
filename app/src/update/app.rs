@@ -49,6 +49,7 @@ use super::transaction::{
 };
 use crate::distribution::{self, Distribution};
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, join_sentences, tr};
 use semver::Version;
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
@@ -74,7 +75,8 @@ pub struct Installation {
 
 impl Installation {
     pub fn detect() -> Result<Self> {
-        let executable = std::env::current_exe().context("cannot locate the eov executable")?;
+        let executable =
+            std::env::current_exe().with_context(|| tr!("cannot locate the eov executable"))?;
         Ok(Self {
             executable: executable.canonicalize().unwrap_or(executable),
             appimage: std::env::var_os("APPIMAGE")
@@ -195,29 +197,39 @@ pub enum Strategy {
 }
 
 impl Strategy {
+    /// How the update is made, in the language of the interface (the
+    /// window's plan says "Method: …").
     pub fn describe(&self) -> String {
         match self {
-            Self::AppImage { path } => format!(
-                "replace {} in place (the previous image is kept for --rollback)",
-                path.display()
+            // Translators: how eov is updated; {} is the AppImage file. --rollback is an option of eov update: keep it as it is.
+            Self::AppImage { path } => tr!(
+                "replace {} in place (the previous AppImage is kept for --rollback)",
+                isolate(path.display())
             ),
             Self::Flatpak { .. } => {
-                "download the verified Flatpak bundle for installation on the host".to_string()
+                // Translators: how eov is updated.
+                tr!("download the verified Flatpak bundle for installation on the host")
             }
+            // A command, as it is run.
             Self::Cargo { root } => format!(
                 "cargo install eov --locked --force --root {}",
                 root.display()
             ),
-            Self::Homebrew { cask, app_path, .. } => format!(
-                "Homebrew ({cask} owns {}); brew update, then brew changes the cask",
-                app_path.display()
+            // Translators: how eov is updated; {cask} is the name of a Homebrew package (a cask), {app} the eov application. "brew update" is a command: keep it as it is.
+            Self::Homebrew { cask, app_path, .. } => tr!(
+                "Homebrew ({cask} owns {app}); brew update, then brew upgrades or replaces the cask",
+                cask = isolate(cask),
+                app = isolate(app_path.display())
             ),
-            Self::ReplaceTree { tree } => format!(
+            // Translators: how eov is updated; {} is the folder of eov. eov-update-helper is a program and --rollback an option of eov update: keep them as they are.
+            Self::ReplaceTree { tree } => tr!(
                 "exit and let eov-update-helper replace {} (the previous version is kept for --rollback)",
-                tree.display()
+                isolate(tree.display())
             ),
-            Self::NotManaged { reason } => format!("not managed by eov update: {reason}"),
-            Self::DisabledByPolicy { reason } => format!("disabled: {reason}"),
+            // Translators: {} says why ("eov was installed with cargo from …").
+            Self::NotManaged { reason } => tr!("not managed by eov update: {}", reason),
+            // Translators: self-update is turned off; {} says by whom.
+            Self::DisabledByPolicy { reason } => tr!("disabled: {}", reason),
         }
     }
 
@@ -310,6 +322,22 @@ pub struct PluginStep {
     pub source: Option<String>,
     #[serde(skip)]
     package: Option<ResolvedPackage>,
+    /// Where the installed package is unpacked (the folder of its
+    /// `plugin.toml` and catalogs), for its name in the language of the
+    /// interface.
+    #[serde(skip)]
+    root: Option<PathBuf>,
+}
+
+impl PluginStep {
+    /// The plugin's name as the window shows it: the installed package's
+    /// translation of its manifest's name, or that name.
+    fn shown_name(&self) -> String {
+        match &self.root {
+            Some(root) => crate::host_ui::plugin_i18n::manifest_text(root, &self.name),
+            None => self.name.clone(),
+        }
+    }
 }
 
 /// Everything an update would do.
@@ -318,7 +346,8 @@ pub struct UpdatePlan {
     pub current_version: Version,
     pub target_version: Version,
     pub action: AppAction,
-    pub distribution: &'static str,
+    /// How this eov was packaged ([`Distribution::display_name`]).
+    pub distribution: String,
     pub strategy: Strategy,
     pub source: String,
     pub signature: SignatureStatus,
@@ -373,50 +402,64 @@ impl UpdatePlan {
             }
     }
 
-    /// The plan as the window shows it before asking (AUDIT §14.4).
+    /// The plan as the window shows it before asking (AUDIT §14.4), in the
+    /// language of the interface.
     pub fn summary(&self) -> PlanSummary {
         let mut lines = vec![
-            format!(
-                "Installed: eov {} ({})",
-                self.current_version, self.distribution
+            // Translators: a line of the update plan; {distribution} says how eov was installed ("AppImage", "macOS app bundle").
+            tr!(
+                "Installed: eov {version} ({distribution})",
+                version = isolate(&self.current_version),
+                distribution = &self.distribution
             ),
-            format!(
-                "Release: eov {} from {} (signature: {})",
-                self.target_version,
-                self.source,
-                self.signature.describe()
+            // Translators: a line of the update plan; {source} is where the release comes from ("GitHub release v1.2.0"), {signature} the state of its signature ("verified (key …)").
+            tr!(
+                "Release: eov {version} from {source} (signature: {signature})",
+                version = isolate(&self.target_version),
+                source = &self.source,
+                signature = self.signature.describe()
             ),
         ];
         if self.changes_app() {
-            lines.push(format!("Method: {}", self.strategy.describe()));
+            // Translators: a line of the update plan; {} says how eov is updated.
+            lines.push(tr!("Method: {}", self.strategy.describe()));
             if let Some(notes) = &self.release_notes {
-                lines.push(format!("Release notes: {notes}"));
+                // Translators: a line of the update plan; {} is a web address.
+                lines.push(tr!("Release notes: {}", isolate(notes)));
             }
         }
         if let Some(policy) = &self.policy {
-            lines.push(format!("Policy: {policy}"));
+            // Translators: a line of the update plan; {} is "managed by" and the policy file.
+            lines.push(tr!("Policy: {}", policy));
         }
         let changes: Vec<String> = self
             .plugins
             .iter()
             .filter(|step| step.action.changes() || step.action == PluginAction::Error)
             .map(|step| match (&step.target, step.action) {
-                (Some(target), action) if action.changes() => {
-                    format!("  {} {} \u{2192} {target}", step.name, step.current)
-                }
+                (Some(target), action) if action.changes() => format!(
+                    "  {} {} \u{2192} {target}",
+                    isolate(step.shown_name()),
+                    step.current
+                ),
                 _ => format!(
                     "  {} {}: {}",
-                    step.name,
+                    isolate(step.shown_name()),
                     step.current,
-                    step.reason.as_deref().unwrap_or("cannot be updated")
+                    step.reason
+                        .clone()
+                        // Translators: what the update plan says about a plugin.
+                        .unwrap_or_else(|| tr!("cannot be updated"))
                 ),
             })
             .collect();
         if !changes.is_empty() {
-            lines.push("Plugins:".to_string());
+            // Translators: a heading of the update plan; the plugins it updates follow.
+            lines.push(tr!("Plugins:"));
             lines.extend(changes);
         }
-        lines.extend(self.notes.iter().map(|note| format!("Note: {note}")));
+        // Translators: a line of the update plan.
+        lines.extend(self.notes.iter().map(|note| tr!("Note: {}", note)));
         PlanSummary {
             current: self.current_version.to_string(),
             target: self.target_version.to_string(),
@@ -502,18 +545,32 @@ pub fn plan(ctx: &mut UpdateContext, request: &UpdateRequest) -> Result<PlannedU
             homebrew::check_target(&target)?;
         }
         if let Strategy::NotManaged { reason } = &strategy {
-            notes.push(format!(
-                "eov {target} is available, but this installation is not managed by eov update ({reason}). Download it from {EOV_REPOSITORY}/releases/tag/{}.",
-                release_tag(&target)
+            // Translators: {reason} says why ("eov was installed with cargo from …"), {url} is a web address.
+            notes.push(tr!(
+                "eov {version} is available, but this installation is not managed by eov update ({reason}). Download it from {url}.",
+                version = isolate(&target),
+                reason = reason,
+                url = isolate(format!(
+                    "{EOV_REPOSITORY}/releases/tag/{}",
+                    release_tag(&target)
+                ))
             ));
         }
         if let Strategy::DisabledByPolicy { reason } = &strategy {
-            notes.push(format!("eov {target} is available, but {reason}"));
+            // The reason is a sentence of its own ("Application self-update is
+            // disabled by the administrator policy …").
+            notes.push(join_sentences([
+                tr!("eov {version} is available.", version = isolate(&target)),
+                reason.clone(),
+            ]));
         }
     }
     if action == AppAction::NewerThanRelease {
-        notes.push(format!(
-            "This build ({current}) is newer than the latest release ({target}); it is not downgraded. Use --release {target} to install that release."
+        // Translators: --release is an option of eov update: keep it as it is.
+        notes.push(tr!(
+            "This build ({current}) is newer than the latest release ({latest}); it is not downgraded. Use --release {latest} to install that release.",
+            current = isolate(&current),
+            latest = isolate(&target)
         ));
     }
     let artifact = match strategy.artifact_key(ctx.distribution, ctx.plugins.platform.arch) {
@@ -526,8 +583,11 @@ pub fn plan(ctx: &mut UpdateContext, request: &UpdateRequest) -> Result<PlannedU
         current.clone()
     };
     if action.changes_app() && !strategy.installs_app() && !request.app_only {
-        notes.push(format!(
-            "Plugins are kept compatible with the installed eov {current}; run eov update again after installing eov {target}."
+        // Translators: "eov update" is a command: keep it as it is.
+        notes.push(tr!(
+            "Plugins are kept compatible with the installed eov {current}; run eov update again after installing eov {target}.",
+            current = isolate(&current),
+            target = isolate(&target)
         ));
     }
 
@@ -556,7 +616,8 @@ pub fn plan(ctx: &mut UpdateContext, request: &UpdateRequest) -> Result<PlannedU
                 .source
                 .as_ref()
                 .filter(|_| ctx.plugins.policy.is_managed())
-                .map(|path| format!("managed by {}", path.display())),
+                // Translators: eov is managed by an administrator policy; {} is its file.
+                .map(|path| tr!("managed by {}", isolate(path.display()))),
             exact: requested.is_some(),
             artifact,
             homebrew,
@@ -573,7 +634,7 @@ fn probe_strategy(ctx: &UpdateContext) -> (Strategy, Option<HomebrewInstallation
             .ensure_self_update_allowed()
             .err()
             .map(|error| error.to_string())
-            .unwrap_or_else(|| "self-update is disabled by policy".into());
+            .unwrap_or_else(|| tr!("Self-update is disabled by the administrator policy."));
         return (Strategy::DisabledByPolicy { reason }, None);
     }
     let executable = &ctx.installation.executable;
@@ -587,12 +648,13 @@ fn probe_strategy(ctx: &UpdateContext) -> (Strategy, Option<HomebrewInstallation
                         reason: error.to_string(),
                     },
                     None => Strategy::NotManaged {
-                        reason: "the AppImage has no parent directory".into(),
+                        reason: tr!("the AppImage has no parent directory"),
                     },
                 }
             }
             _ => Strategy::NotManaged {
-                reason: "APPIMAGE is not set, so eov cannot locate the running AppImage".into(),
+                // Translators: APPIMAGE is the name of an environment variable: keep it as it is.
+                reason: tr!("APPIMAGE is not set, so eov cannot locate the running AppImage"),
             },
         },
         Distribution::Flatpak => Strategy::Flatpak {
@@ -606,13 +668,17 @@ fn probe_strategy(ctx: &UpdateContext) -> (Strategy, Option<HomebrewInstallation
                 root: installation.root,
             },
             Some(installation) => Strategy::NotManaged {
-                reason: format!(
+                // Translators: {} is where cargo installed eov from (a path or an address).
+                reason: tr!(
                     "eov was installed with cargo from {}, not crates.io; rebuild it the same way",
-                    installation.package
+                    isolate(&installation.package)
                 ),
             },
             None => Strategy::NotManaged {
-                reason: "no cargo install root (CARGO_INSTALL_ROOT, install.root, CARGO_HOME or ~/.cargo) records this binary".into(),
+                // Translators: CARGO_INSTALL_ROOT, install.root, CARGO_HOME and ~/.cargo are settings and a folder of cargo: keep them as they are.
+                reason: tr!(
+                    "no cargo install root (CARGO_INSTALL_ROOT, install.root, CARGO_HOME or ~/.cargo) records this binary"
+                ),
             },
         },
         Distribution::MacosBundle => match macos_bundle_path(executable) {
@@ -630,7 +696,8 @@ fn probe_strategy(ctx: &UpdateContext) -> (Strategy, Option<HomebrewInstallation
                 }
                 MacosInstallation::ManualBundle => Strategy::ReplaceTree { tree: bundle },
                 MacosInstallation::Ambiguous(reason) => Strategy::NotManaged {
-                    reason: format!("Homebrew ownership is ambiguous: {reason}"),
+                    // Translators: {} says why ("several Homebrew casks claim …").
+                    reason: tr!("Homebrew ownership is ambiguous: {}", reason),
                 },
             },
         },
@@ -639,11 +706,11 @@ fn probe_strategy(ctx: &UpdateContext) -> (Strategy, Option<HomebrewInstallation
                 tree: tree.to_path_buf(),
             },
             _ => Strategy::NotManaged {
-                reason: "eov.exe is not in a portable installation folder".into(),
+                reason: tr!("eov.exe is not in a portable installation folder"),
             },
         },
         Distribution::Unknown => Strategy::NotManaged {
-            reason: "this build does not record how it was packaged".into(),
+            reason: tr!("this build does not record how it was packaged"),
         },
     };
     (strategy, None)
@@ -661,7 +728,8 @@ fn plan_plugins(
         let Some(installed) = inventory.representative(&id) else {
             continue;
         };
-        let step = match plan_plugin(ctx, source, catalog, &inventory, installed, plugin_target) {
+        let mut step = match plan_plugin(ctx, source, catalog, &inventory, installed, plugin_target)
+        {
             Ok(step) => step,
             Err(error) => PluginStep {
                 id: id.clone(),
@@ -673,12 +741,23 @@ fn plan_plugins(
                 reason: Some(format!("{error:#}")),
                 source: Some(installed.provenance.describe()),
                 package: None,
+                root: None,
             },
         };
+        step.root = unpacked_root(installed);
         steps.push(step);
     }
     steps.sort_by(|left, right| (left.group as u8, &left.id).cmp(&(right.group as u8, &right.id)));
     Ok(steps)
+}
+
+/// The folder of an installed package's `plugin.toml` in the package
+/// cache. The inventory unpacked every package already, so this finds the
+/// extraction rather than making one.
+fn unpacked_root(installed: &InstalledPackage) -> Option<PathBuf> {
+    crate::plugins::discovery::package_cache::ensure_extracted(&installed.package_path)
+        .map(|extracted| extracted.root)
+        .ok()
 }
 
 fn group_of(package: &InstalledPackage) -> PluginGroup {
@@ -708,6 +787,7 @@ fn plan_plugin(
         reason: None,
         source: Some(installed.provenance.describe()),
         package: None,
+        root: None,
     };
     let installed_compatible = compat::check(
         &installed.environment,
@@ -763,7 +843,7 @@ fn plan_plugin(
                 .provenance
                 .repository
                 .as_deref()
-                .context("the managed GitHub plugin has no repository")?;
+                .with_context(|| tr!("the managed GitHub plugin has no repository"))?;
             match plugins::resolve_github_compatible(
                 &ctx.plugins,
                 permission,
@@ -973,8 +1053,11 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
         let artifact = plan.artifact.as_ref();
         match &plan.strategy {
             Strategy::AppImage { path } => {
-                let artifact = artifact.context("the release has no AppImage for this platform")?;
-                let directory = path.parent().context("the AppImage has no directory")?;
+                let artifact = artifact
+                    .with_context(|| tr!("the release has no AppImage for this platform"))?;
+                let directory = path
+                    .parent()
+                    .with_context(|| tr!("the AppImage has no directory"))?;
                 let image = source.fetch(&ctx.plugins.client, artifact, directory)?;
                 if let Some(previous) = appimage::replace(path, image)? {
                     record.app = Some(AppRollback::AppImage {
@@ -984,15 +1067,16 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
                 }
                 outcome.app = "updated";
                 outcome.installed_version = Some(plan.target_version.to_string());
-                outcome.message = Some(format!(
-                    "{} runs eov {} from its next start.",
-                    path.display(),
-                    plan.target_version
+                // Translators: {path} is the AppImage file.
+                outcome.message = Some(tr!(
+                    "{path} runs eov {version} from its next start.",
+                    path = isolate(path.display()),
+                    version = isolate(&plan.target_version)
                 ));
             }
             Strategy::Flatpak { installation } => {
-                let artifact =
-                    artifact.context("the release has no Flatpak bundle for this platform")?;
+                let artifact = artifact
+                    .with_context(|| tr!("the release has no Flatpak bundle for this platform"))?;
                 let bundle = source.fetch(&ctx.plugins.client, artifact, &ctx.updates_dir)?;
                 let destination = ctx.updates_dir.join(
                     artifact
@@ -1004,12 +1088,13 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
                 bundle
                     .persist(&destination)
                     .map_err(|error| error.error)
-                    .with_context(|| format!("could not write {}", destination.display()))?;
+                    .with_context(|| tr!("could not write {}", isolate(destination.display())))?;
                 outcome.app = "downloaded";
-                outcome.message = Some(format!(
-                    "The verified Flatpak bundle was saved to {}.\nThe sandbox cannot update itself; install it on the host with:\n{}",
-                    destination.display(),
-                    flatpak::install_instructions(*installation, &destination)
+                // Translators: {file} is the downloaded file; {commands} are the commands that install it, on lines of their own.
+                outcome.message = Some(tr!(
+                    "The verified Flatpak bundle was saved to {file}.\nThe sandbox cannot update itself; install it on the host with:\n{commands}",
+                    file = isolate(destination.display()),
+                    commands = flatpak::install_instructions(*installation, &destination)
                 ));
             }
             Strategy::Cargo { root } => {
@@ -1047,9 +1132,11 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
                 )?;
                 let installed_version = normalize_version(&installed)?;
                 if installed_version != plan.target_version {
-                    outcome.message = Some(format!(
-                        "Homebrew installed eov {installed}, not {} (its tap may not have the release yet). Plugins were aligned with {installed}.",
-                        plan.target_version
+                    // Translators: a tap is a source of Homebrew packages.
+                    outcome.message = Some(tr!(
+                        "Homebrew installed eov {installed}, not {target} (its tap may not have the release yet). Plugins were aligned with {installed}.",
+                        installed = isolate(&installed),
+                        target = isolate(&plan.target_version)
                     ));
                 }
                 record.app = Some(AppRollback::Homebrew {
@@ -1063,7 +1150,9 @@ pub fn execute(ctx: &mut UpdateContext, planned: PlannedUpdate) -> Result<Update
             }
             Strategy::ReplaceTree { tree } => {
                 let artifact = artifact
-                    .context("the release has no application archive for this platform")?
+                    .with_context(|| {
+                        tr!("the release has no application archive for this platform")
+                    })?
                     .clone();
                 return hand_over(
                     ctx,
@@ -1209,7 +1298,7 @@ fn hand_over(
         } => {
             let parent = tree
                 .parent()
-                .context("the installation has no parent directory")?
+                .with_context(|| tr!("the installation has no parent directory"))?
                 .to_path_buf();
             ensure_directory_writable(&tree)?;
             ensure_directory_writable(&parent)?;
@@ -1217,7 +1306,9 @@ fn hand_over(
             let staging = tempfile::Builder::new()
                 .prefix(".eov-update-stage-")
                 .tempdir_in(&parent)
-                .context("could not create a staging directory next to the installation")?;
+                .with_context(|| {
+                    tr!("could not create a staging directory next to the installation")
+                })?;
             extract_zip_safely(&archive, staging.path())?;
             drop(archive);
             let staged_tree = locate_staged_tree(ctx.distribution, staging.path())?;
@@ -1304,7 +1395,7 @@ fn hand_over(
         let staged_path = package
             .path
             .keep()
-            .context("could not keep a staged plugin package")?;
+            .with_context(|| tr!("could not keep a staged plugin package"))?;
         kept_paths.push(staged_path.clone());
         transaction.plugins.push(PluginReplacement {
             staged: staged_path,
@@ -1324,14 +1415,19 @@ fn hand_over(
         outcome.plugins.push(PluginOutcome {
             id,
             status: "staged",
-            message: Some(format!("{} -> {version} after eov exits", step.current)),
+            // Translators: a plugin's update: from version {current} to {version}.
+            message: Some(tr!(
+                "{current} -> {version} after eov exits",
+                current = isolate(&step.current),
+                version = isolate(&version)
+            )),
         });
     }
     if !transaction.plugins.is_empty() {
         let staged_registry = registry::stage(&ctx.plugins.plugin_dir, &registry)?
             .into_temp_path()
             .keep()
-            .context("could not keep the staged plugin registry")?;
+            .with_context(|| tr!("could not keep the staged plugin registry"))?;
         kept_paths.push(staged_registry.clone());
         transaction.registry = Some(RegistryReplacement {
             staged: staged_registry,
@@ -1365,9 +1461,10 @@ fn hand_over(
     outcome.exit_for_helper = true;
     outcome.message = Some(match transaction.mode {
         Mode::CargoInstall => {
-            "eov exits now; the update helper runs cargo install and restarts eov.".into()
+            // Translators: "cargo install" is a command: keep it as it is.
+            tr!("eov exits now; the update helper runs cargo install and restarts eov.")
         }
-        _ => "eov exits now; the update helper replaces the installation and restarts eov.".into(),
+        _ => tr!("eov exits now; the update helper replaces the installation and restarts eov."),
     });
     Ok(outcome)
 }
@@ -1392,7 +1489,10 @@ fn locate_staged_tree(distribution: Distribution, staging: &Path) -> Result<Path
         Distribution::MacosBundle => {
             let bundle = staging.join("eov.app");
             if !bundle.join("Contents/MacOS/eov").is_file() {
-                bail!("the downloaded macOS archive does not contain a valid eov.app bundle");
+                bail!(
+                    "{}",
+                    tr!("the downloaded macOS archive does not contain a valid eov.app bundle")
+                );
             }
             Ok(bundle)
         }
@@ -1407,7 +1507,10 @@ fn locate_staged_tree(distribution: Distribution, staging: &Path) -> Result<Path
                 staging.to_path_buf()
             };
             if !tree.join("eov.exe").is_file() {
-                bail!("the downloaded Windows archive does not contain eov.exe");
+                bail!(
+                    "{}",
+                    tr!("the downloaded Windows archive does not contain eov.exe")
+                );
             }
             Ok(tree)
         }
@@ -1434,7 +1537,7 @@ pub(crate) fn verify_portable_folder_is_owned(current: &Path, staged: &Path) -> 
 
     let lower = |name: &std::ffi::OsStr| name.to_string_lossy().to_ascii_lowercase();
     let mut owned: HashSet<String> = HashSet::new();
-    for entry in fs::read_dir(staged).context("could not list the staged release")? {
+    for entry in fs::read_dir(staged).with_context(|| tr!("could not list the staged release"))? {
         owned.insert(lower(&entry?.file_name()));
     }
     if let Ok(text) = fs::read_to_string(current.join(PORTABLE_MANIFEST))
@@ -1464,13 +1567,18 @@ pub(crate) fn verify_portable_folder_is_owned(current: &Path, staged: &Path) -> 
 
     if !current.join("eov.exe").is_file() {
         bail!(
-            "{} does not look like an eov installation folder (no eov.exe); refusing to replace it",
-            current.display()
+            "{}",
+            tr!(
+                "{} does not look like an eov installation folder (no eov.exe); refusing to replace it",
+                isolate(current.display())
+            )
         );
     }
 
     let mut foreign: Vec<OsString> = Vec::new();
-    for entry in fs::read_dir(current).context("could not list the installation folder")? {
+    for entry in
+        fs::read_dir(current).with_context(|| tr!("could not list the installation folder"))?
+    {
         let name = entry?.file_name();
         let key = lower(&name);
         if !owned.contains(&key) && !is_legacy_artifact(&key) {
@@ -1485,36 +1593,39 @@ pub(crate) fn verify_portable_folder_is_owned(current: &Path, staged: &Path) -> 
             .map(|name| name.to_string_lossy().into_owned())
             .collect();
         bail!(
-            "{} contains {} item(s) that are not part of eov (for example: {}).\n\
-             A portable update replaces this whole folder, so it is refused to protect those files.\n\
-             Move eov.exe and its files into a folder of their own (for example C:\\Tools\\eov) and run the update again.",
-            current.display(),
-            foreign.len(),
-            examples.join(", ")
+            "{}",
+            // Translators: {folder} is eov's folder, {examples} names of files in it. Keep C:\Tools\eov as it is.
+            tr!(
+                "{folder} contains {n} item that is not part of eov (for example: {examples}).\nA portable update replaces this whole folder, so it is refused to protect those files.\nMove eov.exe and its files into a folder of their own (for example C:\\Tools\\eov) and run the update again."
+                    | "{folder} contains {n} items that are not part of eov (for example: {examples}).\nA portable update replaces this whole folder, so it is refused to protect those files.\nMove eov.exe and its files into a folder of their own (for example C:\\Tools\\eov) and run the update again."
+                        % foreign.len(),
+                folder = isolate(current.display()),
+                examples = isolate(examples.join(", "))
+            )
         );
     }
     Ok(())
 }
 
 fn extract_zip_safely(archive: &Path, destination: &Path) -> Result<()> {
-    let file =
-        fs::File::open(archive).with_context(|| format!("could not open {}", archive.display()))?;
+    let file = fs::File::open(archive)
+        .with_context(|| tr!("could not open {}", isolate(archive.display())))?;
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(file))
-        .context("invalid application ZIP archive")?;
+        .with_context(|| tr!("invalid application ZIP archive"))?;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         let enclosed = entry
             .enclosed_name()
-            .context("application ZIP contains an unsafe path")?
+            .with_context(|| tr!("application ZIP contains an unsafe path"))?
             .to_path_buf();
         if enclosed.as_os_str().is_empty() {
-            bail!("application ZIP contains an empty path");
+            bail!("{}", tr!("application ZIP contains an empty path"));
         }
         if entry
             .unix_mode()
             .is_some_and(|mode| mode & 0o170000 == 0o120000)
         {
-            bail!("application ZIP contains a symlink entry");
+            bail!("{}", tr!("application ZIP contains a symlink entry"));
         }
         let output = destination.join(&enclosed);
         if entry.is_dir() {
@@ -1522,7 +1633,10 @@ fn extract_zip_safely(archive: &Path, destination: &Path) -> Result<()> {
             continue;
         }
         if !entry.is_file() {
-            bail!("application ZIP contains an unsupported special entry");
+            bail!(
+                "{}",
+                tr!("application ZIP contains an unsupported special entry")
+            );
         }
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
@@ -1531,7 +1645,7 @@ fn extract_zip_safely(archive: &Path, destination: &Path) -> Result<()> {
             .create_new(true)
             .write(true)
             .open(&output)
-            .with_context(|| format!("could not stage {}", output.display()))?;
+            .with_context(|| tr!("could not stage {}", isolate(output.display())))?;
         std::io::copy(&mut entry, &mut file)?;
         file.sync_all()?;
         #[cfg(unix)]
@@ -1544,19 +1658,28 @@ fn extract_zip_safely(archive: &Path, destination: &Path) -> Result<()> {
 }
 
 fn macos_bundle_path(executable: &Path) -> Result<PathBuf> {
-    let macos = executable.parent().context("eov has no parent directory")?;
+    let macos = executable
+        .parent()
+        .with_context(|| tr!("eov has no parent directory"))?;
     if macos.file_name().and_then(|name| name.to_str()) != Some("MacOS") {
-        bail!("eov is not running from a macOS application bundle");
+        bail!(
+            "{}",
+            tr!("eov is not running from a macOS application bundle")
+        );
     }
     let contents = macos
         .parent()
-        .context("the bundle has no Contents directory")?;
+        // Translators: Contents is the name of a folder of macOS applications: keep it as it is.
+        .with_context(|| tr!("the bundle has no Contents directory"))?;
     if contents.file_name().and_then(|name| name.to_str()) != Some("Contents") {
-        bail!("eov is not running from a valid macOS application bundle");
+        bail!(
+            "{}",
+            tr!("eov is not running from a valid macOS application bundle")
+        );
     }
     Ok(contents
         .parent()
-        .context("the bundle has no application root")?
+        .with_context(|| tr!("the bundle has no application root"))?
         .to_path_buf())
 }
 
@@ -1567,8 +1690,13 @@ fn ensure_directory_writable(directory: &Path) -> Result<()> {
         .map(drop)
         .map_err(|error| {
             anyhow::anyhow!(
-                "eov cannot replace files in {} as the current user: {error}. No privilege escalation was attempted.",
-                directory.display()
+                "{}",
+                // Translators: {error} is the error of the operating system.
+                tr!(
+                    "eov cannot replace files in {folder} as the current user: {error}. No privilege escalation was attempted.",
+                    folder = isolate(directory.display()),
+                    error = error
+                )
             )
         })
 }
@@ -1586,9 +1714,13 @@ fn run_cargo_install(root: &Path, version: &Version) -> Result<()> {
         .arg("--root")
         .arg(root)
         .status()
-        .context("failed to run cargo for the eov update")?;
+        .with_context(|| tr!("failed to run cargo for the eov update"))?;
     if !status.success() {
-        bail!("cargo install failed with {status}; eov was not changed");
+        bail!(
+            "{}",
+            // Translators: "cargo install" is a command: keep it as it is. {} is how it ended ("exit status: 101").
+            tr!("cargo install failed with {}; eov was not changed", status)
+        );
     }
     Ok(())
 }
@@ -2302,6 +2434,78 @@ mod tests {
         assert!(summary.noop && !summary.app_available);
     }
 
+    /// The plan names a plugin as the Plugins panel does: by its
+    /// catalog's translation of its manifest's name.
+    #[test]
+    fn the_window_names_plugins_in_the_interface_s_language() {
+        use crate::plugins::discovery::package_cache::test_packages::{manifest, write_archive};
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let transport = MockTransport::new();
+        let mut ctx = context(temp.path(), transport.clone(), Distribution::AppImage);
+        // The installed gamepad plugin has a German name.
+        let german = i18n::by_tag("de").unwrap();
+        let manifest = manifest("gamepad", "1.0.1", ">=1.0.0, <2.0.0") + "\n[i18n]\n";
+        let catalog = i18n::empty_catalog(german, "gamepad")
+            + "\nmsgctxt \"plugin.toml\"\nmsgid \"Gamepad\"\nmsgstr \"Spielsteuerung\"\n";
+        let package = write_archive(
+            &temp.path().join("translated-gamepad.eop"),
+            &[
+                ("plugin.toml", manifest.as_bytes()),
+                ("translations/de/LC_MESSAGES/gamepad.po", catalog.as_bytes()),
+            ],
+            false,
+        );
+        let bytes = fs::read(package).unwrap();
+        transport.respond(
+            &catalog_url(HOST),
+            200,
+            catalog_text(HOST, "1.0.1", &sha256_hex(&bytes)),
+        );
+        transport.respond(&gamepad_url("1.0.1"), 200, bytes);
+        plugins::install(
+            &mut ctx.plugins,
+            "gamepad",
+            &plugins::InstallOptions {
+                allow_network: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let image = temp.path().join("eov.AppImage");
+        fs::write(&image, b"old image").unwrap();
+        ctx.installation.appimage = Some(image);
+        serve_release(&transport, temp.path(), "1.0.1", b"new image");
+
+        let planned = plan(&mut ctx, &request()).unwrap();
+        let summary = planned.plan.summary();
+        assert!(
+            summary.text.contains("\n  Gamepad 1.0.1 \u{2192} 1.0.5"),
+            "{}",
+            summary.text
+        );
+        let _english = English;
+        i18n::set_catalog(german, None);
+        let summary = planned.plan.summary();
+        assert!(
+            summary
+                .text
+                .contains("\n  Spielsteuerung 1.0.1 \u{2192} 1.0.5"),
+            "{}",
+            summary.text
+        );
+        // What scripts and the command line get keeps the manifest's name.
+        let json = serde_json::to_value(&planned.plan).unwrap();
+        assert_eq!(json["plugins"][0]["name"], "Gamepad");
+        assert!(json["plugins"][0].get("root").is_none());
+    }
+
     #[test]
     fn a_failing_plugin_does_not_block_the_application_update() {
         let temp = tempfile::tempdir().unwrap();
@@ -2582,6 +2786,7 @@ mod tests {
             message: "a file was locked".into(),
             installation: None,
             previous: None,
+            restore_to: None,
         };
         fs::write(updates.join(REPORT_FILE), toml::to_string(&report).unwrap()).unwrap();
         let taken = take_helper_report(&updates).unwrap();

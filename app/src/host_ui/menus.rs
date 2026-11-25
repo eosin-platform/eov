@@ -10,6 +10,7 @@ use crate::overlay::{ObjectKey, Owner};
 use crate::plugin_runtime::EventTarget;
 use crate::shortcuts::Action;
 use crate::state::PaneId;
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{
     ContextMenuResponse, FileId, HostEvent, MenuContext, MenuItem, ObjectRef,
 };
@@ -124,38 +125,38 @@ impl UiHost {
         };
         let mut items = vec![
             with_key(
-                item("viewport-copy-image", "Copy Image", "copy"),
+                item("viewport-copy-image", &tr!("Copy Image"), "copy"),
                 Action::CopyView,
             ),
             with_key(
-                item("viewport-export-image", "Export Image…", "export"),
+                item("viewport-export-image", &tr!("Export Image…"), "export"),
                 Action::ExportView,
             ),
         ];
         mark_last_separator(&mut items);
         if multichannel {
             items.push(with_key(
-                item("host:channels", "Channels…", ""),
+                item("host:channels", &tr!("Channels…"), ""),
                 Action::Channels,
             ));
             mark_last_separator(&mut items);
         }
         if file_id.is_some() {
             items.push(with_key(
-                item("host:view-rotate-right", "Rotate Right 90°", ""),
+                item("host:view-rotate-right", &tr!("Rotate Right 90°"), ""),
                 Action::RotateRight,
             ));
             items.push(with_key(
-                item("host:view-rotate-left", "Rotate Left 90°", ""),
+                item("host:view-rotate-left", &tr!("Rotate Left 90°"), ""),
                 Action::RotateLeft,
             ));
             items.push(with_key(
-                item("host:view-flip", "Flip Horizontally", ""),
+                item("host:view-flip", &tr!("Flip Horizontally"), ""),
                 Action::Flip,
             ));
             if turned {
                 items.push(with_key(
-                    item("host:view-reset-orientation", "Reset Rotation", ""),
+                    item("host:view-reset-orientation", &tr!("Reset Rotation"), ""),
                     Action::ResetRotation,
                 ));
             }
@@ -164,10 +165,10 @@ impl UiHost {
         if let Some(on) = color_managed {
             items.push(item(
                 "host:color-management",
-                if on {
-                    "Show Colours as Scanned"
+                &if on {
+                    tr!("Show Colours as Scanned")
                 } else {
-                    "Convert Colours to sRGB"
+                    tr!("Convert Colours to sRGB")
                 },
                 "",
             ));
@@ -178,22 +179,30 @@ impl UiHost {
         if normalizing && file_id.is_some() {
             items.push(item(
                 "host:stain-target-slide",
-                "Use This Slide as Stain Target",
+                &tr!("Use This Slide as Stain Target"),
                 "",
             ));
             if has_roi {
                 items.push(item(
                     "host:stain-target-region",
-                    "Use the Region as Stain Target",
+                    &tr!("Use the Region as Stain Target"),
                     "",
                 ));
             }
-            items.push(item("host:stain-target-load", "Load Stain Target…", ""));
+            items.push(item(
+                "host:stain-target-load",
+                &tr!("Load Stain Target…"),
+                "",
+            ));
             if crate::stain_target::current().is_some() {
-                items.push(item("host:stain-target-save", "Save Stain Target…", ""));
+                items.push(item(
+                    "host:stain-target-save",
+                    &tr!("Save Stain Target…"),
+                    "",
+                ));
                 items.push(item(
                     "host:stain-target-reset",
-                    "Use the Reference Stain Target",
+                    &tr!("Use the Reference Stain Target"),
                     "",
                 ));
             }
@@ -203,40 +212,44 @@ impl UiHost {
         if linked && file_id.is_some() {
             items.push(item(
                 "host:link-landmark-1",
-                "Place Alignment Landmark 1",
+                &tr!("Place Alignment Landmark 1"),
                 "",
             ));
             items.push(item(
                 "host:link-landmark-2",
-                "Place Alignment Landmark 2",
+                &tr!("Place Alignment Landmark 2"),
                 "",
             ));
             if can_align {
-                items.push(item("host:link-align", "Align from Landmarks", ""));
+                items.push(item("host:link-align", &tr!("Align from Landmarks"), ""));
             }
             if has_landmarks {
-                items.push(item("host:link-clear-landmarks", "Clear Landmarks", ""));
+                items.push(item(
+                    "host:link-clear-landmarks",
+                    &tr!("Clear Landmarks"),
+                    "",
+                ));
             }
-            items.push(item("host:link-reset", "Reset Alignment", ""));
+            items.push(item("host:link-reset", &tr!("Reset Alignment"), ""));
             mark_last_separator(&mut items);
         }
         if let Some(file_id) = file_id {
             items.push(with_key(
-                item("host:bookmark-add", "Add Bookmark…", ""),
+                item("host:bookmark-add", &tr!("Add Bookmark…"), ""),
                 Action::BookmarkAdd,
             ));
             if self.slide_has_bookmarks(file_id as i32) {
                 items.push(with_key(
-                    item("host:bookmarks", "Bookmarks…", ""),
+                    item("host:bookmarks", &tr!("Bookmarks…"), ""),
                     Action::Bookmarks,
                 ));
             }
             items.push(item(
                 "host:heatmap",
-                if self.has_heatmap(file_id as i32) {
-                    "Heat Map…"
+                &if self.has_heatmap(file_id as i32) {
+                    tr!("Heat Map…")
                 } else {
-                    "Show Heat Map…"
+                    tr!("Show Heat Map…")
                 },
                 "",
             ));
@@ -244,16 +257,16 @@ impl UiHost {
             if brightfield {
                 items.push(item(
                     "host:qc",
-                    if qc_shown {
-                        "Check Tissue Quality Again"
+                    &if qc_shown {
+                        tr!("Check Tissue Quality Again")
                     } else {
-                        "Check Tissue Quality"
+                        tr!("Check Tissue Quality")
                     },
                     "",
                 ));
                 if qc_shown {
-                    items.push(item("host:qc-copy", "Copy Tissue QC Summary", "copy"));
-                    items.push(item("host:qc-hide", "Hide Tissue QC", ""));
+                    items.push(item("host:qc-copy", &tr!("Copy Tissue QC Summary"), "copy"));
+                    items.push(item("host:qc-hide", &tr!("Hide Tissue QC"), ""));
                 }
             }
             mark_last_separator(&mut items);
@@ -266,39 +279,43 @@ impl UiHost {
         {
             host_items.push(item(
                 format!("host:measurement-copy:{}", key.object_id),
-                "Copy Measurement",
+                &tr!("Copy Measurement"),
                 "copy",
             ));
             host_items.push(item(
                 format!("host:measurement-delete:{}", key.object_id),
-                "Delete Measurement",
+                &tr!("Delete Measurement"),
                 "delete",
             ));
         }
         if has_roi {
             host_items.push(item(
                 "host:roi-frame",
-                "Zoom to Region of Interest",
+                &tr!("Zoom to Region of Interest"),
                 "measure",
             ));
-            host_items.push(item("host:roi-clear", "Clear Region of Interest", "delete"));
+            host_items.push(item(
+                "host:roi-clear",
+                &tr!("Clear Region of Interest"),
+                "delete",
+            ));
         }
         if has_roi || has_measurements {
             host_items.push(with_key(
-                item("host:measurements-panel", "Measurements…", "measure"),
+                item("host:measurements-panel", &tr!("Measurements…"), "measure"),
                 Action::Measurements,
             ));
         }
         if has_roi {
             host_items.push(with_key(
-                item("host:quantify", "Quantify Stain in Region…", ""),
+                item("host:quantify", &tr!("Quantify Stain in Region…"), ""),
                 Action::Quantify,
             ));
         }
         if has_measurements {
             host_items.push(item(
                 "host:measurements-clear",
-                "Clear All Measurements",
+                &tr!("Clear All Measurements"),
                 "delete",
             ));
         }
@@ -518,7 +535,7 @@ impl UiHost {
                 if let Some(ui) = self.ui() {
                     super::notices::show_toast(
                         &ui,
-                        &format!("Copied {text}"),
+                        &tr!("Copied {}", eov_plugin_api::i18n::isolate(&text)),
                         eov_plugin_api::protocol::NotifyLevel::Info,
                     );
                 }
@@ -547,7 +564,7 @@ impl UiHost {
         let m = file.measurements.iter().find(|m| m.id == id)?;
         let unit = state.file_pane_unit(file.id).unwrap_or_default();
         let value = measure::measure(m.mode, &m.shape, &super::publish::calibration(file));
-        Some(measure::label(m.mode, &value, unit))
+        Some(measure::display_label(m.mode, &value, unit))
     }
 
     pub(crate) fn open_measure_mode_menu(&self, x: f32, y: f32) {
@@ -559,7 +576,7 @@ impl UiHost {
             .iter()
             .map(|mode| ContextMenuItem {
                 id: format!("measure-mode:{}", mode.id()).into(),
-                label: mode.label().into(),
+                label: super::annotations::measure_mode_label(*mode).into(),
                 icon: if *mode == current {
                     "check".into()
                 } else {
@@ -571,7 +588,7 @@ impl UiHost {
             })
             .collect();
         mark_last_separator(&mut items);
-        let mut list = item("host:measurements-panel", "Show Measurements…", "");
+        let mut list = item("host:measurements-panel", &tr!("Show Measurements…"), "");
         list.shortcut = crate::shortcuts::current()
             .label(Action::Measurements)
             .into();
@@ -606,7 +623,7 @@ impl UiHost {
             tracing::warn!("Could not save the measure mode: {error}");
         }
         if let Some(ui) = self.ui() {
-            ui.set_measure_mode_label(mode.label().into());
+            ui.set_measure_mode_label(super::annotations::measure_mode_label(mode).into());
         }
         super::input::set_tool(self, ToolChoice::Measure(mode));
     }

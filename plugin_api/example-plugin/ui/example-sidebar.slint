@@ -2,9 +2,18 @@ import { Button, VerticalBox, CheckBox } from "std-widgets.slint";
 
 // A plugin surface: properties are set by the plugin with `Surface::set`,
 // callbacks arrive as `Plugin::ui_callback` and may return values.
+//
+// Texts are marked with `@tr`: eov compiles the surface with the plugin's
+// catalogs (`[i18n]` in plugin.toml), so they follow the language of the
+// interface by themselves. Properties carry data (a file name, a count),
+// and the texts around them stay here.
 export component ExampleSidebar inherits Rectangle {
+    // Set by eov when declared: the interface is written from right to
+    // left (Arabic, Persian, Hebrew), so lines of text start at the right.
+    in property <bool> eov-rtl;
     in property <int> marker-count: 0;
-    in property <string> active-file: "No slide";
+    // The active slide's file name; empty when there is none.
+    in property <string> active-file;
     in property <bool> invert-enabled: false;
     callback clear-markers();
     callback toggle-invert(bool);
@@ -13,41 +22,47 @@ export component ExampleSidebar inherits Rectangle {
     callback describe() -> string;
 
     property <string> description: "";
+    property <TextHorizontalAlignment> start: root.eov-rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
 
     VerticalBox {
         Text {
-            text: "Example plugin";
+            text: @tr("Example plugin");
             font-size: 16px;
             font-weight: 600;
+            horizontal-alignment: root.start;
         }
         Text {
-            text: root.active-file;
+            text: root.active-file != "" ? root.active-file : @tr("No slide");
             wrap: word-wrap;
+            horizontal-alignment: root.start;
         }
+        // A text with a number: `{n}` is the count, and each language has
+        // its own forms (English: one, many).
         Text {
-            text: root.marker-count + " marker(s)";
+            text: @tr("{n} marker" | "{n} markers" % root.marker-count);
+            horizontal-alignment: root.start;
         }
         Button {
-            text: "Clear markers";
+            text: @tr("Clear markers");
             clicked => {
                 root.clear-markers();
             }
         }
         CheckBox {
-            text: "Invert colours";
+            text: @tr("Invert colours");
             checked: root.invert-enabled;
             toggled => {
                 root.toggle-invert(self.checked);
             }
         }
         Button {
-            text: "Run background job";
+            text: @tr("Run background job");
             clicked => {
                 root.start-job();
             }
         }
         Button {
-            text: "Describe";
+            text: @tr("Describe");
             clicked => {
                 root.description = root.describe();
             }
@@ -55,6 +70,7 @@ export component ExampleSidebar inherits Rectangle {
         Text {
             text: root.description;
             wrap: word-wrap;
+            horizontal-alignment: root.start;
         }
         Rectangle { }
     }

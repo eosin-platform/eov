@@ -1,0 +1,125 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Portuguese (Brazil)\n"
+"Language: pt-BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"Demonstra botões da barra de ferramentas, uma barra lateral, camadas de "
+"sobreposição, uma ferramenta de pontos com desfazer, um filtro e tarefas em "
+"segundo plano."
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "Plugin de exemplo"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "Lâminas de exemplo em xadrez"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "Barra lateral de exemplo"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "Posicionar marcador"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "Inverter cores"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "Inverter"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "Fração de tecido e cor média do tecido de cada lâmina"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "Ler o nível mais detalhado com no máximo esta quantidade de pixels"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "Marcadores"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "Marcador {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "Adicionar marcador"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "Contando até dez"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{step} de {total}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "Adicionar marcador aqui"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "Marcadores nas lâminas abertas: {n}"
+msgstr[1] "Marcadores nas lâminas abertas: {n}"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "Plugin de exemplo"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "Nenhuma lâmina"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "Marcadores: {n}"
+msgstr[1] "Marcadores: {n}"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "Limpar marcadores"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "Inverter cores"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "Executar tarefa em segundo plano"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "Descrever"

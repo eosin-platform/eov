@@ -25,6 +25,7 @@ use super::keys::{RELEASE_KEYS, SIGNED_SINCE, TrustedKey};
 use super::manifest::{canonical_repository, normalize_version};
 use super::policy::Policy;
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use semver::Version;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -45,12 +46,16 @@ pub enum SignatureStatus {
 }
 
 impl SignatureStatus {
+    /// The status in the language of the interface ("signature: …").
     pub fn describe(&self) -> String {
         match self {
-            Self::Verified { key } => format!("verified (key {key})"),
-            Self::Unsigned => "none (this release is not signed)".to_string(),
+            // Translators: the signature of a release; {} is the name of the key.
+            Self::Verified { key } => tr!("verified (key {})", isolate(key)),
+            // Translators: the signature of a release.
+            Self::Unsigned => tr!("none (this release is not signed)"),
             Self::Unverifiable => {
-                "present, but this eov build has no release keys to verify it".to_string()
+                // Translators: the signature of a release.
+                tr!("present, but this eov build has no release keys to verify it")
             }
         }
     }
@@ -120,35 +125,68 @@ impl Verifier {
         declared: bool,
         identity: ManifestIdentity<'_>,
     ) -> Result<SignatureStatus> {
-        let what = format!(
-            "the {} {} release manifest",
-            identity.kind, identity.version
-        );
+        // The manifest, as the messages name it ("the eov 1.2.0 release
+        // manifest").
+        let kind = identity.kind;
+        let version = isolate(identity.version);
         let Some(signature) = signature else {
             if declared {
                 bail!(
-                    "{what} declares a signature, but release.toml{SIGNATURE_SUFFIX} is missing. Nothing was changed."
+                    "{}",
+                    // Translators: {kind} is "eov" or a plugin, {version} its version; {file} is a file name.
+                    tr!(
+                        "the {kind} {version} release manifest declares a signature, but {file} is missing. Nothing was changed.",
+                        kind = kind,
+                        version = version,
+                        file = isolate(format!("release.toml{SIGNATURE_SUFFIX}"))
+                    )
                 );
             }
             if self.requires_signature(identity.version, false) {
                 bail!(
-                    "{what} is not signed, but {} requires signed release metadata. Nothing was changed.",
+                    "{}",
                     if self.require_by_policy {
-                        "the administrator policy"
+                        // Translators: {kind} is "eov" or a plugin, {version} its version.
+                        tr!(
+                            "the {kind} {version} release manifest is not signed, but the administrator policy requires signed release metadata. Nothing was changed.",
+                            kind = kind,
+                            version = version
+                        )
                     } else {
-                        "this eov build"
+                        // Translators: {kind} is "eov" or a plugin, {version} its version.
+                        tr!(
+                            "the {kind} {version} release manifest is not signed, but this eov build requires signed release metadata. Nothing was changed.",
+                            kind = kind,
+                            version = version
+                        )
                     }
                 );
             }
             return Ok(SignatureStatus::Unsigned);
         };
 
-        let signature = minisign_verify::Signature::decode(signature)
-            .map_err(|error| anyhow::anyhow!("{what} has a malformed signature: {error}"))?;
+        let signature = minisign_verify::Signature::decode(signature).map_err(|error| {
+            anyhow::anyhow!(
+                "{}",
+                // Translators: {kind} is "eov" or a plugin, {version} its version; {error} the error of the signature library.
+                tr!(
+                    "the {kind} {version} release manifest has a malformed signature: {error}",
+                    kind = kind,
+                    version = version,
+                    error = error
+                )
+            )
+        })?;
         if self.keys.is_empty() {
             if self.require_by_policy {
                 bail!(
-                    "{what} is signed, but this eov build has no release keys and the administrator policy requires verified signatures."
+                    "{}",
+                    // Translators: {kind} is "eov" or a plugin, {version} its version.
+                    tr!(
+                        "the {kind} {version} release manifest is signed, but this eov build has no release keys and the administrator policy requires verified signatures.",
+                        kind = kind,
+                        version = version
+                    )
                 );
             }
             return Ok(SignatureStatus::Unverifiable);
@@ -159,12 +197,21 @@ impl Verifier {
             .find(|(_, key)| key.verify(manifest, &signature, false).is_ok())
             .map(|(name, _)| name.clone())
             .with_context(|| {
-                format!(
-                    "the signature of {what} does not verify against the trusted eov release keys. The metadata may have been tampered with; nothing was changed."
+                // Translators: {kind} is "eov" or a plugin, {version} its version.
+                tr!(
+                    "the signature of the {kind} {version} release manifest does not verify against the trusted eov release keys. The metadata may have been tampered with; nothing was changed.",
+                    kind = kind,
+                    version = version
                 )
             })?;
-        check_trusted_comment(signature.trusted_comment(), identity)
-            .with_context(|| format!("the signature of {what} belongs to a different release"))?;
+        check_trusted_comment(signature.trusted_comment(), identity).with_context(|| {
+            // Translators: {kind} is "eov" or a plugin, {version} its version.
+            tr!(
+                "the signature of the {kind} {version} release manifest belongs to a different release",
+                kind = kind,
+                version = version
+            )
+        })?;
         Ok(SignatureStatus::Verified { key })
     }
 }
@@ -178,20 +225,37 @@ fn check_trusted_comment(comment: &str, identity: ManifestIdentity<'_>) -> Resul
         fields
             .get(name)
             .copied()
-            .with_context(|| format!("the signed comment has no '{name}' field"))
+            // Translators: the trusted comment is the signed text of a minisign
+            // signature; {} is the name of one of its fields: keep it as it is.
+            .with_context(|| tr!("the signature's trusted comment has no '{}' field", name))
     };
     if field("kind")? != identity.kind {
         bail!(
-            "it was made for a '{}' manifest, not '{}'",
-            field("kind")?,
-            identity.kind
+            "{}",
+            // Translators: "it" is a signature; {signed} and {expected} are kinds of release manifest ("eov" or a plugin).
+            tr!(
+                "it was made for a '{signed}' manifest, not '{expected}'",
+                signed = isolate(field("kind")?),
+                expected = isolate(identity.kind)
+            )
         );
     }
     if normalize_version(field("version")?)? != *identity.version {
-        bail!("it was made for version {}", field("version")?);
+        bail!(
+            "{}",
+            // Translators: "it" is a signature.
+            tr!("it was made for version {}", isolate(field("version")?))
+        );
     }
     if canonical_repository(field("repository")?)? != canonical_repository(identity.repository)? {
-        bail!("it was made for repository {}", field("repository")?);
+        bail!(
+            "{}",
+            // Translators: "it" is a signature.
+            tr!(
+                "it was made for repository {}",
+                isolate(field("repository")?)
+            )
+        );
     }
     Ok(())
 }

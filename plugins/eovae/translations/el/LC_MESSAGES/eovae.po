@@ -1,0 +1,1552 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: eovae\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Greek\n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "EOV VAE"
+msgstr "EOV VAE"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Reconstruction-error analysis with ONNX VAE models, showing how unlike the "
+"training data the tissue looks: heat maps, reconstructions, error statistics "
+"and highest-error regions. Research use only; not for diagnosis."
+msgstr ""
+"Ανάλυση σφάλματος ανακατασκευής με μοντέλα VAE σε μορφή ONNX, που δείχνει "
+"πόσο διαφέρει ο ιστός από τα δεδομένα εκπαίδευσης: θερμικοί χάρτες, "
+"ανακατασκευές, στατιστικά σφάλματος και περιοχές με το υψηλότερο σφάλμα. "
+"Μόνο για ερευνητική χρήση· όχι για διάγνωση."
+
+#: src/batch.rs:89
+msgid ""
+"VAE reconstruction error of every tissue tile: tiles.csv, heatmap.png and "
+"summary.json per slide"
+msgstr ""
+"Σφάλμα ανακατασκευής VAE για κάθε τμήμα ιστού: tiles.csv, heatmap.png και "
+"summary.json ανά πλακίδιο"
+
+#: src/batch.rs:94
+msgid "the ONNX model (default: the one chosen in eov's VAE sidebar)"
+msgstr ""
+"το μοντέλο ONNX (προεπιλογή: αυτό που επιλέχθηκε στην πλευρική γραμμή VAE "
+"του eov)"
+
+#. Translators: a batch parameter: keep auto, cpu and cuda, the values typed
+#: src/batch.rs:104
+msgid "auto (CUDA, else the CPU), cpu or cuda"
+msgstr "auto (CUDA, αλλιώς η CPU), cpu ή cuda"
+
+#: src/batch.rs:109
+msgid "tiles per inference batch, for models without a fixed batch"
+msgstr "τμήματα ανά παρτίδα συμπερασμού, για μοντέλα χωρίς σταθερή παρτίδα"
+
+#: src/batch.rs:114
+msgid "CPU inference threads (0: every core)"
+msgstr "νήματα συμπερασμού CPU (0: όλοι οι πυρήνες)"
+
+#: src/batch.rs:119
+msgid "allow TF32 on CUDA (faster, slightly different results)"
+msgstr ""
+"να επιτρέπεται το TF32 σε CUDA (ταχύτερο, ελαφρώς διαφορετικά αποτελέσματα)"
+
+#. Translators: a batch parameter: keep auto, the value typed
+#: src/batch.rs:126
+msgid ""
+"auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that "
+"level's own pixels)"
+msgstr ""
+"auto (τμήματα με επαναδειγματοληψία στα µm/px του μοντέλου) ή συντελεστής "
+"υποδειγματοληψίας, π.χ. 4 (τα ίδια τα pixel εκείνου του επιπέδου)"
+
+#: src/batch.rs:132
+msgid "skip glass tiles"
+msgstr "παράλειψη τμημάτων μόνο με γυαλί"
+
+#. Translators: a batch parameter: keep auto and lo,hi, the values typed;
+#. p05–p95 is the 5th to 95th percentile
+#: src/batch.rs:140
+msgid ""
+"error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute "
+"error; the same scale for every slide)"
+msgstr ""
+"χρώματα χάρτη σφάλματος: auto (p05–p95 κάθε πλακιδίου) ή lo,hi (μέσο απόλυτο "
+"σφάλμα· η ίδια κλίμακα για κάθε πλακίδιο)"
+
+#. Translators: a batch parameter: keep off, store and reuse, the values typed
+#: src/batch.rs:148
+msgid ""
+"off; store (keep the results for eov's viewer); or reuse (also take tiles "
+"analysed before with the same model and settings)"
+msgstr ""
+"off· store (διατήρηση των αποτελεσμάτων για το πρόγραμμα προβολής του eov)· "
+"ή reuse (χρήση και τμημάτων που αναλύθηκαν παλαιότερα με το ίδιο μοντέλο και "
+"τις ίδιες ρυθμίσεις)"
+
+#. Translators: {} is what was typed into the SHA-256 field; it is
+#. ignored and the field keeps its previous value.
+#: src/config.rs:159
+msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
+msgstr "Το «{}» δεν είναι SHA-256 (64 δεκαεξαδικά ψηφία) και δεν αποθηκεύτηκε."
+
+#: src/contract.rs:162
+msgid "HistoVAE defaults"
+msgstr "προεπιλογές HistoVAE"
+
+#: src/contract.rs:163
+msgid "built-in model card"
+msgstr "ενσωματωμένη κάρτα μοντέλου"
+
+#: src/contract.rs:164
+msgid "model metadata"
+msgstr "μεταδεδομένα μοντέλου"
+
+#: src/contract.rs:165
+msgid "sidecar file"
+msgstr "συνοδευτικό αρχείο"
+
+#. Translators: a value a model declares that eovae does not use
+#: src/contract.rs:196
+msgid "ignored {key} = '{value}'"
+msgstr "αγνοήθηκε το {key} = '{value}'"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:201
+msgid "ignored mean/std with a non-positive std"
+msgstr "αγνοήθηκαν τα mean/std με μη θετικό std"
+
+#. Translators: std is the standard deviation
+#: src/contract.rs:203
+msgid "mean and std must be declared together"
+msgstr "τα mean και std πρέπει να δηλώνονται μαζί"
+
+#: src/db.rs:526
+msgid "result cache: {}"
+msgstr "κρυφή μνήμη αποτελεσμάτων: {}"
+
+#. Translators: two errors: opening the cache, then a new one
+#: src/db.rs:559
+msgid "{error}; then {again}"
+msgstr "{error}· έπειτα {again}"
+
+#: src/db.rs:567
+msgid ""
+"the result cache was created by a newer eovae; results are kept in memory "
+"only"
+msgstr ""
+"η κρυφή μνήμη αποτελεσμάτων δημιουργήθηκε από νεότερη έκδοση του eovae· τα "
+"αποτελέσματα διατηρούνται μόνο στη μνήμη"
+
+#: src/db.rs:573
+msgid "the result cache is unavailable ({}); results are kept in memory only"
+msgstr ""
+"η κρυφή μνήμη αποτελεσμάτων δεν είναι διαθέσιμη ({})· τα αποτελέσματα "
+"διατηρούνται μόνο στη μνήμη"
+
+#: src/db.rs:679
+msgid "the result cache is disabled"
+msgstr "η κρυφή μνήμη αποτελεσμάτων είναι απενεργοποιημένη"
+
+#: src/db.rs:683 src/db.rs:684
+msgid "the result cache stopped"
+msgstr "η κρυφή μνήμη αποτελεσμάτων σταμάτησε"
+
+#: src/engine.rs:107
+msgid "CPU · {n} thread"
+msgid_plural "CPU · {n} threads"
+msgstr[0] "CPU · {n} νήμα"
+msgstr[1] "CPU · {n} νήματα"
+
+#: src/engine.rs:121
+msgid ""
+"this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
+msgstr ""
+"αυτό το ONNX Runtime δεν υποστηρίζει CUDA (χρησιμοποιήστε την έκδοση για "
+"GPU· δείτε το README)"
+
+#: src/lib.rs:91
+msgid ""
+"this eovae build has no ONNX Runtime support (built without the `onnx` "
+"feature)"
+msgstr ""
+"αυτή η δομή του eovae δεν υποστηρίζει ONNX Runtime (δημιουργήθηκε χωρίς τη "
+"δυνατότητα `onnx`)"
+
+#: src/lib.rs:96
+msgid "no inference runtime in this build"
+msgstr "δεν υπάρχει περιβάλλον εκτέλεσης συμπερασμού σε αυτή τη δομή"
+
+#. Translators: an error: the operation was cancelled
+#: src/message.rs:57
+msgid "cancelled"
+msgstr "ακυρώθηκε"
+
+#: src/model.rs:160
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles as the model "
+"declares."
+msgstr ""
+"Το μέγεθος εισόδου είναι δυναμικό· αναλύονται τμήματα {size}×{size}, όπως "
+"δηλώνει το μοντέλο."
+
+#: src/model.rs:167
+msgid ""
+"The input size is dynamic; analysing {size}×{size} tiles (declare eovae."
+"tile_size to change)."
+msgstr ""
+"Το μέγεθος εισόδου είναι δυναμικό· αναλύονται τμήματα {size}×{size} (δηλώστε "
+"το eovae.tile_size για να το αλλάξετε)."
+
+#: src/model.rs:171
+msgid ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgid_plural ""
+"The model has a fixed batch of {n}: tiles are analysed {n} at a time and the "
+"last batch of each run is padded. Export with a dynamic batch axis for small "
+"viewport runs."
+msgstr[0] ""
+"Το μοντέλο έχει σταθερή παρτίδα {n}: τα τμήματα αναλύονται ανά {n} και η "
+"τελευταία παρτίδα κάθε εκτέλεσης συμπληρώνεται. Εξαγάγετε με δυναμικό άξονα "
+"παρτίδας για μικρές εκτελέσεις στο πεδίο προβολής."
+msgstr[1] ""
+"Το μοντέλο έχει σταθερή παρτίδα {n}: τα τμήματα αναλύονται ανά {n} και η "
+"τελευταία παρτίδα κάθε εκτέλεσης συμπληρώνεται. Εξαγάγετε με δυναμικό άξονα "
+"παρτίδας για μικρές εκτελέσεις στο πεδίο προβολής."
+
+#: src/model.rs:175
+msgid "Float16 model: inputs are converted from float32."
+msgstr "Μοντέλο Float16: οι είσοδοι μετατρέπονται από float32."
+
+#. Translators: "Model" is the sidebar's Model section
+#: src/model.rs:178
+msgid "{n} image output; using '{name}' (change it in the Model section)."
+msgid_plural ""
+"{n} image outputs; using '{name}' (change it in the Model section)."
+msgstr[0] ""
+"{n} έξοδος εικόνας· χρησιμοποιείται η «{name}» (αλλάξτε την στην ενότητα "
+"«Μοντέλο»)."
+msgstr[1] ""
+"{n} έξοδοι εικόνας· χρησιμοποιείται η «{name}» (αλλάξτε την στην ενότητα "
+"«Μοντέλο»)."
+
+#: src/model.rs:183
+msgid "Model metadata: {}."
+msgstr "Μεταδεδομένα μοντέλου: {}."
+
+#. Translators: the sidecar is a model's <model>.eovae.json file
+#: src/model.rs:185
+msgid "Sidecar: {}."
+msgstr "Συνοδευτικό αρχείο: {}."
+
+#: src/model.rs:187
+msgid "Ignored {}: the sidecar must be a JSON object."
+msgstr ""
+"Αγνοήθηκε το {}: το συνοδευτικό αρχείο πρέπει να είναι αντικείμενο JSON."
+
+#: src/model.rs:191
+msgid "Ignored {file}: {error}."
+msgstr "Αγνοήθηκε το {file}: {error}."
+
+#: src/model.rs:196
+msgid ""
+"The model does not declare the resolution it was trained at (eovae.mpp); "
+"errors depend on the level you choose."
+msgstr ""
+"Το μοντέλο δεν δηλώνει την ανάλυση στην οποία εκπαιδεύτηκε (eovae.mpp)· τα "
+"σφάλματα εξαρτώνται από το επίπεδο που επιλέγετε."
+
+#. Translators: "Preprocessing" is the sidebar's section of that name
+#: src/model.rs:200
+msgid ""
+"No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check "
+"it in Preprocessing."
+msgstr ""
+"Δεν δηλώθηκε προεπεξεργασία: χρησιμοποιείται αυτή του HistoVAE ([-1, 1], "
+"άλφα σε λευκό). Ελέγξτε την στην ενότητα «Προεπεξεργασία»."
+
+#. Translators: about the model's input tensor; the words in
+#. parentheses name its four axes in order and may be translated.
+#: src/model.rs:304
+msgid ""
+"it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
+msgid_plural ""
+"it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
+msgstr[0] ""
+"έχει {n} διάσταση· ένας τανυστής εικόνας έχει 4 (παρτίδα, κανάλια, ύψος, "
+"πλάτος)"
+msgstr[1] ""
+"έχει {n} διαστάσεις· ένας τανυστής εικόνας έχει 4 (παρτίδα, κανάλια, ύψος, "
+"πλάτος)"
+
+#: src/model.rs:326
+msgid "it has {n} channel; eovae feeds RGB (3 channels)"
+msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
+msgstr[0] "έχει {n} κανάλι· το eovae τροφοδοτεί RGB (3 κανάλια)"
+msgstr[1] "έχει {n} κανάλια· το eovae τροφοδοτεί RGB (3 κανάλια)"
+
+#: src/model.rs:329
+msgid "its channel dimension is not 3 (RGB)"
+msgstr "η διάσταση καναλιών του δεν είναι 3 (RGB)"
+
+#: src/model.rs:372
+msgid "the model has no inputs"
+msgstr "το μοντέλο δεν έχει εισόδους"
+
+#: src/model.rs:381
+msgid ""
+"the model needs {n} input ({names}); eovae feeds exactly one image input"
+msgid_plural ""
+"the model needs {n} inputs ({names}); eovae feeds exactly one image input"
+msgstr[0] ""
+"το μοντέλο χρειάζεται {n} είσοδο ({names})· το eovae τροφοδοτεί ακριβώς μία "
+"είσοδο εικόνας"
+msgstr[1] ""
+"το μοντέλο χρειάζεται {n} εισόδους ({names})· το eovae τροφοδοτεί ακριβώς "
+"μία είσοδο εικόνας"
+
+#: src/model.rs:394
+msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
+msgstr "η είσοδος «{name}» είναι {kind}· το eovae τροφοδοτεί float32 ή float16"
+
+#: src/model.rs:403
+msgid "input '{}' does not declare its shape"
+msgstr "η είσοδος «{}» δεν δηλώνει το σχήμα της"
+
+#: src/model.rs:407
+msgid "input '{name}' is not an image: {error}"
+msgstr "η είσοδος «{name}» δεν είναι εικόνα: {error}"
+
+#: src/model.rs:418
+msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
+msgstr ""
+"η είσοδος «{name}» είναι {height}×{width}· το eovae αναλύει τετράγωνα τμήματα"
+
+#: src/model.rs:437
+msgid "tiles of {} px are not supported (16–2048)"
+msgstr "τμήματα των {} px δεν υποστηρίζονται (16–2048)"
+
+#. Translators: an output of the model (its name) that declares no shape
+#: src/model.rs:465
+msgid "{} (no shape)"
+msgstr "{} (χωρίς σχήμα)"
+
+#: src/model.rs:499
+msgid ""
+"the model only encodes (outputs mu and logvar); export the reconstruction "
+"model (HistoVAE: create_onnx --mode reconstruct)"
+msgstr ""
+"το μοντέλο μόνο κωδικοποιεί (έξοδοι mu και logvar)· εξαγάγετε το μοντέλο "
+"ανακατασκευής (HistoVAE: create_onnx --mode reconstruct)"
+
+#: src/model.rs:510
+msgid ""
+"no output is an RGB image matching the input {shape} (outputs: {outputs})"
+msgstr ""
+"καμία έξοδος δεν είναι εικόνα RGB που να αντιστοιχεί στην είσοδο {shape} "
+"(έξοδοι: {outputs})"
+
+#: src/model.rs:666
+msgid "only .onnx models are supported"
+msgstr "υποστηρίζονται μόνο μοντέλα .onnx"
+
+#: src/model.rs:670
+msgid "{} does not exist"
+msgstr "το {} δεν υπάρχει"
+
+#. The detail is technical, and English like a library's.
+#: src/model.rs:676
+msgid "not a valid ONNX model: {}"
+msgstr "μη έγκυρο μοντέλο ONNX: {}"
+
+#: src/model.rs:688
+msgid "the model's weights point outside its folder ('{}')"
+msgstr "τα βάρη του μοντέλου παραπέμπουν εκτός του φακέλου του («{}»)"
+
+#: src/model.rs:697
+msgid ""
+"the model's weights file '{}' is missing; keep it next to the .onnx file"
+msgstr ""
+"λείπει το αρχείο βαρών «{}» του μοντέλου· κρατήστε το δίπλα στο αρχείο .onnx"
+
+#: src/ort_backend.rs:153
+msgid "it could not be opened: {}"
+msgstr "δεν ήταν δυνατό το άνοιγμα της βιβλιοθήκης: {}"
+
+#: src/ort_backend.rs:157
+msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
+msgstr "δεν είναι ONNX Runtime (δεν έχει OrtGetApiBase)"
+
+#: src/ort_backend.rs:162
+msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
+msgstr "δεν είναι ONNX Runtime (το OrtGetApiBase δεν επέστρεψε τίποτα)"
+
+#: src/ort_backend.rs:177
+msgid "it is ONNX Runtime {version}, older than {oldest}"
+msgstr "είναι ONNX Runtime {version}, παλαιότερο από το {oldest}"
+
+#: src/ort_backend.rs:292
+msgid "{path}: opening it crashed ({error})"
+msgstr "{path}: κατέρρευσε κατά το άνοιγμα ({error})"
+
+#: src/ort_backend.rs:318
+msgid "loading it crashed ({})"
+msgstr "κατέρρευσε κατά τη φόρτωση ({})"
+
+#: src/ort_backend.rs:323
+msgid ""
+"ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
+"again."
+msgstr ""
+"Δεν ήταν δυνατή η φόρτωση του ONNX Runtime από το {path}: {error}. "
+"Επανεκκινήστε το eov για να δοκιμάσετε ξανά."
+
+#. Translators: {variable} is an environment variable; "Model →
+#. Runtime" is the Runtime… button in the sidebar's Model section
+#: src/ort_backend.rs:342
+msgid ""
+"ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
+"the library, or choose it under Model → Runtime. Tried: {tried}"
+msgstr ""
+"Δεν βρέθηκε το ONNX Runtime (1.22 ή νεότερο). Εγκαταστήστε το, ορίστε το "
+"{variable} στη βιβλιοθήκη ή επιλέξτε το με το κουμπί «ONNX Runtime…» στην "
+"ενότητα «Μοντέλο». Δοκιμάστηκαν: {tried}"
+
+#. Translators: a library that was loaded, as a note after an error
+#: src/ort_backend.rs:381
+msgid "loaded {}"
+msgstr "φορτώθηκε το {}"
+
+#: src/ort_backend.rs:453
+msgid "building the session took longer than {} s"
+msgstr "η δημιουργία της συνεδρίας διήρκεσε περισσότερο από {} s"
+
+#: src/ort_backend.rs:472
+msgid "Building CPU session…"
+msgstr "Δημιουργία συνεδρίας CPU…"
+
+#: src/ort_backend.rs:473
+msgid "Building CUDA session…"
+msgstr "Δημιουργία συνεδρίας CUDA…"
+
+#: src/ort_backend.rs:483
+msgid "ONNX Runtime does not see input '{}'"
+msgstr "Το ONNX Runtime δεν βλέπει την είσοδο «{}»"
+
+#: src/ort_backend.rs:491
+msgid "unknown output '{}'"
+msgstr "άγνωστη έξοδος «{}»"
+
+#: src/ort_backend.rs:497
+msgid "ONNX Runtime does not see output '{}'"
+msgstr "Το ONNX Runtime δεν βλέπει την έξοδο «{}»"
+
+#: src/ort_backend.rs:553
+msgid "Checking the model…"
+msgstr "Έλεγχος του μοντέλου…"
+
+#: src/ort_backend.rs:554
+msgid "Warming up CUDA…"
+msgstr "Προθέρμανση CUDA…"
+
+#: src/ort_backend.rs:560
+msgid "test run failed: {}"
+msgstr "η δοκιμαστική εκτέλεση απέτυχε: {}"
+
+#. Translators: the model's output has the wrong size;
+#. {returned} and {expected} are bare numbers of values.
+#: src/ort_backend.rs:569
+msgid ""
+"the model returned the wrong number of values for {n} tile: {returned} "
+"instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for {n} tiles: {returned} "
+"instead of {expected}"
+msgstr[0] ""
+"το μοντέλο επέστρεψε λάθος αριθμό τιμών για {n} τμήμα: {returned} αντί για "
+"{expected}"
+msgstr[1] ""
+"το μοντέλο επέστρεψε λάθος αριθμό τιμών για {n} τμήματα: {returned} αντί για "
+"{expected}"
+
+#: src/ort_backend.rs:598
+msgid "Loading ONNX Runtime…"
+msgstr "Φόρτωση του ONNX Runtime…"
+
+#: src/ort_backend.rs:638
+msgid "CUDA is unavailable: {}"
+msgstr "Το CUDA δεν είναι διαθέσιμο: {}"
+
+#: src/ort_backend.rs:660
+msgid "ONNX Runtime: {}"
+msgstr "ONNX Runtime: {}"
+
+#: src/ort_backend.rs:661
+msgid "ONNX Runtime is loaded with the first model."
+msgstr "Το ONNX Runtime φορτώνεται μαζί με το πρώτο μοντέλο."
+
+#: src/ort_backend.rs:821
+msgid "the model produced no '{}'"
+msgstr "το μοντέλο δεν παρήγαγε «{}»"
+
+#. Translators: why an analysis failed: the
+#. host (eov) gave {n} bytes of pixel data,
+#. the wrong size for a region of {tile} ×
+#. {tile} pixels.
+#: src/pipeline.rs:317
+msgid "the host returned {n} byte for a {tile}×{tile} region"
+msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
+msgstr[0] "το eov επέστρεψε {n} byte για περιοχή {tile}×{tile}"
+msgstr[1] "το eov επέστρεψε {n} byte για περιοχή {tile}×{tile}"
+
+#: src/pipeline.rs:335
+msgid "{n} tile could not be read (level {level}); last error: {error}"
+msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
+msgstr[0] ""
+"Δεν ήταν δυνατή η ανάγνωση {n} τμήματος (επίπεδο {level})· τελευταίο σφάλμα: "
+"{error}"
+msgstr[1] ""
+"Δεν ήταν δυνατή η ανάγνωση {n} τμημάτων (επίπεδο {level})· τελευταίο σφάλμα: "
+"{error}"
+
+#. Translators: why an analysis failed: it ended before every
+#. tile was done ({done} of the {total} tiles were).
+#: src/pipeline.rs:440
+msgid "it stopped before every tile was done ({done} of {total})"
+msgstr "σταμάτησε πριν ολοκληρωθούν όλα τα τμήματα ({done} από {total})"
+
+#: src/pipeline.rs:480
+msgid "inference failed: {}"
+msgstr "ο συμπερασμός απέτυχε: {}"
+
+#. Translators: the model's output has the wrong size; {returned}
+#. and {expected} are bare numbers of values.
+#: src/pipeline.rs:492
+msgid ""
+"the model returned the wrong number of values for a batch of {n} tile: "
+"{returned} instead of {expected}"
+msgid_plural ""
+"the model returned the wrong number of values for a batch of {n} tiles: "
+"{returned} instead of {expected}"
+msgstr[0] ""
+"το μοντέλο επέστρεψε λάθος αριθμό τιμών για παρτίδα {n} τμήματος: {returned} "
+"αντί για {expected}"
+msgstr[1] ""
+"το μοντέλο επέστρεψε λάθος αριθμό τιμών για παρτίδα {n} τμημάτων: {returned} "
+"αντί για {expected}"
+
+#: src/plugin.rs:57
+msgid "VAE reconstruction analysis"
+msgstr "Ανάλυση ανακατασκευής VAE"
+
+#: src/plugin.rs:61 src/presenter.rs:794
+msgid "VAE tile grid"
+msgstr "Πλέγμα τμημάτων VAE"
+
+#: src/plugin.rs:65 src/presenter.rs:790
+msgid "VAE overlay"
+msgstr "Επικάλυψη VAE"
+
+#: src/plugin.rs:227 src/plugin.rs:239
+msgid "Whole slide"
+msgstr "Ολόκληρο πλακίδιο"
+
+#: src/plugin.rs:228 src/plugin.rs:240
+msgid "Viewport"
+msgstr "Πεδίο προβολής"
+
+#: src/plugin.rs:229 src/plugin.rs:241
+msgid "Region of interest"
+msgstr "Περιοχή ενδιαφέροντος"
+
+#: src/plugin.rs:230
+msgid "Visible tiles"
+msgstr "Ορατά τμήματα"
+
+#: src/plugin.rs:242
+msgid "Automatic analysis"
+msgstr "Αυτόματη ανάλυση"
+
+#: src/plugin.rs:516
+msgid "Load an ONNX model first."
+msgstr "Φορτώστε πρώτα ένα μοντέλο ONNX."
+
+#: src/plugin.rs:517
+msgid "The model is still loading."
+msgstr "Το μοντέλο φορτώνεται ακόμη."
+
+#: src/plugin.rs:518
+msgid "The model could not be loaded: {}"
+msgstr "Δεν ήταν δυνατή η φόρτωση του μοντέλου: {}"
+
+#: src/plugin.rs:519
+msgid "Preparing the inference engine…"
+msgstr "Προετοιμασία της μηχανής συμπερασμού…"
+
+#. Translators: eovae is working out which slide file this is (its
+#. content fingerprint), to find its stored results; it does not
+#. identify a patient.
+#: src/plugin.rs:524
+msgid "Identifying the slide…"
+msgstr "Αναγνώριση του πλακιδίου…"
+
+#: src/plugin.rs:525
+msgid "The slide reports no pyramid levels."
+msgstr "Το πλακίδιο δεν αναφέρει επίπεδα πυραμίδας."
+
+#: src/plugin.rs:526
+msgid "The slide is not open."
+msgstr "Το πλακίδιο δεν είναι ανοιχτό."
+
+#. Translators: eovae is this plugin's name; {} says why, in English
+#: src/plugin.rs:753
+msgid "eovae settings were unreadable and were reset ({})"
+msgstr ""
+"Οι ρυθμίσεις του eovae δεν ήταν αναγνώσιμες και επαναφέρθηκαν στις "
+"προεπιλογές ({})"
+
+#. Translators: the title of an error notification; eovae is
+#. this plugin's name
+#: src/plugin.rs:804
+msgid "An eovae worker thread failed unexpectedly"
+msgstr "Ένα νήμα εργασίας του eovae απέτυχε απροσδόκητα"
+
+#: src/plugin.rs:1120
+msgid ""
+"This eov cannot show layers in some panes only: every pane of a slide shows "
+"the same VAE overlay."
+msgstr ""
+"Αυτή η έκδοση του eov δεν μπορεί να εμφανίζει στρώσεις μόνο σε ορισμένα "
+"πλαίσια: όλα τα πλαίσια ενός πλακιδίου εμφανίζουν την ίδια επικάλυψη VAE."
+
+#: src/plugin.rs:1260
+msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
+msgstr ""
+"Φορτώστε ένα μοντέλο ONNX στην πλευρική γραμμή VAE για να αναλύσετε αυτό το "
+"πλακίδιο."
+
+#: src/plugin.rs:1305
+msgid "VAE analysis"
+msgstr "Ανάλυση VAE"
+
+#: src/plugin.rs:1351
+msgid ""
+"The ONNX Runtime library is used from the next start of eov if a runtime is "
+"already loaded."
+msgstr ""
+"Η βιβλιοθήκη ONNX Runtime θα χρησιμοποιηθεί από την επόμενη εκκίνηση του "
+"eov, αν έχει ήδη φορτωθεί κάποιο περιβάλλον εκτέλεσης."
+
+#: src/plugin.rs:1378
+msgid "The VAE result cache was cleared."
+msgstr "Η κρυφή μνήμη αποτελεσμάτων VAE απαλείφθηκε."
+
+#: src/plugin.rs:1382
+msgid "Could not clear the VAE result cache"
+msgstr "Δεν ήταν δυνατή η απαλοιφή της κρυφής μνήμης αποτελεσμάτων VAE"
+
+#: src/plugin.rs:1411
+msgid "the model file could not be read"
+msgstr "δεν ήταν δυνατή η ανάγνωση του αρχείου του μοντέλου"
+
+#: src/plugin.rs:1440
+msgid "The VAE model could not be loaded"
+msgstr "Δεν ήταν δυνατή η φόρτωση του μοντέλου VAE"
+
+#. Translators: "Load ONNX…" is the sidebar's button of that name
+#: src/plugin.rs:1496
+msgid "This eov cannot download models: load the model file with Load ONNX…"
+msgstr ""
+"Αυτή η εγκατάσταση του eov δεν μπορεί να κάνει λήψη μοντέλων: ανοίξτε το "
+"αρχείο του μοντέλου με το «Άνοιγμα ONNX…»"
+
+#: src/plugin.rs:1620
+msgid "the inference engine failed unexpectedly"
+msgstr "η μηχανή συμπερασμού απέτυχε απροσδόκητα"
+
+#: src/plugin.rs:1666
+msgid "VAE inference runs on the CPU: {}"
+msgstr "Ο συμπερασμός VAE εκτελείται στη CPU: {}"
+
+#: src/plugin.rs:1673
+msgid "The VAE model cannot run"
+msgstr "Το μοντέλο VAE δεν μπορεί να εκτελεστεί"
+
+#: src/plugin.rs:1754
+msgid "Starting…"
+msgstr "Εκκίνηση…"
+
+#: src/plugin.rs:1810
+msgid "Preparing the model…"
+msgstr "Προετοιμασία του μοντέλου…"
+
+#: src/plugin.rs:1865
+msgid "Draw a region of interest on the slide first."
+msgstr "Σχεδιάστε πρώτα μια περιοχή ενδιαφέροντος στο πλακίδιο."
+
+#: src/plugin.rs:1884
+msgid "The slide is not shown in a pane."
+msgstr "Το πλακίδιο δεν εμφανίζεται σε κανένα πλαίσιο."
+
+#: src/plugin.rs:1939
+msgid "VAE: whole slide"
+msgstr "VAE: ολόκληρο πλακίδιο"
+
+#: src/plugin.rs:1940
+msgid "VAE: region of interest"
+msgstr "VAE: περιοχή ενδιαφέροντος"
+
+#: src/plugin.rs:1941
+msgid "VAE: viewport"
+msgstr "VAE: πεδίο προβολής"
+
+#: src/plugin.rs:1951
+msgid "Analysing on {}"
+msgstr "Ανάλυση σε {}"
+
+#: src/plugin.rs:1983
+msgid "internal error while analysing tiles"
+msgstr "εσωτερικό σφάλμα κατά την ανάλυση τμημάτων"
+
+#: src/plugin.rs:2031
+msgid "internal error: {}"
+msgstr "εσωτερικό σφάλμα: {}"
+
+#: src/plugin.rs:2069
+msgid "VAE analysis failed"
+msgstr "Η ανάλυση VAE απέτυχε"
+
+#: src/plugin.rs:2097
+msgid "Nothing to export"
+msgstr "Δεν υπάρχει τίποτα για εξαγωγή"
+
+#: src/plugin.rs:2156
+msgid "Exported {n} tile to {file}"
+msgid_plural "Exported {n} tiles to {file}"
+msgstr[0] "Εξήχθη {n} τμήμα στο {file}"
+msgstr[1] "Εξήχθησαν {n} τμήματα στο {file}"
+
+#: src/plugin.rs:2162
+msgid "The export failed"
+msgstr "Η εξαγωγή απέτυχε"
+
+#. Translators: eovae is this plugin's name; {} is eov's reason, in English
+#: src/plugin.rs:2180
+msgid "eovae settings could not be saved: {}"
+msgstr "Δεν ήταν δυνατή η αποθήκευση των ρυθμίσεων του eovae: {}"
+
+#. Translators: a duration in seconds
+#: src/plugin.rs:2232
+msgid "{} s"
+msgstr "{} s"
+
+#. Translators: a duration in minutes and seconds, e.g. "3m 05s"
+#: src/plugin.rs:2235
+msgid "{minutes}m {seconds}s"
+msgstr "{minutes} min {seconds} s"
+
+#. Translators: a duration in hours and minutes, e.g. "1h 02m"
+#: src/plugin.rs:2241
+msgid "{hours}h {minutes}m"
+msgstr "{hours} h {minutes} min"
+
+#: src/plugin.rs:2252
+msgid "about {} left"
+msgstr "απομένουν περίπου {}"
+
+#: src/plugin.rs:2260
+msgid "{analysed} analysed"
+msgstr "αναλυμένα: {analysed}"
+
+#: src/plugin.rs:2262
+msgid "{analysed} analysed, {background} background"
+msgstr "αναλυμένα: {analysed}, φόντο: {background}"
+
+#: src/plugin.rs:2267
+msgid "{analysed} analysed, {unreadable} unreadable"
+msgstr "αναλυμένα: {analysed}, μη αναγνώσιμα: {unreadable}"
+
+#: src/plugin.rs:2272
+msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
+msgstr ""
+"αναλυμένα: {analysed}, φόντο: {background}, μη αναγνώσιμα: {unreadable}"
+
+#. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
+#: src/plugin.rs:2301
+msgid "{what}: everything was already analysed."
+msgstr "{what}: όλα είχαν ήδη αναλυθεί."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2305
+msgid "Whole slide finished in {duration}: {counts}."
+msgstr ""
+"Η ανάλυση ολόκληρου του πλακιδίου ολοκληρώθηκε σε {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2311
+msgid "Viewport finished in {duration}: {counts}."
+msgstr "Η ανάλυση του πεδίου προβολής ολοκληρώθηκε σε {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2317
+msgid "Region of interest finished in {duration}: {counts}."
+msgstr ""
+"Η ανάλυση της περιοχής ενδιαφέροντος ολοκληρώθηκε σε {duration} ({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2323
+msgid "Automatic analysis finished in {duration}: {counts}."
+msgstr "Η αυτόματη ανάλυση ολοκληρώθηκε σε {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2329
+msgid "Whole slide cancelled after {duration}: {counts}."
+msgstr ""
+"Η ανάλυση ολόκληρου του πλακιδίου ακυρώθηκε μετά από {duration} ({counts})."
+
+#. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2335
+msgid "Viewport cancelled after {duration}: {counts}."
+msgstr ""
+"Η ανάλυση του πεδίου προβολής ακυρώθηκε μετά από {duration} ({counts})."
+
+#. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2341
+msgid "Region of interest cancelled after {duration}: {counts}."
+msgstr ""
+"Η ανάλυση της περιοχής ενδιαφέροντος ακυρώθηκε μετά από {duration} "
+"({counts})."
+
+#. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
+#: src/plugin.rs:2347
+msgid "Automatic analysis cancelled after {duration}: {counts}."
+msgstr "Η αυτόματη ανάλυση ακυρώθηκε μετά από {duration} ({counts})."
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2353
+msgid "Whole slide failed ({counts}): {error}"
+msgstr "Η ανάλυση ολόκληρου του πλακιδίου απέτυχε ({counts}): {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2357
+msgid "Viewport failed ({counts}): {error}"
+msgstr "Η ανάλυση του πεδίου προβολής απέτυχε ({counts}): {error}"
+
+#. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2362
+msgid "Region of interest failed ({counts}): {error}"
+msgstr "Η ανάλυση της περιοχής ενδιαφέροντος απέτυχε ({counts}): {error}"
+
+#. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
+#: src/plugin.rs:2370
+msgid "Automatic analysis failed ({counts}): {error}"
+msgstr "Η αυτόματη ανάλυση απέτυχε ({counts}): {error}"
+
+#. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
+#: src/plugin.rs:2377
+msgid "Whole slide failed: {error}"
+msgstr "Η ανάλυση ολόκληρου του πλακιδίου απέτυχε: {error}"
+
+#. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
+#: src/plugin.rs:2381
+msgid "Viewport failed: {error}"
+msgstr "Η ανάλυση του πεδίου προβολής απέτυχε: {error}"
+
+#. Translators: the analysis of the region of interest failed; {error}: why
+#: src/plugin.rs:2385
+msgid "Region of interest failed: {error}"
+msgstr "Η ανάλυση της περιοχής ενδιαφέροντος απέτυχε: {error}"
+
+#. Translators: {error}: why
+#: src/plugin.rs:2389
+msgid "Automatic analysis failed: {error}"
+msgstr "Η αυτόματη ανάλυση απέτυχε: {error}"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave an image of another size than asked for, in
+#. pixels.
+#: src/plugin.rs:2417
+msgid ""
+"the host returned {width}×{height} for a {asked_width}×{asked_height} region"
+msgstr ""
+"το eov επέστρεψε {width}×{height} για περιοχή {asked_width}×{asked_height}"
+
+#. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
+#: src/plugin.rs:2493
+msgid "{done} of {n} tile"
+msgid_plural "{done} of {n} tiles"
+msgstr[0] "{done} από {n} τμήμα"
+msgstr[1] "{done} από {n} τμήματα"
+
+#. Translators: {eta} is the time left, e.g. "about 2m 05s left"
+#: src/plugin.rs:2499
+msgid "{done} of {n} tile, {eta}"
+msgid_plural "{done} of {n} tiles, {eta}"
+msgstr[0] "{done} από {n} τμήμα, {eta}"
+msgstr[1] "{done} από {n} τμήματα, {eta}"
+
+#. Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
+#: src/presenter.rs:381
+msgid "VAE {done} / {n} tile"
+msgid_plural "VAE {done} / {n} tiles"
+msgstr[0] "VAE {done} / {n} τμήμα"
+msgstr[1] "VAE {done} / {n} τμήματα"
+
+#. Translators: the status bar: how the inference engine is being prepared
+#: src/presenter.rs:385 src/presenter.rs:387
+msgid "VAE: {}"
+msgstr "VAE: {}"
+
+#: src/presenter.rs:781
+msgid "VAE error map"
+msgstr "Χάρτης σφάλματος VAE"
+
+#. Translators: the outline of the region under the pointer
+#: src/presenter.rs:786
+msgid "VAE highlight"
+msgstr "Τονισμός VAE"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for
+#. rows of a region of {width} × {height} pixels.
+#: src/resample.rs:129
+msgid "the host returned {n} byte for rows of a {width}×{height} region"
+msgid_plural ""
+"the host returned {n} bytes for rows of a {width}×{height} region"
+msgstr[0] "το eov επέστρεψε {n} byte για γραμμές περιοχής {width}×{height}"
+msgstr[1] "το eov επέστρεψε {n} byte για γραμμές περιοχής {width}×{height}"
+
+#. Translators: why a part of the slide could not be read: the
+#. host (eov) gave {n} bytes of pixel data, the wrong size for a
+#. region of {width} × {height} pixels.
+#: src/resample.rs:216
+msgid "the host returned {n} byte for a {width}×{height} region"
+msgid_plural "the host returned {n} bytes for a {width}×{height} region"
+msgstr[0] "το eov επέστρεψε {n} byte για περιοχή {width}×{height}"
+msgstr[1] "το eov επέστρεψε {n} byte για περιοχή {width}×{height}"
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu)
+#: src/sidebar.rs:35
+msgid ""
+"This eov does not report its display adjustments: reconstructions are shown "
+"without them, so reset gamma, contrast and stain normalisation before "
+"comparing Original and Reconstruction."
+msgstr ""
+"Αυτή η έκδοση του eov δεν αναφέρει τις ρυθμίσεις εμφάνισής της: οι "
+"ανακατασκευές εμφανίζονται χωρίς αυτές, οπότε επαναφέρετε το γάμμα, την "
+"αντίθεση και την κανονικοποίηση χρώσης πριν συγκρίνετε την «Αρχική εικόνα» "
+"με την «Ανακατασκευή»."
+
+#. Translators: Original and Reconstruction are overlays (the Overlay menu); {} names the stain processing
+#: src/sidebar.rs:43
+msgid ""
+"Reconstructions get this pane's gamma, brightness, contrast and sharpening, "
+"but not its stain processing ({}): turn that off before comparing Original "
+"and Reconstruction."
+msgstr ""
+"Οι ανακατασκευές λαμβάνουν το γάμμα, τη φωτεινότητα, την αντίθεση και την "
+"όξυνση αυτού του πλαισίου, αλλά όχι την επεξεργασία χρώσης του ({}): "
+"απενεργοποιήστε την πριν συγκρίνετε την «Αρχική εικόνα» με την "
+"«Ανακατασκευή»."
+
+#: src/sidebar.rs:50
+msgid ""
+"Reconstructions are shown with this pane's display adjustments, like the "
+"slide."
+msgstr ""
+"Οι ανακατασκευές εμφανίζονται με τις ρυθμίσεις εμφάνισης αυτού του πλαισίου, "
+"όπως και το πλακίδιο."
+
+#: src/sidebar.rs:58
+msgid ""
+"Errors are measured on the slide's own pixels; display adjustments do not "
+"change them."
+msgstr ""
+"Τα σφάλματα μετρώνται στα αρχικά pixel του πλακιδίου· οι ρυθμίσεις εμφάνισης "
+"δεν τα επηρεάζουν."
+
+#. Translators: {} is the method's name: Macenko or Vahadane
+#: src/sidebar.rs:90
+msgid "{} normalisation"
+msgstr "Κανονικοποίηση {}"
+
+#: src/sidebar.rs:163
+msgid "Download the reference model"
+msgstr "Λήψη του μοντέλου αναφοράς"
+
+#: src/sidebar.rs:164
+msgid "Use the reference model"
+msgstr "Χρήση του μοντέλου αναφοράς"
+
+#: src/sidebar.rs:165
+msgid "Download your site's model"
+msgstr "Λήψη μοντέλου οργανισμού"
+
+#: src/sidebar.rs:166
+msgid "Use your site's model"
+msgstr "Χρήση μοντέλου οργανισμού"
+
+#. Translators: {} is the start of the model's SHA-256 checksum
+#: src/sidebar.rs:171
+msgid "Your site's model (SHA-256 {}…)"
+msgstr "Μοντέλο του οργανισμού σας (SHA-256 {}…)"
+
+#. Translators: eov first asks the user whether to download the model
+#. (nothing is downloaded without that answer), then downloads it.
+#: src/sidebar.rs:182
+msgid ""
+"eov is asking you whether to download the model, or downloading it (see the "
+"status bar)…"
+msgstr ""
+"Το eov σας ρωτά αν θα γίνει λήψη του μοντέλου ή κάνει ήδη τη λήψη του (δείτε "
+"τη γραμμή κατάστασης)…"
+
+#. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
+#: src/sidebar.rs:188
+msgid "{} is in eov's model store."
+msgstr "{}: βρίσκεται στην αποθήκη μοντέλων του eov."
+
+#. Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
+#: src/sidebar.rs:193
+msgid "{what}, from {server}."
+msgstr "{what}, από τον διακομιστή {server}."
+
+#. Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
+#: src/sidebar.rs:202
+msgid ""
+"{}: from your site's copy. Set its address (Address…), unless your "
+"administrator has given it to eov."
+msgstr ""
+"{}: από το αντίγραφο του οργανισμού σας. Ορίστε τη διεύθυνσή του («URL…»), "
+"εκτός αν ο διαχειριστής σας την έχει ήδη δώσει στο eov."
+
+#. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
+#: src/sidebar.rs:260
+msgid "Changed by you (model declares: {})"
+msgstr "Τροποποιήθηκε από εσάς (το μοντέλο δηλώνει: {})"
+
+#: src/sidebar.rs:263
+msgid "From HistoVAE defaults"
+msgstr "Από τις προεπιλογές HistoVAE"
+
+#: src/sidebar.rs:264
+msgid "From built-in model card"
+msgstr "Από την ενσωματωμένη κάρτα μοντέλου"
+
+#: src/sidebar.rs:265
+msgid "From model metadata"
+msgstr "Από τα μεταδεδομένα του μοντέλου"
+
+#. Translators: the sidecar is the model's <model>.eovae.json file
+#: src/sidebar.rs:267
+msgid "From sidecar file"
+msgstr "Από το συνοδευτικό αρχείο"
+
+#: src/sidebar.rs:289
+msgid "No model loaded."
+msgstr "Δεν έχει φορτωθεί μοντέλο."
+
+#: src/sidebar.rs:295
+msgid "Reading and hashing the model…"
+msgstr "Ανάγνωση και υπολογισμός σύνοψης του μοντέλου…"
+
+#: src/sidebar.rs:348
+msgid "CUDA unavailable: {}"
+msgstr "Το CUDA δεν είναι διαθέσιμο: {}"
+
+#. Translators: the model's fixed batch size (tiles per inference run)
+#: src/sidebar.rs:374
+msgid "batch {}"
+msgstr "παρτίδα {}"
+
+#. Translators: the model takes any number of tiles per inference run
+#: src/sidebar.rs:376
+msgid "dynamic batch"
+msgstr "δυναμική παρτίδα"
+
+#: src/sidebar.rs:423
+msgid "Embeddings from '{name}' ({n} value) are stored with results."
+msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
+msgstr[0] ""
+"Οι ενσωματώσεις (embeddings) από την έξοδο «{name}» ({n} τιμή) αποθηκεύονται "
+"μαζί με τα αποτελέσματα."
+msgstr[1] ""
+"Οι ενσωματώσεις (embeddings) από την έξοδο «{name}» ({n} τιμές) "
+"αποθηκεύονται μαζί με τα αποτελέσματα."
+
+#. Translators: the Threads field's hint: keep "auto", the word typed there
+#: src/sidebar.rs:503
+msgid "1–{}, or auto"
+msgstr "1–{} ή auto"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:527
+msgid "Auto: the model's {mpp}, resampled from level {level}"
+msgstr ""
+"Αυτόματα: {mpp} του μοντέλου, με επαναδειγματοληψία από το επίπεδο {level}"
+
+#. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
+#: src/sidebar.rs:533
+msgid "Auto: the model's {mpp} = level {level}"
+msgstr "Αυτόματα: {mpp} του μοντέλου = επίπεδο {level}"
+
+#. Translators: a resolution choice
+#: src/sidebar.rs:538
+msgid "Auto (level 0)"
+msgstr "Αυτόματα (επίπεδο 0)"
+
+#. Translators: a level of the slide's pyramid, in the resolution choices
+#: src/sidebar.rs:548
+msgid "Level {}"
+msgstr "Επίπεδο {}"
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:574
+msgid ""
+"The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
+"are interpolated and errors will be inflated."
+msgstr ""
+"Το λεπτομερέστερο επίπεδο του πλακιδίου είναι {mpp}, με χαμηλότερη ανάλυση "
+"από τα {model} του μοντέλου: τα τμήματα παρεμβάλλονται και τα σφάλματα θα "
+"είναι διογκωμένα."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:583
+msgid ""
+"Level {level} is {mpp} but the model was trained at {model}; errors will be "
+"inflated."
+msgstr ""
+"Το επίπεδο {level} είναι {mpp}, αλλά το μοντέλο εκπαιδεύτηκε σε {model}· τα "
+"σφάλματα θα είναι διογκωμένα."
+
+#. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
+#: src/sidebar.rs:593
+msgid ""
+"Tiles are read from level {level} ({mpp}) and resampled to the model's "
+"{model}."
+msgstr ""
+"Τα τμήματα διαβάζονται από το επίπεδο {level} ({mpp}) και "
+"επαναδειγματοληπτούνται στα {model} του μοντέλου."
+
+#. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
+#: src/sidebar.rs:604
+msgid "Level {level} at {mpp} (model {model})."
+msgstr "Επίπεδο {level} σε {mpp} (μοντέλο {model})."
+
+#. Translators: {mpp} is a resolution like "0.23 µm/px"
+#: src/sidebar.rs:611
+msgid "Level {level} at {mpp}."
+msgstr "Επίπεδο {level} σε {mpp}."
+
+#: src/sidebar.rs:616
+msgid "Level {} (the slide is not calibrated)."
+msgstr "Επίπεδο {} (το πλακίδιο δεν είναι βαθμονομημένο)."
+
+#: src/sidebar.rs:629 src/sidebar.rs:886
+msgid "Open a slide."
+msgstr "Ανοίξτε ένα πλακίδιο."
+
+#: src/sidebar.rs:651
+msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
+msgid_plural ""
+"{done} of {n} tiles · {background} background · {unreadable} unreadable"
+msgstr[0] ""
+"{done} από {n} τμήμα · φόντο: {background} · μη αναγνώσιμα: {unreadable}"
+msgstr[1] ""
+"{done} από {n} τμήματα · φόντο: {background} · μη αναγνώσιμα: {unreadable}"
+
+#. Translators: Viewport and Whole slide are the buttons of the same names
+#: src/sidebar.rs:699
+msgid ""
+"Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
+"Whole slide."
+msgid_plural ""
+"Zoom in to analyse automatically ({n} tiles visible), or run Viewport or "
+"Whole slide."
+msgstr[0] ""
+"Μεγεθύνετε για αυτόματη ανάλυση ({n} ορατό τμήμα) ή εκτελέστε «Προβολή» ή "
+"«Πλακίδιο»."
+msgstr[1] ""
+"Μεγεθύνετε για αυτόματη ανάλυση ({n} ορατά τμήματα) ή εκτελέστε «Προβολή» ή "
+"«Πλακίδιο»."
+
+#: src/sidebar.rs:748
+msgid ""
+"{n} tissue tile scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgid_plural ""
+"{n} tissue tiles scored, {background} background, {unreadable} unreadable — "
+"{percent} % of the {total} tiles at level {level}."
+msgstr[0] ""
+"Βαθμολογήθηκε {n} τμήμα ιστού, φόντο: {background}, μη αναγνώσιμα: "
+"{unreadable} — {percent}% των {total} τμημάτων στο επίπεδο {level}."
+msgstr[1] ""
+"Βαθμολογήθηκαν {n} τμήματα ιστού, φόντο: {background}, μη αναγνώσιμα: "
+"{unreadable} — {percent}% των {total} τμημάτων στο επίπεδο {level}."
+
+#. Translators: MAE is the mean absolute error; p95 the 95th percentile
+#: src/sidebar.rs:768
+msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
+msgstr ""
+"MAE τμημάτων: μέση τιμή {mean} · διάμεσος {median} · p95 {p95} · μέγ. {max}"
+
+#. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
+#: src/sidebar.rs:788
+msgid "{lo}–{hi}: {n} tile"
+msgid_plural "{lo}–{hi}: {n} tiles"
+msgstr[0] "{lo}–{hi}: {n} τμήμα"
+msgstr[1] "{lo}–{hi}: {n} τμήματα"
+
+#. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
+#: src/sidebar.rs:845
+msgid "MAE {mae} · max {max}"
+msgstr "MAE {mae} · μέγ. {max}"
+
+#. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
+#: src/sidebar.rs:859
+msgid "Tile MAE (p05–p95)"
+msgstr "MAE τμημάτων (p05–p95)"
+
+#: src/sidebar.rs:866
+msgid "Pixel error"
+msgstr "Σφάλμα pixel"
+
+#: src/sidebar.rs:885
+msgid "Nothing analysed on this slide with these settings yet."
+msgstr ""
+"Τίποτα δεν έχει αναλυθεί ακόμη σε αυτό το πλακίδιο με αυτές τις ρυθμίσεις."
+
+#. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
+#: src/sidebar.rs:913
+msgid "{used} of {budget} on disk · {n} run"
+msgid_plural "{used} of {budget} on disk · {n} runs"
+msgstr[0] "{used} από {budget} στον δίσκο · {n} εκτέλεση"
+msgstr[1] "{used} από {budget} στον δίσκο · {n} εκτελέσεις"
+
+#: src/sidebar.rs:919
+msgid "Disk cache disabled"
+msgstr "Η κρυφή μνήμη δίσκου είναι απενεργοποιημένη"
+
+#: src/sidebar.rs:927
+msgid "Tile pixels in memory: {used} of {limit}"
+msgstr "Pixel τμημάτων στη μνήμη: {used} από {limit}"
+
+#: src/sidebar.rs:995
+msgid "Open an ONNX model"
+msgstr "Άνοιγμα μοντέλου ONNX"
+
+#: src/sidebar.rs:997
+msgid "ONNX models"
+msgstr "Μοντέλα ONNX"
+
+#: src/sidebar.rs:1024
+msgid "Choose the ONNX Runtime library"
+msgstr "Επιλογή της βιβλιοθήκης ONNX Runtime"
+
+#: src/sidebar.rs:1272
+msgid "Open a slide first."
+msgstr "Ανοίξτε πρώτα ένα πλακίδιο."
+
+#: src/sidebar.rs:1366
+msgid "Export tile scores"
+msgstr "Εξαγωγή βαθμολογιών τμημάτων"
+
+#: src/sidebar.rs:1383
+msgid "Clear the VAE result cache?"
+msgstr "Απαλοιφή της κρυφής μνήμης αποτελεσμάτων VAE;"
+
+#. Translators: {} is a size, e.g. "120 MB"
+#: src/sidebar.rs:1386
+msgid ""
+"This deletes {} of stored results for every slide. Results are recomputed "
+"when needed."
+msgstr ""
+"Θα διαγραφούν {} αποθηκευμένων αποτελεσμάτων για όλα τα πλακίδια. Τα "
+"αποτελέσματα υπολογίζονται ξανά όταν χρειαστεί."
+
+#: src/sidebar.rs:1389
+msgid "Clear"
+msgstr "Απαλοιφή"
+
+#: src/sidebar.rs:1390
+msgid "Cancel"
+msgstr "Ακύρωση"
+
+#: ui/eovae-sidebar.slint:201
+msgctxt "EovaeSidebar"
+msgid "No model loaded."
+msgstr "Δεν έχει φορτωθεί μοντέλο."
+
+#: ui/eovae-sidebar.slint:221
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "mean/std του ImageNet"
+
+#. Translators: inference device: CUDA when it works, else the CPU
+#: ui/eovae-sidebar.slint:230
+msgctxt "Device"
+msgid "Auto"
+msgstr "Αυτόματα"
+
+#: ui/eovae-sidebar.slint:232
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "Αυτόματα"
+
+#: ui/eovae-sidebar.slint:258
+msgctxt "Overlay"
+msgid "Original"
+msgstr "Αρχική εικόνα"
+
+#: ui/eovae-sidebar.slint:259
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "Ανακατασκευή"
+
+#: ui/eovae-sidebar.slint:260
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "Χάρτης σφάλματος"
+
+#: ui/eovae-sidebar.slint:261
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "Διαφορά"
+
+#. Translators: the sidebar's section about the ONNX model
+#: ui/eovae-sidebar.slint:333
+msgctxt "EovaeSidebar"
+msgid "Model"
+msgstr "Μοντέλο"
+
+#: ui/eovae-sidebar.slint:347
+msgctxt "EovaeSidebar"
+msgid "No model"
+msgstr "Κανένα μοντέλο"
+
+#. Translators: {} is the inference device, e.g. CPU · 8 threads
+#: ui/eovae-sidebar.slint:362
+msgctxt "EovaeSidebar"
+msgid "Running on {}"
+msgstr "Εκτέλεση σε {}"
+
+#: ui/eovae-sidebar.slint:369
+msgctxt "EovaeSidebar"
+msgid "Load ONNX…"
+msgstr "Άνοιγμα ONNX…"
+
+#. Translators: unloads the model
+#: ui/eovae-sidebar.slint:378
+msgctxt "EovaeSidebar"
+msgid "Clear"
+msgstr "Απαλοιφή"
+
+#. Translators: chooses the ONNX Runtime library
+#: ui/eovae-sidebar.slint:385
+msgctxt "EovaeSidebar"
+msgid "Runtime…"
+msgstr "ONNX Runtime…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Address…"
+msgstr "URL…"
+
+#: ui/eovae-sidebar.slint:409
+msgctxt "EovaeSidebar"
+msgid "Hide address"
+msgstr "Απόκρυψη URL"
+
+#: ui/eovae-sidebar.slint:423
+msgctxt "EovaeSidebar"
+msgid ""
+"Your site's copy of the model (the .onnx file; the reference model's .onnx."
+"data comes from the same folder):"
+msgstr ""
+"Το αντίγραφο του μοντέλου του οργανισμού σας (το αρχείο .onnx· το .onnx.data "
+"του μοντέλου αναφοράς λαμβάνεται από τον ίδιο φάκελο):"
+
+#: ui/eovae-sidebar.slint:438
+msgctxt "EovaeSidebar"
+msgid ""
+"SHA-256 of your own model at that address (empty: the reference model, "
+"checked against the SHA-256 eovae knows):"
+msgstr ""
+"SHA-256 του δικού σας μοντέλου σε αυτή τη διεύθυνση (κενό: το μοντέλο "
+"αναφοράς, που ελέγχεται με βάση το SHA-256 που γνωρίζει το eovae):"
+
+#: ui/eovae-sidebar.slint:443
+msgctxt "EovaeSidebar"
+msgid "64 hex digits"
+msgstr "64 δεκαεξαδικά ψηφία"
+
+#. Translators: {} is the model's input: name · type · shape
+#: ui/eovae-sidebar.slint:458
+msgctxt "EovaeSidebar"
+msgid "Input: {}"
+msgstr "Είσοδος: {}"
+
+#. Translators: the model's output the sidebar reads
+#: ui/eovae-sidebar.slint:462
+msgctxt "EovaeSidebar"
+msgid "Output"
+msgstr "Έξοδος"
+
+#: ui/eovae-sidebar.slint:484
+msgctxt "EovaeSidebar"
+msgid "Preprocessing"
+msgstr "Προεπεξεργασία"
+
+#: ui/eovae-sidebar.slint:494
+msgctxt "EovaeSidebar"
+msgid "Input range"
+msgstr "Εύρος εισόδου"
+
+#: ui/eovae-sidebar.slint:506
+msgctxt "EovaeSidebar"
+msgid "Output range"
+msgstr "Εύρος εξόδου"
+
+#: ui/eovae-sidebar.slint:518
+msgctxt "EovaeSidebar"
+msgid "Composite transparency onto white"
+msgstr "Σύνθεση της διαφάνειας σε λευκό φόντο"
+
+#: ui/eovae-sidebar.slint:524
+msgctxt "EovaeSidebar"
+msgid "Turn near-black pixels white"
+msgstr "Μετατροπή σχεδόν μαύρων pixel σε λευκά"
+
+#: ui/eovae-sidebar.slint:532
+msgctxt "EovaeSidebar"
+msgid "Use the model's preprocessing"
+msgstr "Χρήση της προεπεξεργασίας του μοντέλου"
+
+#: ui/eovae-sidebar.slint:544
+msgctxt "EovaeSidebar"
+msgid "Analysis"
+msgstr "Ανάλυση"
+
+#. Translators: the inference device (CPU or CUDA)
+#: ui/eovae-sidebar.slint:559
+msgctxt "EovaeSidebar"
+msgid "Device"
+msgstr "Συσκευή"
+
+#. Translators: the pyramid level tiles are read from
+#: ui/eovae-sidebar.slint:572
+msgctxt "EovaeSidebar"
+msgid "Resolution"
+msgstr "Επίπεδο"
+
+#. Translators: CPU inference threads
+#: ui/eovae-sidebar.slint:590
+msgctxt "EovaeSidebar"
+msgid "Threads"
+msgstr "Νήματα"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch"
+msgstr "Παρτίδα"
+
+#. Translators: batch size (tiles per run); (model): the model fixes it
+#: ui/eovae-sidebar.slint:606
+msgctxt "EovaeSidebar"
+msgid "Batch (model)"
+msgstr "Παρτίδα (μοντέλο)"
+
+#. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
+#. (CUDA); the computed errors change slightly.
+#: ui/eovae-sidebar.slint:622
+msgctxt "EovaeSidebar"
+msgid "Allow TF32 on CUDA (faster, less precise)"
+msgstr "Να επιτρέπεται το TF32 σε CUDA (ταχύτερο, λιγότερο ακριβές)"
+
+#: ui/eovae-sidebar.slint:628
+msgctxt "EovaeSidebar"
+msgid "Skip background tiles"
+msgstr "Παράλειψη τμημάτων φόντου"
+
+#: ui/eovae-sidebar.slint:634
+msgctxt "EovaeSidebar"
+msgid "Analyse visible tiles automatically"
+msgstr "Αυτόματη ανάλυση των ορατών τμημάτων"
+
+#. Translators: analyses the visible part of the slide
+#: ui/eovae-sidebar.slint:645
+msgctxt "EovaeSidebar"
+msgid "Viewport"
+msgstr "Προβολή"
+
+#. Translators: analyses the region of interest drawn on the slide
+#: ui/eovae-sidebar.slint:655
+msgctxt "EovaeSidebar"
+msgid "ROI"
+msgstr "ROI"
+
+#: ui/eovae-sidebar.slint:664
+msgctxt "EovaeSidebar"
+msgid "Whole slide"
+msgstr "Πλακίδιο"
+
+#. Translators: stops the running analysis
+#: ui/eovae-sidebar.slint:674
+msgctxt "EovaeSidebar"
+msgid "Cancel"
+msgstr "Ακύρωση"
+
+#: ui/eovae-sidebar.slint:722
+msgctxt "EovaeSidebar"
+msgid "Results"
+msgstr "Αποτελέσματα"
+
+#. Translators: what the overlay shows: Original, Reconstruction, …
+#: ui/eovae-sidebar.slint:737
+msgctxt "EovaeSidebar"
+msgid "Overlay"
+msgstr "Επικάλυψη"
+
+#: ui/eovae-sidebar.slint:824
+msgctxt "EovaeSidebar"
+msgid "Highest-error regions"
+msgstr "Περιοχές με το υψηλότερο σφάλμα"
+
+#: ui/eovae-sidebar.slint:840
+msgctxt "EovaeSidebar"
+msgid "Export CSV…"
+msgstr "Εξαγωγή CSV…"
+
+#. Translators: the intended use: keep its meaning exactly
+#: ui/eovae-sidebar.slint:848
+msgctxt "EovaeSidebar"
+msgid "Research use only; not for diagnosis."
+msgstr "Μόνο για ερευνητική χρήση· όχι για διάγνωση."
+
+#. Translators: the section about eovae's stored results
+#: ui/eovae-sidebar.slint:856
+msgctxt "EovaeSidebar"
+msgid "Cache"
+msgstr "Κρυφή μνήμη"
+
+#: ui/eovae-sidebar.slint:874
+msgctxt "EovaeSidebar"
+msgid "Keep reconstructions on disk (large)"
+msgstr "Διατήρηση των ανακατασκευών στον δίσκο (μεγάλο μέγεθος)"
+
+#: ui/eovae-sidebar.slint:883
+msgctxt "EovaeSidebar"
+msgid "Clear cache…"
+msgstr "Απαλοιφή κρυφής μνήμης…"

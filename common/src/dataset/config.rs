@@ -281,7 +281,7 @@ pub enum DatasetConfigError {
         min: usize,
         max: usize,
     },
-    #[error("white threshold must be in (0, 1] (got {0})")]
+    #[error("white threshold must be above 0 and at most 1 (got {0})")]
     WhiteThreshold(f32),
     #[error("minimum tissue fraction must be in [0, 1] (got {0})")]
     TissueFraction(f32),

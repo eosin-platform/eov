@@ -99,6 +99,7 @@ pub fn prompts_supported() -> bool {
 #[cfg(all(windows, not(debug_assertions)))]
 mod imp {
     use super::{LAUNCHER_ENV, wants_console};
+    use eov_plugin_api::i18n::tr;
     use std::ffi::OsString;
     use std::sync::{Mutex, OnceLock};
     use windows_sys::Win32::Foundation::{
@@ -200,8 +201,8 @@ mod imp {
             // Panics on other threads do not end the process.
             if std::thread::current().name() == Some("main") {
                 message_box(
-                    "eov stopped unexpectedly",
-                    &format!("eov stopped because of an internal error:\n\n{info}"),
+                    &tr!("eov stopped unexpectedly"),
+                    &tr!("eov stopped because of an internal error:\n\n{}", info),
                 );
             }
         }));
@@ -288,7 +289,7 @@ mod imp {
             .map(|captured| String::from_utf8_lossy(&captured).into_owned())
             .unwrap_or_default();
         if let Some(message) = super::fatal_error_text(&text) {
-            message_box("eov could not start", &message);
+            message_box(&tr!("eov could not start"), &message);
         }
     }
 }

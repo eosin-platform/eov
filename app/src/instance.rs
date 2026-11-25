@@ -1101,7 +1101,7 @@ pub(crate) fn claim(endpoint: &Endpoint, request: &OpenRequest, timing: Timing) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::launch::{Coordinate, Point, Zoom};
+    use crate::launch::{Coordinate, InputError, Point, Zoom};
 
     fn transports() -> Vec<Transport> {
         #[cfg(unix)]
@@ -1144,8 +1144,76 @@ mod tests {
             problems: vec![Problem {
                 subject: "gone.svs".to_string(),
                 reason: "no such file or folder".to_string(),
+                kind: Some(InputError::NoSuchFileOrFolder),
             }],
         }
+    }
+
+    /// Problems travel as data with their English reason: the eov that
+    /// shows them words them in its own language, eovs that do not know
+    /// the data show the English reason, and data from a newer eov does
+    /// not make the request unreadable.
+    #[test]
+    fn problems_are_handed_over_as_data() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        // The handing-over eov runs in Arabic: what it sends is the same.
+        i18n::set_catalog(i18n::by_tag("ar").unwrap(), None);
+        let disk = |_: &Path| -> Option<crate::launch::Found> { None };
+        let request = crate::launch::request_from_arguments(
+            &["eov://open?path=a.svs&zoom=abc".into(), "gone.svs".into()],
+            &[],
+            ViewRequest::default(),
+            &std::env::temp_dir(),
+            &disk,
+            &[],
+        );
+        let wire: serde_json::Value = serde_json::from_slice(&encode(&request)).unwrap();
+        assert_eq!(
+            wire["problems"],
+            serde_json::json!([
+                {
+                    "subject": "eov://open?path=a.svs&zoom=abc",
+                    "reason": "\"abc\" is not a number",
+                    "kind": {"not_a_number": "\"abc\""},
+                },
+                {
+                    "subject": "gone.svs",
+                    "reason": "no such file or folder",
+                    "kind": "no_such_file_or_folder",
+                },
+            ])
+        );
+        let unknown = InputError::UnknownUnit {
+            unit: "\"cm\"".into(),
+            text: "\"3cm\"".into(),
+        };
+        let body = serde_json::to_vec(&serde_json::json!({
+            "problems": [
+                {"subject": "a", "reason": "no such file or folder"},
+                {"subject": "b", "reason": "something new", "kind": {"new_reason": 1}},
+                {"subject": "c", "reason": unknown.to_string(), "kind": unknown},
+            ]
+        }))
+        .unwrap();
+        let problems = decode(&body).unwrap().problems;
+        assert_eq!(problems[0].kind, None);
+        assert_eq!(problems[1].kind, None);
+        assert_eq!(problems[1].shown_reason(), "something new");
+        assert_eq!(problems[2].kind, Some(unknown));
+        assert!(
+            problems[2]
+                .shown_reason()
+                .contains("\u{2068}\"cm\"\u{2069}"),
+            "worded in the receiving eov's language: {}",
+            problems[2].shown_reason()
+        );
     }
 
     /// A running eov that records what it is handed.

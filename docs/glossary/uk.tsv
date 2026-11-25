@@ -1,0 +1,306 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Для досліджень і навчання. Не є медичним виробом; не призначено для первинної діагностики.	Safety text of the Home screen: translate in full, never shorten or soften.
+not a medical device	не є медичним виробом	Regulatory term «медичний виріб» (Технічний регламент щодо медичних виробів, постанова КМУ № 753).
+medical device	медичний виріб	
+primary diagnosis	первинна діагностика	The first, final diagnosis of a case: «не призначено для первинної діагностики».
+not for diagnosis	не призначено для діагностики	Never weaken to «не рекомендовано».
+research use only (RUO)	лише для наукових досліджень (RUO)	The phrase printed on RUO reagents; keep RUO.
+intended use	призначення	«Призначення: …»; regulatory sense.
+synthetic (image, channel, stain)	синтетичний	Computed by an algorithm. Never «штучний» in the sense of fake, never «фальшивий» or «симульований».
+predicted	передбачений	Predicted by a model; noun «передбачення» (a prediction is not a measurement).
+generated	згенерований	Computed by a model or an algorithm.
+computed	обчислений	
+slide	препарат	Histological slide and its scan («гістологічний препарат»). The glass itself: «предметне скло». Never «слайд».
+whole-slide image (WSI)	зображення цілого препарату (WSI)	Keep the abbreviation WSI: «файли WSI».
+slide viewer, viewer	переглядач препаратів, переглядач	
+tab	вкладка	One open slide in a pane, as in a browser.
+pane	область перегляду	One of the side-by-side viewing areas; short «область» where the context is clear: «зв’язати області перегляду», «активна область перегляду», «ліва область».
+viewport	область перегляду	The area of a pane where the slide is drawn; Ukrainian does not distinguish it from the pane. «Зображення області перегляду».
+panel	панель	A section of the window (Channels, Plugins, Measurements…).
+view	вигляд	What a pane shows (position, magnification, rotation): «попередній вигляд», «додати вигляд до закладок». When the displayed picture itself is meant (rotate, mirror, copy as an image): «зображення».
+minimap	мінікарта	
+scale bar	масштабна лінійка	The bar showing a physical length (µm, mm).
+HUD	плаваюча панель	Panels floating over the slide: «плаваюча панель метаданих».
+toolbar	панель інструментів	
+sidebar	бічна панель	
+status bar	рядок стану	
+series bar	панель серії	The bar listing the slides and folders of the current folder.
+Home screen	головний екран	The Home tab itself: «Головна».
+zoom	масштаб	Screen scale (100 % = one slide pixel per screen pixel).
+Zoom in / Zoom out	Наблизити / Віддалити	Not «збільшити/зменшити»: «збільшення» is the optical magnification.
+magnification (20×)	збільшення (20×)	Objective-equivalent optical magnification; 20× stays 20×.
+objective, objective power	об’єктив, збільшення об’єктива	
+pixel size	розмір пікселя	
+MPP (µm per pixel)	MPP (µm на піксель)	MPP and µm stay.
+calibration	калібрування	
+level, pyramid level	рівень, рівень піраміди	Level-0 pixels: «пікселі рівня 0».
+tile (image pyramid)	плитка	A square piece of the slide image loaded at a time.
+tile, patch (dataset)	фрагмент	A small image cut from a slide for machine learning: «розмір фрагмента».
+patch extraction	вирізання фрагментів	
+stride	крок	The step between patches.
+cache	кеш	
+region of interest (ROI)	ділянка інтересу (ROI)	Keep ROI as the abbreviation.
+region	ділянка	A drawn or scanned area: «відсканована ділянка».
+measurement	вимірювання	
+Measure (tool)	Вимірювання	Tool name; verb «виміряти».
+distance	відстань	
+path length	довжина ламаної	Measure mode of a polyline.
+area	площа	«площа багатокутника».
+angle	кут	
+polygon	багатокутник	
+rectangle	прямокутник	
+ellipse	еліпс	
+outline	контур	
+annotation	анотація	A drawn mark with a meaning; a free-text comment is «коментар».
+class (annotation class)	клас	E.g. «Пухлина», «Строма»; «клас анотації».
+layer	шар	
+overlay	накладання	Graphics drawn over the slide; «накладений шар» where a layer is meant.
+cell count, counting	підрахунок клітин	
+high-power field (HPF)	поле зору великого збільшення (HPF)	Keep HPF as the abbreviation: «мітози на 10 HPF».
+field number (FN)	польове число (FN)	Eyepiece field number in mm.
+density	щільність	E.g. cells per mm².
+H&E	H&E	Гематоксилін і еозин; keep the abbreviation H&E.
+hematoxylin	гематоксилін	One-letter abbreviation H.
+eosin	еозин	One-letter abbreviation E.
+IHC	IHC	Імуногістохімія; keep the abbreviation.
+DAB	DAB	Chromogen: «DAB-позитивний».
+chromogen	хромоген	
+stain (staining, stain type)	забарвлення	The method or type: «забарвлення H&E», «нормалізація забарвлення».
+stain (one dye of a stain model)	барвник	«вектори барвників», «модель забарвлення має 2 барвники».
+stain normalization	нормалізація забарвлення	Macenko and Vahadane stay undeclined: «нормалізація забарвлення за методом Macenko».
+colour normalisation	нормалізація кольору	
+stain target	цільове забарвлення	The appearance normalisation maps slides onto.
+stain model	модель забарвлення	E.g. H&E, H-DAB.
+stain vectors	вектори барвників	
+stain fit	оцінювання барвників	Estimating a slide's stain vectors (Macenko, Vahadane).
+color deconvolution	колірна деконволюція	Ruifrok–Johnston stays.
+colour management	керування кольором	«Керування кольором увімкнено».
+colour profile (ICC)	колірний профіль (ICC)	
+colours as scanned	вихідні кольори скану	Shown without colour management.
+H-score	H-score	
+weak / moderate / strong (1+, 2+, 3+)	слабке / помірне / сильне (1+, 2+, 3+)	Staining intensity classes (agree with «забарвлення»).
+optical density	оптична густина	Not «щільність».
+quantify, quantification	кількісно оцінити, кількісна оцінка	«Кількісна оцінка барвника».
+threshold	поріг	«порогове значення» where clearer.
+histogram	гістограма	
+intensity	інтенсивність	
+concentration	концентрація	
+channel	канал	
+multiplex immunofluorescence (mIF)	мультиплексна імунофлуоресценція (mIF)	
+marker	маркер	Marker names (CD3, Ki-67, PanCK…) are never translated.
+focal plane (Z)	фокальна площина (Z)	
+time point (T), time series	часова точка (T), часовий ряд	
+heat map	теплова карта	
+opacity	непрозорість	0–100 %.
+tissue	тканина	
+tissue QC	контроль якості тканини (QC)	
+pen marks	чорнильні позначки	Marks of a marker pen on the glass; not «маркер» (a protein marker).
+folds	складки	«складки тканини».
+blur, out of focus	розмиття, поза фокусом	«розмиті ділянки».
+tissue detection, tissue mask	виявлення тканини, маска тканини	
+background	фон	
+dataset	набір даних	
+export	експортувати; експорт	Menu item «Експортувати зображення…»; dialog title «Експорт зображення».
+save a copy	зберегти копію	
+convert	перетворити	«Перетворити кольори на sRGB».
+de-identify, de-identified	знеособити, знеособлений	Term of Ukrainian data protection («знеособлення персональних даних»): removes the label, macro image and identifying metadata. Not «анонімізувати», which promises more.
+label image	зображення етикетки	Caption: «Етикетка».
+macro image	макрозображення	Photo of the whole glass slide.
+overview image	оглядове зображення	Caption: «Огляд».
+thumbnail	мініатюра	
+associated image	супровідне зображення	Label, macro or thumbnail image stored in the slide file.
+bookmark	закладка	A saved view of a slide.
+session	сеанс	
+case	випадок	The patient case (accession) slides belong to.
+vendor, scanner	виробник, сканер	
+scan date	дата сканування	
+property (of a slide)	властивість	Slide properties as the scanner wrote them.
+metadata	метадані	
+plugin	плагін	«плагіни».
+package (.eop)	пакет (.eop)	«пакет плагіна».
+model, model store	модель, сховище моделей	Machine-learning model files.
+inference	інференс	Running a model on images; verb «запустити модель».
+batch	пакет	Inference batch: «розмір пакета»; the plugin package is always «пакет плагіна».
+thread	потік	Processor core: «ядро».
+sidecar file	супровідний файл	
+colour map (heat map)	колірна шкала	The grey map: «Відтінки сірого»; named maps (Viridis…) stay.
+display window (channel)	вікно відображення	The lower and upper ends of a channel's values: «нижня/верхня межа каналу».
+Solo (channel)	Лише цей	Shows one channel alone: «Показати лише {}».
+placement (heat map)	розміщення	«За розміром препарату», «Як вказано у файлі».
+figure (export)	рисунок	Section of the export dialog: scale bar, processing note.
+grid cell (tissue QC)	комірка сітки	Not «клітина».
+dataset extraction	створення набору даних	«Вирізання фрагментів для набору даних».
+hash, hashing, digest	хеш, хешування	«хеш SHA-256».
+directory	папка	Same word as folder, also in technical messages.
+installation	інсталяція; установлена версія	«папка встановлення».
+UI thread	потік інтерфейсу	Plugin resource usage.
+crash, crash report	збій, звіт про збій	«Стався збій плагіна {}».
+hotkey, modifier key	гаряча клавіша, клавіша-модифікатор	
+redirect	переспрямування	
+proxy, firewall	проксі-сервер, брандмауер	
+release manifest, artifact, tag	маніфест випуску, артефакт, тег	release.toml stays.
+registry (plugins)	реєстр плагінів	
+sandbox, host (Flatpak)	ізольоване середовище, основна система	
+Homebrew cask, tap	cask, tap	Homebrew terms stay: «пакет cask».
+stain methods	Трихром за Массоном, Гімза, Ретикулін, Конго червоний, Ван Гізон, Еластичні волокна, Альціановий синій, Берлінська лазур за Перлсом, Грам, Метенамінове срібло за Грокоттом, Муцикармін, Ціль–Нільсен	Standalone names in lists; in sentences «забарвлений методом «{}»».
+dyes	гематоксилін, еозин, метиловий синій, понсо-фуксин	Capitalised as list entries.
+render, rendering	рендеринг	«рендеринг на GPU / на CPU».
+renderer (CPU, GPU)	рендеринг на CPU / на GPU	CPU and GPU stay as they are.
+graphics adapter	графічний адаптер	
+filtering (bilinear, trilinear, Lanczos)	фільтрування (білінійне, трилінійне, Lanczos)	Lanczos is a name.
+sharpness, gamma, brightness, contrast	різкість, гамма, яскравість, контрастність	Gamma symbol γ.
+image adjustments	коригування зображення	
+theme (dark, light, high contrast)	тема (темна, світла, висока контрастність)	
+Check for Updates…	Перевірити наявність оновлень…	Asks before going online; never imply automatic background updates.
+update	оновлення; оновити	
+self-update	самооновлення	eov updating itself (eov update); not «автоматичне оновлення».
+update helper	допоміжна програма оновлення	
+staged update	підготовлене оновлення	Downloaded and verified, installed at the next start.
+release, release notes	випуск, примітки до випуску	«маніфест випуску».
+prerelease	попередній випуск	
+signature	підпис	«підписаний», «перевірений».
+checksum	контрольна сума	SHA-256 stays.
+administrator policy	політика адміністратора	«вимкнено політикою адміністратора {}».
+safe mode	безпечний режим	
+log folder	папка журналів	
+lock file	файл блокування	
+messages	повідомлення	The notification list in the status bar.
+landmark (alignment)	орієнтир	
+align, alignment	сумістити, суміщення	Of linked slides (image registration); not «вирівнювання».
+link / unlink panes	зв’язати / роз’єднати області перегляду	
+rotate, rotation	повернути, поворот	«Повернути праворуч на 90°».
+flip horizontally, mirror	віддзеркалити по горизонталі	
+pan	переміщення	Moving the view: «переміщати зображення».
+point, line, arrow, text	точка, лінія, стрілка, текст	
+brush, eraser	пензель, гумка	
+hole (of a polygon)	отвір	
+comment, author	коментар, автор	
+cell	клітина	Biological cell; a table cell is «комірка».
+nucleus, nuclei	ядро, ядра	Cell nuclei: «клітинні ядра».
+tumour cells	пухлинні клітини	
+reader (of annotations)	оцінювач	Another pathologist reading the same slide.
+blinded copy	засліплена копія	
+gamepad	геймпад	
+Annotations (plugin name)	Анотації	Descriptive plugin name: translated.
+Gamepad (plugin name)	Геймпад	Descriptive plugin name: translated.
+Example Plugin (plugin name)	Приклад плагіна	Descriptive plugin name: translated.
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	Coined product names: never translated.
+eov	eov	Lowercase and undeclined; «програма eov» (feminine) where Ukrainian needs a gender, or an impersonal construction: «Не вдалося запустити eov».
+Open	Відкрити	Buttons and menu items use the infinitive, sentence case.
+Close	Закрити	
+Cancel	Скасувати	
+OK	OK	
+Save, Save…	Зберегти, Зберегти…	
+Save As…	Зберегти як…	
+Delete	Видалити	
+Remove	Вилучити	A plugin, an input, a heat map.
+Clear	Очистити	«Очистити вимірювання», «Очистити список нещодавніх файлів»; a region of interest: «Прибрати ділянку інтересу».
+Settings	Налаштування	
+Apply	Застосувати	
+Reset	Скинути	Reset Rotation: «Скасувати поворот».
+Reset to Defaults	Відновити типові	
+Default	типовий; типово	Not «за замовчуванням».
+Show / Hide	Показати / Сховати	
+Toggle …	Показати/сховати …	Toolbar toggles.
+Import	Імпортувати	
+Copy	Копіювати	Status messages: «Скопійовано: {}».
+Undo / Redo	Відмінити / Повторити	Distinct from Cancel «Скасувати»: «Відмінити: {}»; undo-step labels are verbal nouns («Додавання вимірювання»).
+Fit	Вписати	«Вписати препарат в область перегляду».
+Enable / Disable	Увімкнути / Вимкнути	States: «Увімкнено» / «Вимкнено».
+Confirm	Підтвердити	
+Done	Готово	
+Add	Додати	
+Edit	Редагувати	
+Rename	Перейменувати	
+Change	Змінити	
+Restore	Відновити	
+Filter	Фільтр; фільтрувати	
+Search	Пошук; шукати	
+Back / Forward / Up	Назад / Вперед / Вгору	
+Next / Previous	Наступний / Попередній	Agree with the noun: «наступна вкладка».
+Download	Завантажити	Upload: «вивантажити».
+Install / Uninstall	Установити / Видалити	
+Restart	Перезапустити	
+Retry	Повторити спробу	
+Lock / Unlock	Заблокувати / Розблокувати	
+Merge	Об’єднати	
+Select	Вибрати	On the slide: «виділити».
+Preview	Попередній перегляд	
+Loading…	Завантаження…	
+Ready	Готово	
+Error / Warning / Information	Помилка / Попередження / Інформація	
+Could not … / Cannot …	Не вдалося … / Неможливо …	Impersonal: «Не вдалося відкрити {}».
+None	Немає	
+N/A	н/д	«немає даних»: a property the file does not record.
+Unknown	Невідомо	
+Help	Довідка	
+Language	Мова	Language names are capitalised list entries: «Німецька».
+colour	колір	Colour names agree with «колір»: «Темно-синій».
+keyboard shortcut	сполучення клавіш	
+key	клавіша	Key names (Ctrl, Shift, Alt, Esc, Enter, F1) stay as they are.
+click	клацнути	«Клацніть…»; keys and buttons: «натисніть».
+right-click	клацання правою кнопкою	
+drag	перетягнути	
+tooltip	підказка	
+clipboard	буфер обміну	
+file	файл	
+folder, file manager	папка, файловий менеджер	
+Open Containing Folder	Відкрити папку з файлом	
+path	шлях	
+dialog	діалогове вікно	
+window	вікно	Maximize / Minimize: «Розгорнути» / «Згорнути».
+full screen	повноекранний режим	
+stroke (line style)	лінія, стиль лінії	Суцільна, штрихова, точкова; dash length «довжина штриха», gap «проміжок між штрихами»; caps «кінці» (круглі, квадратні, пласкі).
+focused pane	активна область перегляду	
+app bundle (macOS)	пакет програми	Also a Flatpak bundle: «пакет Flatpak».
+resolution	роздільна здатність	
+dimensions	розміри	
+compression, lossless	стиснення, без втрат	
+quality	якість	
+format	формат	
+units	одиниці	
+downsample	зменшення роздільної здатності	Downsample factor: «коефіцієнт зменшення».
+version	версія	
+repository	репозиторій	
+database	база даних	
+colour-blind safe	для дальтоніків	Palette option next to «Стандартні»: «Для дальтоніків»; in running text «придатний для дальтоніків».
+Copied/Saved/Exported {}	Скопійовано/Збережено/Експортовано: {}	Status pattern that avoids gender agreement with a name.
+{} of {}	{} з {}	«Часова точка 2 з 5».
+ellipsis …	…	Kept at the end of items that open a dialog.
+quotation marks “ ”	« »	Ukrainian quotes (U+00AB, U+00BB); nested „ “.
+apostrophe	’	Typographic apostrophe U+2019 in words: «об’єктив», «зв’язати», «пам’ять».
+number and unit	12 MB, 50 %, 90°, 20×	Space before units and %; none before the ° of an angle; 1024 × 768 px. Units stay in Latin script (µm, px, MB) as the source writes them.
+time (h, min, s)	1 год 02 хв, 4 хв 05 с, 12 с	Time abbreviations are Ukrainian, without a full stop.
+undo-step label (plugins)	Додавання точки, Видалення шару «{}», Позначення як перевіреної	Annotations plugin edits in the undo history are verbal nouns, like eov's own; the same text as a confirmation title stays a verbal noun («Видалення шару»).
+HPF field (annotations)	поле HPF	A placed square/circle of one high-power field: «Розмістити поле HPF тут», «полів HPF».
+count point, Count tool	точка підрахунку, інструмент підрахунку	Tab «Підрахунок»; «Shift+клацання зараховує другий клас».
+Shift+click, Alt+click	Shift+клацання, Alt+клацання	Instrumental: «Рахувати Shift+клацанням».
+shape	фігура	Drawn geometry of an annotation.
+brush stroke	мазок пензля	
+text label (annotation)	текстова мітка	Not «етикетка» (label image).
+review status: draft, verified, rejected	статус перевірки: Чернетка, Перевірено, Відхилено	Undo labels: «Позначення як чернетки / перевіреної / відхиленої».
+second reader	другий оцінювач	Section «ДРУГИЙ ОЦІНЮВАЧ»; «незалежне друге оцінювання».
+even-odd rule	правило парності (even-odd)	Filling rule of self-crossing outlines.
+DICOM bulk annotations	масові анотації DICOM	IOD names (Microscopy Bulk Simple Annotations, VL Whole Slide Microscopy) stay in English.
+Feret diameter (max), min caliper	макс. діаметр Ферета, мін. діаметр Ферета	
+combined positive score (CPS)	комбінований показник позитивності (CPS)	PD-L1; keep CPS.
+95% CI	95 % ДІ	Довірчий інтервал: «(95 % ДІ {low}–{high})».
+readout (Cellaris region readout)	показники ділянки	Tool «Показники ділянки Cellaris»; section «ПОКАЗНИКИ ДІЛЯНКИ». The plugin's own word «вимірювання» only where the English says measure.
+cell (Cellaris, eovae grid)	комірка	A square of the slide predicted at once; never «клітина» there.
+window (model input)	вікно	A square image a model predicts from; display window stays «вікно відображення».
+tissue block (5 µm square)	квадрат тканини	Not «блок» (paraffin block).
+PREDICTED — research use only, not for diagnosis	ПЕРЕДБАЧЕННЯ МОДЕЛІ — лише для наукових досліджень, не призначено для діагностики	Safety banner of Cellaris: never shorten.
+density r²	r² густини	Optical density («оптична густина»), not «щільність».
+reconstruction error	похибка реконструкції	eovae; «карта похибок», «Ділянки з найбільшою похибкою».
+bright-field	світлопольний	«не світлопольне H&E».
+model card	картка моделі	
+runtime (ONNX Runtime)	середовище виконання	ONNX Runtime stays; the eovae button «ONNX Runtime…».
+reference model, your site's model	еталонна модель, модель вашої установи	«копія вашої установи».
+tile (eovae analysis)	фрагмент	Like dataset patches: «фрагменти тканини», «фонові фрагменти».
+upsampled, resampled	роздільну здатність підвищено, передискретизовано	
+preprocessing	попередня обробка	
+embeddings	ембединги	
+game controller, stick, trigger, D-pad, bumper	ігровий контролер, стік, тригер, хрестовина, бампер	Face buttons by position: нижня / права / верхня / ліва кнопка.
+dead zone, response curve	мертва зона, крива відгуку	Narrow column: «Мертва зона лів.», «Швидк. масштабу».
+mapping (gamepad)	призначення	«Рух вказівника» for the Move Pointer actions.
+marker (example plugin point)	мітка	A placed point, not a protein marker.

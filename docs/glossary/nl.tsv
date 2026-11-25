@@ -1,0 +1,299 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Voor onderzoek en onderwijs. Geen medisch hulpmiddel; niet bedoeld voor primaire diagnostiek.	Safety text: translate completely, never shorten or soften
+not a medical device	geen medisch hulpmiddel	Term of the EU MDR and the Dutch/Belgian medical-device law (medisch hulpmiddel)
+primary diagnosis	primaire diagnostiek	Regulatory term; one case: primaire diagnose
+research use only (RUO)	uitsluitend voor onderzoeksdoeleinden (RUO)	The phrase printed on RUO reagents; never weaken (not "ook voor onderzoek")
+synthetic (image, channel, stain)	synthetisch	Computed by an algorithm; never "kunstmatig", "nep" or "gesimuleerd"
+predicted	voorspeld	e.g. voorspelde marker, voorspeld kanaal; never "gesimuleerd"
+generated, computed	gegenereerd, berekend	
+slide	preparaat (het; mv. preparaten)	The scanned specimen slide as the user opens and views it; never "dia" or "slide" (presentation)
+glass slide	objectglaasje (glaasje)	Only for the physical glass (label, macro-opname)
+whole-slide image (WSI)	whole-slide image (WSI)	Keep WSI; compounds with hyphen: WSI-bestand, WSI-bestanden, WSI-tools
+slide viewer, viewer	viewer	Whole Slide Image Viewer = Viewer voor whole-slide images
+tab	tabblad (het; mv. tabbladen)	As in web browsers: Nieuw tabblad, Tabblad sluiten
+pane	deelvenster (het)	One of the side-by-side viewing areas; focused pane = actieve deelvenster
+view	weergave	Position, magnification and rotation shown in a pane; previous view = vorige weergave
+viewport	weergavegebied	Where the slide is drawn; viewport image = afbeelding van het weergavegebied
+minimap	overzichtskaart	
+scale bar	schaalbalk	Microscopy term
+HUD	zwevend paneel	Panels floating over the slide; metadata HUD = metadatapaneel
+toolbar	werkbalk	
+sidebar	zijbalk	
+status bar	statusbalk	
+series bar	seriebalk	The bar listing the slides of a folder; series = serie
+zoom	zoom (de) / zoomen	Screen scale; digital zoom = digitale zoom
+zoom in / zoom out	Inzoomen / Uitzoomen	Buttons and menu items; Zoom to {} = Zoomen naar {}
+magnification (20×)	vergroting (20×)	Optical, objective-equivalent; 20× stays 20×; optical-equivalent zoom = optisch equivalente zoom
+objective	objectief (het)	
+objective power	objectiefvergroting	
+pixel size	pixelgrootte	
+MPP (µm per pixel)	MPP (µm per pixel)	MPP stays MPP; unit µm/px
+calibration	kalibratie	
+level, pyramid level	niveau, piramideniveau	Not "laag" (reserved for layers); level 0 = niveau 0; level-0 pixels = pixels op niveau 0; L0 stays L0
+image pyramid	beeldpiramide (piramide)	
+tile	tegel	Square piece of the image; {tile}-px tiles = tegels van {tile} px
+patch (dataset)	patch (mv. patches)	Dataset image for machine learning; the dataset dialog's "Tile size" = Patchgrootte
+cache	cache	
+region of interest (ROI)	interessegebied (ROI)	het interessegebied; tool and labels: Interessegebied; ROI as abbreviation where space is short
+region	gebied	e.g. Gebied van het preparaat, gescande gebied
+measurement	meting	
+Measure (tool)	Meten	Tool name
+distance (measure mode)	afstand	Path length = Padlengte, polygon area = Polygoonoppervlakte, rectangle area = Rechthoekoppervlakte, ellipse area = Ellipsoppervlakte, angle = Hoek
+area (measured)	oppervlakte	Not "oppervlak" (the surface itself); perimeter = omtrek; length = lengte
+annotation	annotatie	A drawn mark with a meaning; a free-text comment is "opmerking"
+class (annotation class)	klasse (annotatieklasse)	Unclassified = Niet geclassificeerd
+point / line / arrow / polygon / rectangle / ellipse	punt / lijn / pijl / polygoon / rechthoek / ellips	Annotation shapes
+brush	penseel	Brush size = Penseelgrootte
+outline (of a region)	contour	Show Outline = Contour tonen; Repair outline = Contour herstellen
+comment	opmerking	Free-text note on an annotation
+draft / verified / rejected	concept / geverifieerd / afgewezen	Review status of annotations
+second reader	tweede beoordelaar	Blinded copy = geblindeerde kopie
+lock / unlock	vergrendelen / ontgrendelen	locked = vergrendeld
+cell, nucleus	cel, celkern (kern)	
+cell count, counting	celtelling, tellen	count (verb) = tellen; counts = tellingen
+high-power field (HPF)	gezichtsveld bij sterke vergroting (HPF)	Keep HPF as the abbreviation: "per 10 HPF", HPF-veld
+H&E	H&E	HE-kleuring in running text is also usual in Dutch pathology
+hematoxylin	hematoxyline	One-letter abbreviation H
+eosin	eosine	One-letter abbreviation E
+IHC	IHC (immunohistochemie)	
+DAB	DAB	DAB-positive = DAB-positief
+chromogen	chromogeen (mv. chromogenen)	
+stain (staining method)	kleuring	H&E, Giemsa, Ki-67 …; Stain: {} = Kleuring: {}
+stain (one dye of a stain model)	kleurstof	Isolated stain = geïsoleerde kleurstof; stain intensity = kleurstofintensiteit
+stain normalization, colour normalisation	kleurnormalisatie	Both English terms mean the same; colour-normalised = kleurgenormaliseerd
+stain target	doelkleuring	The reference appearance normalisation maps onto; reference stain target = referentiedoelkleuring
+stain model	kleuringsmodel	e.g. H-DAB; preset = voorinstelling
+stain vector	kleurstofvector	reference vectors = referentievectoren
+stain fit (fit the stains)	schatting (kleurstoffen schatten)	Not "aanpassen", which reads as changing the image; Macenko fit = Macenko-schatting
+color deconvolution	kleurdeconvolutie	deconvolution view = deconvolutieweergave
+Macenko, Vahadane, Ruifrok	Macenko, Vahadane, Ruifrok	Method names, never translated
+channel	kanaal (mv. kanalen)	
+multiplex immunofluorescence (mIF)	multiplex-immunofluorescentie (mIF)	
+marker	marker	Marker names (CD3, Ki-67, PanCK) are never translated
+focal plane (Z)	focusvlak	
+Z-stack	Z-stapel	
+time point (T)	tijdstip	
+time series	tijdreeks	
+heat map	heatmap	colour map / colour scale = kleurenschaal
+overlay	overlay	
+layer	laag	As in image editors: Nieuwe laag
+opacity	dekking	0–100 %
+tissue	weefsel	
+tissue QC	weefsel-QC	Kwaliteitscontrole van het weefsel; Check Tissue Quality = Weefselkwaliteit controleren
+pen marks	stiftmarkeringen	
+folds	plooien	Tissue folds
+blur, blurred areas, out of focus	onscherpte, onscherpe gebieden, onscherp	
+tissue detection	weefseldetectie	
+tissue mask	weefselmasker	
+background	achtergrond	
+dataset	dataset	
+patch extraction	patch-extractie	
+stride	stapgrootte	Step between patches
+threshold	drempelwaarde	White threshold = Witdrempel
+export	exporteren / export	Export Image… = Afbeelding exporteren…
+save a copy	kopie opslaan	Save a Copy of the Slide… = Kopie van het preparaat opslaan…
+convert (file)	converteren	Colours to sRGB: naar sRGB omzetten
+de-identify, de-identified	de-identificeren, gede-identificeerd	Not "anonimiseren": eov does not guarantee anonymisation in the legal (AVG/GDPR) sense
+label image	label (labelafbeelding)	Photo of the slide's paper label
+macro image	macro-opname	Photo of the whole glass slide; short label: Macro
+thumbnail	miniatuur	
+associated image	bijbehorende afbeelding	Label, macro and thumbnail images stored with the slide
+bookmark	bladwijzer	
+session	sessie	
+plugin	plug-in (mv. plug-ins)	Compounds: plug-inmap, plug-inpakket, plug-in-API, plug-in-ID; eov-plug-in
+package (.eop)	pakket (plug-inpakket)	
+model	model	Machine-learning model
+model store	modelopslag	
+inference	inferentie	
+render	renderen	Also: weergeven, tekenen
+renderer	renderer	GPU-renderer, CPU-renderer
+backend (CPU, GPU)	backend (CPU, GPU)	
+graphics adapter	grafische adapter	
+filtering, filtering mode	filtering, filtermodus	bilinear = bilineair, trilinear = trilineair, Lanczos stays
+sharpness	scherpte	sharpened = verscherpt
+gamma	gamma	
+brightness	helderheid	
+contrast	contrast	Auto contrast = Automatisch contrast
+image adjustments	beeldaanpassingen	display-adjusted = weergave aangepast
+theme	thema	Dark = Donker, Light = Licht, High Contrast = Hoog contrast
+Home screen	startscherm	The Home tab: Start
+colour management	kleurbeheer	Colour-managed = met kleurbeheer; not colour-managed = zonder kleurbeheer
+colour profile, ICC profile	kleurprofiel, ICC-profiel	
+as scanned	zoals gescand	Show Colours as Scanned = Kleuren tonen zoals gescand
+landmark	referentiepunt	Alignment landmark {} = Referentiepunt {} voor uitlijning; Align from Landmarks = Uitlijnen op referentiepunten
+align, alignment	uitlijnen, uitlijning	
+link / unlink (panes)	koppelen / ontkoppelen	
+viewport lock	weergavekoppeling	Panes with the same slide move together
+quantify	kwantificeren	Quantify Stain in Region… = Kleuring in gebied kwantificeren…
+H-score	H-score	Weak/Moderate/Strong (1+/2+/3+) = Zwak/Matig/Sterk
+optical density	optische dichtheid	
+concentration	concentratie	Mean {} concentration = Gemiddelde {}-concentratie
+Check for Updates…	Controleren op updates…	Asks before going online; never imply automatic updates
+update (noun / verb)	update / bijwerken	de update; eov bijwerken; up to date = bijgewerkt
+self-update	zelf bijwerken	eov updating itself on request; never "automatisch bijwerken"
+release	release; versie	GitHub release = GitHub-release; release notes = releaseopmerkingen; prerelease = pre-release
+version	versie	
+update helper	updatehulpprogramma	eov-update-helper stays as the program name
+staged (update)	klaargezet	Installed after eov exits
+roll back	terugdraaien	The update was rolled back = is teruggedraaid
+administrator policy	beheerdersbeleid	policy file = beleidsbestand; administrator = beheerder
+managed (by policy, Homebrew, eov update)	beheerd (door)	
+signature, signed	handtekening, ondertekend	release keys = releasesleutels
+verify, verified	verifiëren, geverifieerd	
+SHA-256, checksum	SHA-256, controlesom	
+repository	repository	
+catalog (plugin catalog)	catalogus (plug-incatalogus)	
+manifest, artifact (release)	manifest, artefact	release manifest = releasemanifest
+app bundle (macOS), Flatpak bundle	app-bundel, Flatpak-bundel	
+cask, tap (Homebrew)	cask, tap	Homebrew terms, kept
+sandbox, host (Flatpak)	sandbox, hostsysteem	
+install / uninstall	installeren / de-installeren	installation = installatie
+download	downloaden	Download (button) = Downloaden
+network, proxy, firewall	netwerk, proxy, firewall	
+safe mode	veilige modus	
+log, log folder	logboek, logmap	Open Log Folder = Logmap openen
+crash, crashed	crash, gecrasht	crash report = crashrapport
+messages (notifications)	meldingen	Messages (status bar) = Meldingen
+keyboard shortcuts	sneltoetsen	Key names stay as written: Ctrl, Shift, Alt, Esc
+key	toets	
+hotkey	sneltoets	
+modifier key	modificatietoets	
+right-click	rechtsklikken	(right-click for more) = (rechtsklik voor meer)
+window	venster	Maximize/Minimize window = Venster maximaliseren/minimaliseren
+dialog	dialoogvenster	
+menu, context menu	menu, contextmenu	
+tooltip	knopinfo	
+Open / Open…	Openen / Openen…	Menu items and buttons: infinitive, sentence case (no Title Case)
+Close	Sluiten	
+Cancel	Annuleren	
+Could not … / Cannot …	Kan … niet …	Error messages: Kan {} niet openen; a past failure in the passive: … kon niet worden gelezen
+OK	OK	
+Save / Save…	Opslaan / Opslaan…	
+Load	Laden	Load Stain Target… = Doelkleuring laden…
+Import	Importeren	
+Delete	Verwijderen	Permanently removes data
+Remove	Verwijderen	Plugins, inputs, a heat map
+Clear (a list)	Wissen	Clear ROI, landmarks, measurements, messages = wissen
+Settings	Instellingen	
+Apply	Toepassen	
+Reset	Herstellen	Reset Rotation = Rotatie herstellen
+Reset to Defaults	Standaardwaarden herstellen	
+Show / Hide	Tonen / Verbergen	Toggle … = … tonen/verbergen (or in-/uitschakelen for a mode)
+Enable / Disable	Inschakelen / Uitschakelen	enabled/disabled = ingeschakeld/uitgeschakeld
+Copy / Copy All	Kopiëren / Alles kopiëren	Copy Path = Pad kopiëren
+Undo / Redo	Ongedaan maken / Opnieuw uitvoeren	Undo {} = Ongedaan maken: {}; Redo {} = Opnieuw uitvoeren: {}; undo labels are infinitive phrases (Meting toevoegen)
+Fit	Passend maken	Fit the slide to the pane = Preparaat passend maken in het deelvenster
+Rotate	Draaien	Rotate Right 90° = 90° rechtsom draaien; rotation = rotatie
+Flip horizontally	Horizontaal spiegelen	Unflip = Spiegeling opheffen
+Add	Toevoegen	
+Edit	Bewerken	
+Rename	Naam wijzigen	
+Confirm	Bevestigen	
+Done (button)	Klaar	Done as the state of a job (notification) = Voltooid
+Back / Forward / Up	Terug / Vooruit / Omhoog	
+Next / Previous	Volgende / Vorige	
+Go (to an item)	Ga naar	
+Install	Installeren	
+Restart	Opnieuw starten	eov restarts = eov wordt opnieuw gestart
+Quit	Afsluiten	Quit eov = eov afsluiten
+Error / Warning / Information	Fout / Waarschuwing / Informatie	
+Loading…	Laden…	
+Ready	Gereed	Status
+Unknown	Onbekend	
+N/A	n.b.	niet beschikbaar
+None	Geen	
+Automatic (System Default)	Automatisch (systeemstandaard)	
+folder / file / path	map / bestand / pad	Open Folder… = Map openen…
+file name	bestandsnaam	
+clipboard	klembord	
+file manager	bestandsbeheerder	
+Open Containing Folder	Bijbehorende map openen	
+Full screen	Volledig scherm	
+Navigate (tool)	Navigeren	
+pan	verschuiven	Pan left = Naar links verschuiven
+Language	Taal	
+Recently Opened, recent files	Recent geopend, recente bestanden	Clear Recent Files = Recente bestanden wissen
+Preview	Voorbeeld	Export Preview = Exportvoorbeeld
+Format / Quality / Compression	Formaat / Kwaliteit / Compressie	File format = bestandsformaat
+Lossless	Verliesvrij	
+Resolution	Resolutie	
+Colour, Color	Kleur	Pick a Color = Kleur kiezen; Colour-blind safe = Voor kleurenblinden; colour palette = kleurenpalet
+Thickness (line)	Lijndikte	
+Font size	Lettergrootte	
+Stroke: Solid / Dashed / Dotted	Lijn: Doorlopend / Gestreept / Gestippeld	Compact for small buttons
+Caps: Round / Square / Flat	Uiteinden: Rond / Vierkant / Plat	Line caps
+one-letter labels	R, G, B; L, T, A; H, E	Red/Green/Blue = Rood/Groen/Blauw; dash Length = L (lengte), Gap = T (tussenruimte), dot Spacing = A (afstand); H = hematoxyline, E = eosine
+Filter (verb / noun)	Filteren / Filter	
+properties	eigenschappen	
+metadata	metadata	Slide Metadata = Metadata van het preparaat
+vendor	fabrikant	Scanner vendor
+scanner, scan date	scanner, scandatum	
+dimensions	afmetingen	
+case (accession)	casus	Series order by case
+Slide Information (panel)	Preparaatinformatie	
+Keyboard Shortcuts (panel)	Sneltoetsen	
+gamepad, controller	gamepad, controller	
+stick / trigger / D-pad	stick / trigger / D-pad	Gamepad parts, kept as in Dutch gaming usage
+dead zone	dode zone	
+pointer	aanwijzer	System pointer = systeemaanwijzer
+profile (gamepad)	profiel	
+database	database	
+reconstruction, error map	reconstructie, foutkaart	VAE terms
+batch	batch	
+progress and job titles	infinitief	Exporting {} = {} exporteren; Loading… = Laden…; Checking tissue quality = Weefselkwaliteit controleren
+You (register)	u	Formal address (u, uw) in messages; buttons and menu items use the infinitive
+capitalisation	alleen het eerste woord met hoofdletter	Only the first word and names are capitalised, also in menus and titles
+quotation marks	“…”	Around inserted names: “{}”; keep '…' where the English quotes values or ids with '…'
+number and unit	12,5 % · 20× · 0,25 µm/px	Spacing as in the English source; decimal separator is set by eov
+HPF field	HPF-veld (mv. HPF-velden)	Annotations plugin: a placed high-power field; HPF field tool = gereedschap HPF-veld; HIGH-POWER FIELDS = GEZICHTSVELDEN (HPF)
+field number (FN)	veldgetal (FN)	Eyepiece field number in mm; FN stays FN
+count point, count class	telpunt, telklasse	Points placed with the Count tool
+Count (tool, tab)	Tellen	Count tool = gereedschap Tellen; Count tab = tabblad Tellen
+annotations panel tabs	Annotaties / Lagen / Klassen / Tellen / Gegevens	Annotations / Layers / Classes / Count / Data
+tool (drawing, measuring)	gereedschap	As in eov (gereedschap Meten); region tool = gebiedsgereedschap
+reader (second reader, another reader)	beoordelaar	Compare with another reader = Vergelijken met andere beoordelaar
+blinded copy	geblindeerde kopie	Blinded copy… = Geblindeerde kopie…
+attach (annotations to a slide)	koppelen	Attach = Koppelen; moves a slide record's annotations to the open slide
+bring in (old annotations)	overnemen	Bring them in = Overnemen
+merge (database)	samenvoegen	Merge… = Samenvoegen…; Merge a database… = Database samenvoegen…
+back up, backup	reservekopie maken, reservekopie	Back up… = Reservekopie…
+eraser	gum	Alt erases = Alt wist
+paint (brush)	schilderen	Brush stroke = Penseelstreek
+cut from (a region)	wegsnijden	Cut from region = Uit gebied wegsnijden
+even-odd rule	even-oneven-regel	
+review status	beoordelingsstatus	Draft / Verified / Rejected = Concept / Geverifieerd / Afgewezen
+notes (of a layer)	notities	A comment on an annotation stays opmerking
+property (of an annotation)	eigenschap	PROPERTIES = EIGENSCHAPPEN
+section headings in capitals	HOOFDLETTERS behouden	e.g. METINGEN, OPMERKINGEN, GEBIEDSUITLEZING
+tumour cell	tumorcel (mv. tumorcellen)	
+combined positive score (CPS)	combined positive score (CPS)	Kept in English, as in Dutch PD-L1 reporting
+not for diagnosis	niet voor diagnostisch gebruik	Safety text, with uitsluitend voor onderzoeksdoeleinden; never shorten
+PREDICTED (banner)	VOORSPELD	VOORSPELD — uitsluitend voor onderzoeksdoeleinden, niet voor diagnostisch gebruik
+region readout, readout (Cellaris)	gebiedsuitlezing, uitlezing	readout region = uitleesgebied
+window (square image a model predicts from)	venster	{n} windows of predictions = {n} vensters met voorspellingen; the model's window = modelvenster
+display window (of a marker or channel)	weergavevenster	Range of values its colour is drawn over; ends: Zwart / Wit
+cell (Cellaris grid square)	rastercel (mv. rastercellen)	A grid square predicted at once; never plain cel, which reads as a biological cell
+tissue block (5 µm square, Cellaris)	weefselvakje (vakje)	Not weefselblok, which is a paraffin block
+bright-field	helderveld	not bright-field H&E = geen helderveld-H&E
+reconstruction error	reconstructiefout	VAE term; highest-error regions = gebieden met de hoogste fout; Error map = Foutkaart
+result cache	resultatencache	
+preprocessing	voorbewerking	
+device (inference)	apparaat	
+thread	thread (mv. threads)	worker thread = werkthread
+runtime (ONNX Runtime)	runtime	ONNX Runtime stays; ONNX Runtime library = ONNX Runtime-bibliotheek
+model card	modelkaart	
+sidecar file	sidecarbestand	<model>.eovae.json
+input / output (of a model)	invoer / uitvoer	Counted: invoertensor(en) / uitvoertensor(en)
+resample, upsample	herbemonsteren, opschalen	resampled = herbemonsterd
+downsample (factor)	downsamplefactor	As in eov
+hex digits	hexadecimale tekens	64 hex digits = 64 hexadecimale tekens
+your site's copy, your site's model	kopie van uw instelling, model van uw instelling	
+This eov (cannot …)	deze versie van eov	
+mapping (gamepad)	toewijzing	Mappings = Toewijzingen; Unassigned = Niet toegewezen
+South / East / North / West Button	Actieknop onder / rechts / boven / links	Gamepad face buttons
+shoulder button	schouderknop	Left Shoulder = Linkerschouderknop
+Left / Right Stick Click	Klik linkerstick / Klik rechterstick	
+response curve	responscurve	
+system pointer	systeemaanwijzer	System pointer control = Besturing van de systeemaanwijzer
+tuning (gamepad)	afstelling	
+marker (example plugin point)	markering	Only for placed point marks; biological markers stay marker

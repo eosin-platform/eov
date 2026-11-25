@@ -22,6 +22,21 @@ The name `eov` has no canonical expansion.
 
 eov is software for research and education. It is **not a medical device**: it is not cleared or approved for primary diagnosis (for example by the FDA or under the EU IVDR), and nothing it shows should be the sole basis of a clinical decision. Colour normalisation, deconvolution, sharpening and plugin outputs (such as predicted channels or detections) are synthetic; eov labels them on screen and in exported figures.
 
+## Available in 31 languages
+
+eov's interface — menus, panels, dialogs, messages and the panels of its plugins — is available in 31 languages:
+
+English · العربية · Čeština · Dansk · Deutsch · Ελληνικά · Español · فارسی · Suomi · Français · עברית · हिन्दी · Magyar · Bahasa Indonesia · Italiano · 日本語 · 한국어 · Norsk bokmål · Nederlands · Polski · Português (Brasil) · Română · Русский · Slovenščina · Svenska · ไทย · Türkçe · Українська · Tiếng Việt · 简体中文 · 繁體中文
+
+- **Automatic.** eov starts in your system's language when it has it, and in English otherwise.
+- **Your choice.** The globe button in the toolbar (or the language link at the bottom of the Home screen) lists every language by its own name; a choice applies at once and is remembered (`language` in `config.toml`).
+- **For one run.** `eov --language ja` (or `pt-BR`, `zh-Hant`, `en`, …) overrides both without changing the saved choice.
+- **Plugins too.** The official plugins (annotations, gamepad, eovae, cellaris) are translated and switch language with eov, and any plugin can ship translations of its own ([how](plugin_api/README.md#translations)).
+
+eov aims to make whole-slide image viewing accessible to researchers, educators and students worldwide, in the language they work in. Slide names, slide metadata and other data are always shown as they are.
+
+**Help us get the translations right.** The translations were machine-translated, then reviewed by independent AI reviewers, with a back-translation check of the safety-related texts; none has yet been reviewed by a native speaker or by a pathologist. eov's text burned into exported images, and its command-line output, stay in English (see [Translating the Interface](#translating-the-interface)). If a text is unclear, inaccurate or unnatural — or just not quite what you would expect — please [open an issue](https://github.com/eosin-platform/eov/issues/new?title=Translation%3A%20) with the language, the text and what you suggest. Native speakers and domain experts are especially welcome to propose improvements, and no translation is final. To correct a translation yourself, edit your language's catalog (`app/translations/<language>/LC_MESSAGES/eov.po`, or `translations/` in a plugin) with any PO editor and open a pull request: [docs/translating.md](docs/translating.md) explains the few steps, and [docs/translation-glossary.md](docs/translation-glossary.md) lists the terms to use.
+
 ## Installation
 
 <!-- release-install-links:start -->
@@ -144,7 +159,7 @@ Current capabilities include:
 - Heat maps from other tools over a slide (a model's probabilities, an attention map), from PNG, JPEG or TIFF, coloured, placed and kept per slide (see [Heat Maps](#heat-maps)).
 - Tissue QC: pen marks, possible folds and out-of-focus areas marked over the slide, summarised per slide and cohort (`eov qc`), and left out of datasets on request (see [Tissue QC](#tissue-qc)).
 - A series bar for the slides of a folder: filter, order by name, date, stain or case (the case is read from the file name: `C3L-00011-21.svs` belongs to `C3L-00011` and `patient_198_node_0.tif` to `patient_198`, a TCGA barcode to its participant, or what `series_case_pattern` in `config.toml` captures), one entry per DICOM series (DICOM annotations and reports in the folder are not listed), and PageUp/PageDown to step through them.
-- Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied.
+- Copy the view and Export Image (right-click the viewport): PNG, JPEG or TIFF with configurable DPI, filtering, the colour processing shown, plugin and measurement overlays, a scale bar and a note, rendered in bands so any size works; files say what processing was applied. eov's own text burned into an image is in English whatever the interface's language.
 - Dataset patch extraction: fixed-grid patches from one or more slides at a chosen resolution, with tissue filtering and tissue-QC exclusion, annotation labels and masks, stain normalisation, resumable runs, CSV/JSON metadata, optional de-identification and packing into a zarr store or an HDF5 file (from the toolbar or the CLI).
 - Save a copy of a slide, or of its region of interest, as a pyramidal TIFF or OME-TIFF that other tools read, optionally de-identified (no label or macro image, no identifying metadata), from the tab menu or with `eov convert` (see [Converting and De-identifying Slides](#converting-and-de-identifying-slides)).
 - Plugins (see [Plugins](#plugins)), managed from the Plugins panel or `eov plugin`, and verified application and plugin updates (`eov update`, or Check for Updates on the Home screen).
@@ -331,7 +346,7 @@ The settings are kept per slide, keyed by its identity, and come back when it op
 The application can be launched as a desktop viewer or used through a small CLI surface:
 
 ```text
-eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM]
+eov [OPTIONS] [FILES]... [--pane FILES]... [--goto X,Y] [--zoom ZOOM] [--language LANGUAGE]
 eov probe [--json] <FILE>
 eov qc [--json] [--no-sharpness] [--cell-um <UM>] <SLIDES>...
 eov recent list
@@ -379,6 +394,8 @@ eov qc --json cohort/ > qc.json                   # pen marks, folds and blur pe
 eov --config /tmp/config.toml config-path
 eov paths
 eov recent list
+eov --language ja slide.svs                       # this run in Japanese
+eov --language pt-BR                              # Portuguese (Brazil)
 ```
 
 `eov --help` explains every option. Notable ones:
@@ -396,6 +413,7 @@ eov recent list
 - `--plugin-dir <PATH>` to set the plugin search directory. Default: `~/.eov/plugins/`
 - `--window-width`, `--window-height` and `--window-x`/`--window-y` (given together) for the window's size and position in logical pixels. Wayland ignores positions, because the compositor places windows; eov says so.
 - `--safe-mode` (or `EOV_SAFE_MODE=1`) to start without loading any plugin, for example after a plugin crashed eov at startup
+- `--language <LANGUAGE>` to show the interface in a language for this run only (`ja`, `pt-BR`, `zh-Hant`, `en`, …; locale names such as `zh_TW` work too), whatever the settings and the system say. It is never saved; choosing a language in the window saves that one. An unknown language is reported and the usual one is used. Command-line output and `--help` stay in English.
 
 `eov probe` prints everything about a slide: size, pyramid levels, pixel size, objective, stain, scanned bounds and regions, ICC profile size, associated images (label, macro, thumbnail), quickhash, the channels of multichannel slides and every property; `--json` prints the same for scripts. `eov paths` lists every place eov keeps data (see [Configuration And Persistence](#configuration-and-persistence)). `eov call` calls the running eov's scripting interface (see [Scripting](#scripting)). `eov model` manages the models AI plugins use (see [Models for AI plugins](#models-for-ai-plugins)).
 
@@ -415,7 +433,7 @@ eov://open?path=C%3A%5Cslides%5CS12-3456%20A1.svs&x=14000&y=9000&zoom=10x
 
 Percent-encode the path (in a spreadsheet, `=HYPERLINK("eov://open?path=" & ENCODEURL(A2) & "&x=" & B2 & "&y=" & C2 & "&zoom=20x", "Open")`); `+` means a space. `x` and `y` take the values of `--goto`, `zoom` those of `--zoom`, and both are optional; unknown parameters are ignored. Clicking a link starts eov, or hands the link to the eov that runs. On Windows, a link to a network path (`\\server\share\...`) is only followed if the server is listed in `trusted_link_servers` in `config.toml`: merely looking at such a path makes Windows sign in to that server with your credentials, which a link on a web page could abuse. Mapped drive letters need no setting.
 
-**Single instance.** While eov runs, `eov FILES` (from a terminal, a file manager or a link) hands the files to it: they open as tabs, the window comes to the front (on Wayland, which lets no program raise itself, it asks for attention instead) and the second eov exits. `eov` without files just brings the running one forward. Options that configure the viewer itself (`--cpu`, `--gpu`, `--backend`, `--filtering-mode`, `--debug`, `--log-level`, `--cache-size`, `--max-tiles`, `--window-*`, `--viewport-lock`, `--safe-mode`) start a separate eov, as do `--new-instance` and `single_instance = false` in `config.toml`; subcommands never hand anything over. Such an eov still takes the endpoint described below when no other eov holds it: it serves [scripts](#scripting), and files handed over by later launches open in it. eovs with a different home, configuration file or plugin folder (`EOV_HOME`, `--config`, `--plugin-dir`) run separately.
+**Single instance.** While eov runs, `eov FILES` (from a terminal, a file manager or a link) hands the files to it: they open as tabs, the window comes to the front (on Wayland, which lets no program raise itself, it asks for attention instead) and the second eov exits. `eov` without files just brings the running one forward. Options that configure the viewer itself (`--cpu`, `--gpu`, `--backend`, `--filtering-mode`, `--debug`, `--log-level`, `--cache-size`, `--max-tiles`, `--window-*`, `--viewport-lock`, `--safe-mode`, `--language`) start a separate eov, as do `--new-instance` and `single_instance = false` in `config.toml`; subcommands never hand anything over. Such an eov still takes the endpoint described below when no other eov holds it: it serves [scripts](#scripting), and files handed over by later launches open in it. eovs with a different home, configuration file or plugin folder (`EOV_HOME`, `--config`, `--plugin-dir`) run separately.
 
 The running eov listens on a Unix-domain socket (Linux, macOS) or a localhost port (Windows, or where the socket's path would be too long) in a folder only you can use: `$XDG_RUNTIME_DIR/eov` on Linux (`$XDG_RUNTIME_DIR/app/io.eosin.eov` in the Flatpak), `$TMPDIR/eov` on macOS, `%LOCALAPPDATA%\eov\run` on Windows, or `$EOV_RUNTIME_DIR`. Both sides prove that they know a secret stored there before any path is exchanged, so other users and programs that merely squat on the port learn nothing. If eov crashed, the next start takes over its leftovers; if the running eov does not answer within 20 seconds, the new one starts on its own.
 
@@ -522,7 +540,7 @@ eov dataset patches <inputs...> --out <dir> --tile-size <n> --stride <n> [--meta
 
 `--deidentify` (or **De-identify** in the dialog) names slides by opaque ids derived from their content (`slide-3f2a…`, the same for a slide in every run and at every site) in folders, file names and metadata, and writes no slide paths, file names, input paths or annotation file names, for datasets shared outside the institution. Patches never include the slide label or macro image.
 
-`--exclude-qc pen,folds,blur` (or `all`; **Leave out pen marks, folds and blurred areas** in the dialog) runs [tissue QC](#tissue-qc) on each slide first and leaves out the patches that overlap a marked cell; they are counted in the slide's `skipped_tissue` and, separately, in `dataset.json` (`tiles_skipped_qc`). With `--max-tiles-per-slide`, such positions (like those outside the tissue mask or the annotations) are dropped before sampling and not counted.
+`--exclude-qc pen,folds,blur` (or `all`; **Leave out pen marks, possible folds and blur (tissue QC)** in the dialog) runs [tissue QC](#tissue-qc) on each slide first and leaves out the patches that overlap a marked cell; they are counted in the slide's `skipped_tissue` and, separately, in `dataset.json` (`tiles_skipped_qc`). With `--max-tiles-per-slide`, such positions (like those outside the tissue mask or the annotations) are dropped before sampling and not counted.
 
 The command accepts individual slide files, multiple slide paths, or directories (searched recursively for supported slide formats; DICOM files that are not whole-slide images, such as exported annotations or structured reports, are skipped, as are single-channel and untiled TIFFs). A deterministic grid of non-overlapping (or overlapping, when stride < tile_size) patches is extracted at level 0. Only full tiles are emitted—partial edge tiles that would extend beyond the slide bounds are skipped.
 
@@ -896,20 +914,15 @@ The packaged plugin buttons should appear in the toolbar, and the plugin sidebar
 
 ## Translating the Interface
 
-The texts of eov's window (`app/ui/*.slint`) are marked for translation with `@tr`. A translation is a gettext catalog that is compiled into eov:
+Every text of eov and of its official plugins is translated through gettext catalogs: `app/translations/<language>/LC_MESSAGES/eov.po` for eov (compiled into the program, so every package has every language), and `translations/` in each plugin (shipped in its `.eop`). Texts in `.slint` files are marked with `@tr`, texts made in Rust with `tr!` (from `eov_plugin_api::i18n`); `python3 tools/i18n/i18n.py update` extracts them with `slint-tr-extractor` and `xtr` and merges every catalog with GNU gettext. A text that is not translated yet shows in English, never empty.
 
-1. Extract the texts into a template with Slint's extractor (`cargo install slint-tr-extractor`):
-   `find app/ui -name '*.slint' | xargs slint-tr-extractor -o app/translations/eov.pot`
-2. Start a catalog for the language from the template, for example with gettext's `msginit -i app/translations/eov.pot -o app/translations/de/LC_MESSAGES/eov.po -l de`, and translate it in any .po editor. A text's context is the component it appears in.
-3. Build eov: `app/build.rs` compiles every `app/translations/<language>/LC_MESSAGES/eov.po` in. eov shows the language of the system (`LANG`) when it has a catalog for it, and English otherwise (and when there is no catalog at all). When the texts change, update a catalog with `msgmerge -U app/translations/de/LC_MESSAGES/eov.po app/translations/eov.pot`.
-
-Only the window's own texts are translated. Messages that come from eov's Rust code (the status bar, notifications and toasts, menus built while eov runs, the dialogs' summaries, the command line) and the plugins' panels stay in English.
+[docs/translating.md](docs/translating.md) covers correcting a translation, adding texts and languages, the checks CI runs, and translating a plugin; [docs/translation-glossary.md](docs/translation-glossary.md) lists the terms. Logs (the session log and the audit log), command-line output (`--help` and `--json` output included), configuration keys and data from slides are deliberately not translated. Nor is text burned into images, so that a figure reads the same wherever it goes: exported images carry their measurement labels, scale bar and colour-processing note in English, with `.` decimals, and exported images and copied views carry plugins' labels in the English form the plugins give for them (names you wrote stay as you wrote them). The update helper's own failure message on Windows and macOS is in English too; eov reports how the update went in your language at its next start.
 
 ## Configuration And Persistence
 
 eov keeps its state under `~/.eov/` (or `$EOV_HOME`):
 
-- `config.toml`: preferences (render backend, filtering mode, the colour theme, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
+- `config.toml`: preferences (render backend, filtering mode, the colour theme, the interface language, the Measure tool's mode, the sidebar to restore). Pass `--config <PATH>` or set `EOV_CONFIG` to use another file. eov edits the file in place, keeping keys it does not know and your comments, and writes it atomically. A file that cannot be parsed is renamed to `config.toml.broken` and eov starts with defaults.
 - `recent_files.toml`: recently opened slides and folders. Set `remember_recent_files = false` in `config.toml` to turn the history off, or use **Clear Recent Files** in the recent-files menu. Plugins cannot read it.
 - `plugins/`: installed plugin packages and their registry (`eov plugin …`).
 - `session.toml`: the slides, panes and views of the last session, reopened on a start without files (`restore_session = false` turns that off).
@@ -942,6 +955,7 @@ Example config file:
 render_backend = "gpu"
 filtering_mode = "trilinear"   # bilinear, trilinear, lanczos (or lanczos3)
 theme = "dark"                 # dark, light or high-contrast
+language = "de"                # the interface language (a tag such as "pt-BR"); absent or "auto": the system's
 remember_recent_files = true
 restore_session = true
 single_instance = true         # false: every launch starts its own eov

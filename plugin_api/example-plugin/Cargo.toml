@@ -12,7 +12,7 @@ name = "example_plugin"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-eov-plugin-api = { path = "..", version = "1.0.0" }
+eov-plugin-api = { path = "..", version = "1.1.0" }
 
 [dev-dependencies]
 tempfile = "3"

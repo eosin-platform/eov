@@ -2,6 +2,7 @@
 
 use super::manifest::Architecture;
 use anyhow::{Result, bail};
+use eov_plugin_api::i18n::tr;
 use serde::Serialize;
 
 /// A release platform such as `linux.x86_64`.
@@ -30,7 +31,7 @@ impl Platform {
         } else if cfg!(target_os = "linux") {
             "linux"
         } else {
-            bail!("unsupported operating system for eov releases")
+            bail!("{}", tr!("unsupported operating system for eov releases"))
         };
         Ok(Self {
             os,

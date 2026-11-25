@@ -21,13 +21,18 @@ lists every finding and §14 feature; regenerate it after a change with
     take URIs, and slide identity would need `SlideInfo::identity`.
 - **DICOM SR** is neither read nor written. DICOM Microscopy Bulk Simple
   Annotations are.
-- **Localisation:**
-  - No translation catalogs ship.
-  - Texts made in Rust stay English: status messages, menus built in Rust,
-    the theme menu and the plugin usage line.
-  - No `.pot` template ships, because slint-tr-extractor was not available
-    offline.
-- **Themes:** panels provided by plugins are not themed or translated.
+- **Localisation** (31 languages; see docs/translating.md):
+  - The 30 translations were drafted with machine translation and have not
+    been reviewed by native speakers or pathologists. Ask for reviews
+    (start with the languages most used in the community) and record them
+    in each catalog's `X-Review-Status` and in docs/translating.md.
+  - Layouts are not mirrored for Arabic, Persian and Hebrew: Slint 1.19 has
+    no layout direction. Text is right-aligned and isolated; panels keep
+    their left-to-right arrangement.
+  - Native file dialogs and the AppStream metainfo follow the system's
+    language, not the one chosen in eov; the metainfo is English only.
+  - Command-line output and `--help` stay English by design.
+- **Themes:** panels provided by plugins are not themed.
 - **Signed binaries:** the owner has to provide the release signing key,
   Authenticode and notarization certificates.
 

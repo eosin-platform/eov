@@ -1,0 +1,267 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Pour la recherche et l'enseignement. N'est pas un dispositif médical ; ne pas utiliser pour le diagnostic primaire.	Safety text: translate in full, never shorten or soften.
+research use only (RUO)	à usage de recherche uniquement (RUO)	Regulatory phrase as printed on RUO reagents; keep RUO.
+primary diagnosis	diagnostic primaire	Regulatory term (first, final diagnosis of a case).
+not a medical device	n'est pas un dispositif médical	Dispositif médical is the EU/French regulatory term.
+synthetic (image, channel, stain)	synthétique	Computed by an algorithm; never « artificiel », « faux » or « simulé ».
+predicted	prédit	e.g. canal prédit, coloration prédite.
+generated	généré	e.g. image générée.
+computed	calculé
+slide	lame	The glass slide and its scan; never diapositive. « lame histologique » when it must be explicit.
+whole-slide image (WSI)	image de lame entière (WSI)	Keep the abbreviation WSI (fichiers WSI).
+slide viewer	visionneuse de lames	« Whole Slide Image Viewer » = Visionneuse d'images de lames entières.
+viewer	visionneuse
+tab	onglet
+pane	volet	One of the side-by-side viewing areas; distinct from « panneau » (panel).
+panel	panneau	Channels, Plugins, Measurements, Keyboard Shortcuts panels.
+view	vue	Position, zoom and rotation shown in a pane.
+viewport	zone d'affichage	Area of a pane where the slide is drawn.
+minimap	mini-carte
+scale bar	barre d'échelle
+HUD	panneau superposé	The floating panels over the slide; « metadata HUD » = panneau des métadonnées.
+toolbar	barre d'outils
+sidebar	barre latérale
+status bar	barre d'état
+series bar	barre de série	The bar listing the slides of a folder.
+zoom	zoom	Screen scale (100 % = 1 pixel de l'image par pixel d'écran).
+zoom in / zoom out	zoom avant / zoom arrière
+magnification	grossissement	20× stays 20×.
+optical-equivalent zoom	grossissement optique équivalent	Tooltip of the zoom field: 20x stays 20x.
+objective	objectif	« objective power » = grossissement de l'objectif.
+pixel size	taille de pixel
+MPP (µm per pixel)	MPP (µm par pixel)	MPP stays MPP; µm/px stays µm/px.
+calibration	étalonnage
+level, pyramid level	niveau, niveau de la pyramide	« level-0 pixels » = pixels du niveau 0.
+L0, L{level} (level shown)	N0, N{level}	N = niveau.
+pyramid	pyramide
+tile	tuile	Square piece of the image; « Tile Size » = Taille des tuiles.
+patch (dataset)	patch (pl. patchs)	Small image cut from a slide for machine learning.
+cache	cache
+region of interest (ROI)	région d'intérêt (ROI)	Keep ROI as the abbreviation.
+measurement	mesure
+Measure (tool)	Mesure	Tool name (outil Mesure); verb « mesurer ».
+Navigate (tool)	Navigation	Tool name (outil Navigation); verb « naviguer ».
+distance, length, area, angle	distance, longueur, aire, angle	« Polygon area » = Aire du polygone.
+annotation	annotation	A drawn mark with a meaning; not « commentaire ».
+class (annotation class)	classe
+cell count, counting	comptage cellulaire, comptage
+high-power field (HPF)	champ à fort grossissement (HPF)	Keep HPF as the abbreviation.
+H&E	H&E	Never translated (not HE/HES).
+hematoxylin	hématoxyline	Abbreviation H.
+eosin	éosine	Abbreviation E.
+IHC	IHC	immunohistochimie when spelled out.
+DAB	DAB	Chromogen; « DAB-positive » (pixels) = Pixels positifs (DAB).
+stain (dye: hematoxylin, eosin, DAB)	colorant	Isolated stain = colorant isolé; Stain to measure = Colorant à mesurer.
+stain (staining, as H&E, IHC, Giemsa)	coloration	Slide's stain = coloration de la lame.
+stain normalization	normalisation de la coloration	Macenko, Vahadane stay as they are.
+colour normalisation, colour-normalised (pane status)	normalisation des couleurs, couleurs normalisées	Same feature as stain normalization; follows the English wording of pane status texts.
+stain target	cible de coloration
+stain model	modèle de coloration	H&E, H-DAB…
+stain vectors	vecteurs de coloration	« reference stain vectors » = vecteurs de coloration de référence.
+stain fit, fit the stains	ajustement des colorants, ajuster les colorants
+color deconvolution	déconvolution des couleurs	Ruifrok–Johnston.
+optical density	densité optique
+H-score	H-score	Intensity classes: faible (1+), modérée (2+), forte (3+).
+quantify	quantifier	Quantify Stain = Quantifier le colorant.
+channel	canal (pl. canaux)
+multiplex immunofluorescence (mIF)	immunofluorescence multiplex (mIF)
+marker	marqueur	Marker names (CD3, Ki-67, PanCK) never translated.
+focal plane (Z)	plan focal (Z)
+Z-stack	pile Z
+time point (T)	point temporel (T)
+time series	série temporelle
+heat map	carte thermique
+overlay	superposition
+layer	calque
+opacity	opacité	0–100 %.
+tissue QC	CQ du tissu	contrôle qualité du tissu when spelled out.
+grid cell (QC grid)	case (de la grille)	Never « cellule », which would read as a biological cell.
+pen marks	traces de feutre
+folds	plis
+blur, out of focus	flou, hors mise au point	« blurred areas » = zones floues.
+tissue detection	détection du tissu
+tissue mask	masque de tissu
+dataset	jeu de données
+patch extraction	extraction de patchs
+stride	pas	Step between patches.
+white threshold	seuil de blanc
+export (verb / noun)	exporter / exportation
+save a copy	enregistrer une copie
+convert	convertir
+de-identify, de-identified	désidentifier, désidentifié	Not « anonymiser »: text inside the tissue image is not removed.
+label image	image de l'étiquette	label (of a slide) = étiquette.
+macro image	image macro	Photo of the whole glass slide.
+thumbnail	miniature
+overview (image)	vue d'ensemble
+bookmark	signet
+session	session
+plugin	plugin (m., pl. plugins)	plugin API = API des plugins.
+package (.eop)	paquet (.eop)	plugin package = paquet de plugin.
+model	modèle	Machine-learning model.
+model store	magasin de modèles	As « magasin de certificats »; not « dépôt » (= repository).
+inference	inférence
+render, rendering	rendu
+renderer	moteur de rendu	GPU renderer = moteur de rendu GPU; CPU, GPU stay.
+backend	back-end
+filtering	filtrage	Filtering mode = Mode de filtrage.
+bilinear, trilinear, Lanczos	bilinéaire, trilinéaire, Lanczos	Lanczos is a name.
+sharpness	netteté
+gamma	gamma
+brightness	luminosité
+contrast	contraste	Auto contrast = Contraste automatique.
+theme	thème	Dark = Sombre; Light = Clair; High Contrast = Contraste élevé.
+Home screen	écran d'accueil	Home (tab) = Accueil.
+Check for Updates…	Rechercher des mises à jour…	Asks before going online; never imply automatic updates.
+update (noun / verb)	mise à jour / mettre à jour
+self-update	mise à jour intégrée	eov updating itself (never « automatique »).
+update helper	assistant de mise à jour	eov-update-helper stays.
+release	version	latest release = dernière version; GitHub release = version GitHub.
+prerelease	préversion
+release notes	notes de version
+release manifest	manifeste de version
+artifact (release)	artefact
+repository	dépôt	GitHub repository = dépôt GitHub.
+signature, signed	signature, signé
+SHA-256 digest, checksum	empreinte SHA-256, somme de contrôle
+administrator policy	stratégie d'administration	policy file = fichier de stratégie.
+safe mode	mode sans échec
+crash	plantage	crash report = rapport de plantage.
+log, log folder	journal, dossier des journaux
+colour management	gestion des couleurs
+colour profile (ICC)	profil de couleur (ICC)
+colour-managed	couleurs gérées	« Colour-managed: … » = Couleurs gérées : …
+as scanned	telles que numérisées	Colours as scanned = Couleurs telles que numérisées.
+scan, scanned	numérisation, numérisé	scanner = scanner.
+vendor	fabricant
+case	cas	The patient case the slides belong to.
+landmark	repère	Alignment landmark = repère d'alignement.
+alignment, align	alignement, aligner
+link / unlink (panes)	lier / dissocier
+focused pane	volet actif
+split	fractionner	Split Right = Fractionner à droite.
+pan	déplacer la vue
+rotate	faire pivoter	Rotation = Rotation.
+flip horizontally	retourner horizontalement	Unflip = Annuler le retournement.
+fit	ajuster	Fit the slide to the pane = Ajuster la lame au volet.
+Open	Ouvrir	Buttons and menu items: infinitive, sentence case.
+Close	Fermer
+Cancel	Annuler
+OK	OK
+Confirm	Confirmer
+Save	Enregistrer
+Delete	Supprimer
+Remove	Retirer / Supprimer	Retirer = take out of a list or view (no file deleted); Supprimer = files are deleted (plugins).
+Clear	Effacer	Clear messages = Effacer les messages.
+Add	Ajouter
+Edit	Modifier
+Copy	Copier	Copy All = Tout copier.
+Paste	Coller
+Undo	Annuler	« Undo {} » = Annuler : {}; undo labels are nouns (Ajout d'une mesure).
+Redo	Rétablir	« Redo {} » = Rétablir : {}.
+Import	Importer
+Download	Télécharger
+Install, uninstall	installer, désinstaller
+Restart	Redémarrer
+Quit	Quitter
+Enable, disable	Activer, désactiver	Enabled = activé; Disabled = désactivé.
+Show, hide	Afficher, masquer	Toggle X = Afficher/masquer X.
+Apply	Appliquer
+Reset	Réinitialiser	Reset to Defaults = Rétablir les valeurs par défaut.
+Settings	Paramètres
+Filter	Filtrer / filtre
+Search	Rechercher
+Select	Sélectionner
+Back, Forward, Up (folders)	Précédent, Suivant, Dossier parent
+Next, Previous	suivant, précédent	Next tab = Onglet suivant.
+Done	Terminé
+Ready	Prêt
+Loading…	Chargement…	Use the ellipsis character … (also for "..." in the source).
+Error, Warning, Information	Erreur, Avertissement, Information
+Messages	Messages
+folder, file, path	dossier, fichier, chemin
+recent files	fichiers récents	Recently Opened = Ouverts récemment.
+properties, metadata	propriétés, métadonnées
+preview	aperçu
+threshold	seuil
+resolution	résolution	DPI = ppp (points par pouce).
+quality	qualité
+byte, bytes	octet, octets	Unit symbols stay as written: MB, GiB (not Mo, Gio).
+N/A (not recorded)	N/D	
+thread, UI thread	thread, thread d'interface	
+lossless	sans perte
+compression	compression
+clipboard	Presse-papiers
+full screen	plein écran
+keyboard shortcut	raccourci clavier	Keyboard Shortcuts panel = Raccourcis clavier.
+key (keyboard)	touche	« no key » = aucune touche.
+Ctrl, Shift, Alt, Esc, Enter, Tab	Ctrl, Shift, Alt, Esc, Enter, Tab	Key names stay as written (not Maj, Échap, Entrée); they match the keys eov shows.
+key (cryptographic)	clé
+hotkey	raccourci clavier
+tooltip	info-bulle
+language	langue	Automatic (System Default) = Automatique (langue du système).
+units	unités	Micrometres = Micromètres (µm); Millimetres = Millimètres (mm).
+inch, mil	pouce (po), mil	« {} in » = {} po; « in/mil » = po/mil.
+stroke: solid, dashed, dotted	trait : continu, tirets, pointillé
+caps: round, square, flat	extrémités : arrondies, carrées, plates
+outline	contour
+colour palette	palette de couleurs	Colour-blind safe = Adaptée aux daltoniens (a palette).
+histogram	histogramme
+brush	pinceau	Annotation tools (plugins).
+polygon, rectangle, ellipse, point	polygone, rectangle, ellipse, point
+nucleus, nuclei	noyau, noyaux
+database	base de données
+gamepad, controller	manette de jeu, manette
+pointer	pointeur
+latent space	espace latent
+reconstruction	reconstruction
+French typography	espace insécable	Non-breaking space (U+00A0) before : ; ? ! % and inside « ». Quotes « … »; straight apostrophe '.
+register	vous	Polite form; prefer impersonal or infinitive phrasing for buttons and menu items.
+undo label (plugins)	nom d'action	Undo labels are nouns: Add point = Ajout d'un point; Delete layer = Suppression du calque (also its dialog title).
+count point	point de comptage	Clear counts = Effacer les comptages; Count (tab) = Comptage; Count tool = outil Comptage.
+HPF field	champ HPF	HPF field tool = outil Champ HPF; HIGH-POWER FIELDS = CHAMPS À FORT GROSSISSEMENT.
+field number (FN)	indice de champ (FN)	Eyepiece field number; FN (mm) stays FN.
+vertex, vertices	sommet, sommets
+even-odd rule	règle pair-impair
+freehand outline	contour à main levée
+eraser (brush)	gomme	Erase (undo label) = Effacement.
+text label (annotation)	étiquette de texte	Annotation tool; not the slide label.
+lock, unlock (layer, annotation)	verrouiller, déverrouiller	Locked = Verrouillé(e).
+review status: draft, verified, rejected	statut de validation : brouillon, vérifiée, rejetée	Annotation (f.) agreement.
+unclassified	sans classe	Pseudo-class name.
+second reader, blinded copy	second lecteur, copie en aveugle	Double reading of a case.
+attach (annotations to a slide)	rattacher
+back up, merge (database)	sauvegarder, fusionner
+DICOM bulk annotations	annotations DICOM groupées	DICOM IOD names (Microscopy Bulk Simple Annotations) stay in English.
+combined positive score (CPS)	score positif combiné (CPS)	PD-L1.
+readout (Cellaris)	relevé	Region readout = relevé de région; REGION READOUT = RELEVÉ DE RÉGION.
+cell (Cellaris grid square)	case	A square of the slide predicted at once; never « cellule ».
+tissue block (5 µm square)	bloc de tissu
+window (model input tile)	fenêtre	Square image a model predicts from.
+display window (value range)	plage d'affichage	Not « fenêtre », which is the model input.
+mean, spread (readout columns)	moy., écart	Narrow columns; « moyenne » in prose.
+bright-field	fond clair	Not bright-field H&E = pas de l'H&E en fond clair.
+reconstruction error	erreur de reconstruction	MAE stays MAE.
+model card	fiche du modèle
+sidecar file	fichier annexe
+runtime (ONNX Runtime library)	runtime (m.)	ONNX Runtime stays; Choose runtime… = Choisir le runtime….
+result cache	cache des résultats	Clear cache = Vider le cache.
+batch (inference)	lot	Batch size = taille de lot.
+device (inference, input)	périphérique
+preprocessing	prétraitement
+embeddings	plongements (embeddings)
+game controller stick, trigger	stick, gâchette	Left Stick X = Stick gauche X; Left Trigger = Gâchette gauche.
+D-pad	croix directionnelle	D-Pad Left = Croix : gauche.
+shoulder button (LB/RB, L1/R1)	bouton supérieur	Left Shoulder = Bouton supérieur gauche.
+dead zone	zone morte
+mapping (gamepad)	affectation	Mappings (section) = Affectations; map a stick = affecter un stick.
+profile (gamepad)	profil
+On / Off (toggle chip)	Oui / Non	Switch label only 32 px wide.
+pan (gamepad tuning)	défilement	Pan Speed = Vitesse de défilement (narrow column); actions use « Déplacer la vue ».
+Remote Desktop (portal, permission)	Bureau à distance	Name of the system permission on Linux desktops.
+has focus / in the background (window)	au premier plan / en arrière-plan
+compute (predictions, a readout)	calculer	Cellaris: Compute = Calculer; Computing: = Calcul :; never « mesurer ».
+display window ends Low / High (Cellaris)	Min / Max	Same idea as Minimum/Maximum of eov's Channels panel; 34 px labels.
+fallback (stain vectors)	de repli	vecteurs de coloration de repli.
+worker thread	thread de travail
+host (eov, as a plugin sees it)	hôte	« the host returned … » = l'hôte a renvoyé …
+<format> whole-slide image (file type name)	Image de lame entière <format>	File type context; BigTIFF image = Image BigTIFF.

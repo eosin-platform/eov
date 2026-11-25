@@ -877,3 +877,110 @@ fn multichannel_slides_are_copied_as_their_composite() {
     );
     assert!((copy.properties().mpp_x.unwrap() - 0.5).abs() < 1e-9);
 }
+
+/// What a copy left out reads in English as it did before it was data too.
+#[test]
+fn omissions_keep_their_english() {
+    let image = CopyOmission::AssociatedImage {
+        name: "macro".into(),
+        error: "unreadable".into(),
+    };
+    assert_eq!(
+        image.to_string(),
+        "the macro image was not copied: unreadable"
+    );
+    let profile = CopyOmission::IccProfile {
+        error: "truncated".into(),
+    };
+    assert_eq!(
+        profile.to_string(),
+        "the ICC profile was not copied: truncated"
+    );
+}
+
+/// Why options cannot work reads in English as it did before it was data.
+#[test]
+fn problems_keep_their_english() {
+    let cases = [
+        (
+            ConvertProblem::TileSize(48),
+            "tile size 48 is not a multiple of 16 between 64 and 2048",
+        ),
+        (
+            ConvertProblem::JpegQuality(0),
+            "JPEG quality 0 is not between 1 and 100",
+        ),
+        (ConvertProblem::EmptyRegion, "the region is empty"),
+        (
+            ConvertProblem::RegionOutside {
+                region: SlideBounds {
+                    x: 700,
+                    y: 0,
+                    width: 10,
+                    height: 10,
+                },
+                slide_width: 600,
+                slide_height: 400,
+            },
+            "the region 700,0,10,10 is outside the slide (600 × 400 pixels)",
+        ),
+        (
+            ConvertProblem::NoSuchLevel { level: 7, last: 2 },
+            "the slide has no level 7; its levels are 0 to 2",
+        ),
+        (
+            ConvertProblem::NotAPixelSize(-1.0),
+            "-1 is not a pixel size in µm",
+        ),
+        (
+            ConvertProblem::NoPixelSize,
+            "the slide does not record its pixel size, so a target pixel size cannot be used; \
+             choose a level instead",
+        ),
+        (
+            ConvertProblem::FinerThanSlide {
+                target: 0.1,
+                full: 0.25,
+            },
+            "0.1 µm/px is finer than the slide's full resolution (0.25 µm/px); copies are never \
+             upsampled",
+        ),
+        (
+            ConvertProblem::TooLarge {
+                width: 3_000_000_000,
+                height: 10,
+            },
+            "the copy would be 3000000000 × 10 pixels; at most 2147483647 per side",
+        ),
+        (
+            ConvertProblem::TooSmall {
+                width: 8,
+                height: 8,
+            },
+            "the copy would be 8 × 8 pixels; it must be at least 16 × 16 (choose a larger region \
+             or a finer resolution)",
+        ),
+        (
+            ConvertProblem::NotAFileName("/a/..".into()),
+            "/a/.. is not a file name",
+        ),
+        (ConvertProblem::IsAFolder("/tmp".into()), "/tmp is a folder"),
+        (
+            ConvertProblem::NoSuchFolder("/nowhere".into()),
+            "the folder /nowhere does not exist",
+        ),
+        (
+            ConvertProblem::IsTheSlide("/a/slide.svs".into()),
+            "/a/slide.svs is the slide being copied (or one of its files)",
+        ),
+        (
+            ConvertProblem::PartialExists("/a/copy.tif.7.eov-partial".into()),
+            "/a/copy.tif.7.eov-partial exists: another conversion is writing this file, or an \
+             interrupted one left it behind (delete it and try again)",
+        ),
+    ];
+    for (problem, english) in cases {
+        assert_eq!(problem.to_string(), english);
+        assert_eq!(ConvertError::Invalid(problem).to_string(), english);
+    }
+}

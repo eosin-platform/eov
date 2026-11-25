@@ -8,6 +8,7 @@
 //! different contract in their ONNX `metadata_props` or a sidecar file, and
 //! the user can override it (see [`ContractOverride`]).
 
+use eov_plugin_api::i18n::{self, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -145,12 +146,61 @@ pub enum ContractSource {
 }
 
 impl ContractSource {
+    /// In English, as batch summaries record it.
     pub fn label(&self) -> &'static str {
         match self {
             Self::Default => "HistoVAE defaults",
             Self::BuiltIn => "built-in model card",
             Self::Metadata => "model metadata",
             Self::Sidecar => "sidecar file",
+        }
+    }
+
+    /// [`Self::label`] in the interface's language.
+    pub fn text(&self) -> String {
+        match self {
+            Self::Default => tr!("HistoVAE defaults"),
+            Self::BuiltIn => tr!("built-in model card"),
+            Self::Metadata => tr!("model metadata"),
+            Self::Sidecar => tr!("sidecar file"),
+        }
+    }
+}
+
+/// A declared value eovae does not use.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeclarationProblem {
+    /// `key = 'value'`: an unknown or bad value.
+    Ignored { key: String, value: String },
+    /// A mean and std with a std that is not positive.
+    NonPositiveStd,
+    /// A mean without a std, or a std without a mean.
+    Unpaired,
+}
+
+impl DeclarationProblem {
+    /// In English, as batch summaries record it.
+    pub fn english(&self) -> String {
+        match self {
+            Self::Ignored { key, value } => format!("ignored {key} = '{value}'"),
+            Self::NonPositiveStd => "ignored mean/std with a non-positive std".to_string(),
+            Self::Unpaired => "mean and std must be declared together".to_string(),
+        }
+    }
+
+    /// In the interface's language.
+    pub fn text(&self) -> String {
+        match self {
+            // Translators: a value a model declares that eovae does not use
+            Self::Ignored { key, value } => tr!(
+                "ignored {key} = '{value}'",
+                key = i18n::isolate(key),
+                value = i18n::isolate(value)
+            ),
+            // Translators: std is the standard deviation
+            Self::NonPositiveStd => tr!("ignored mean/std with a non-positive std"),
+            // Translators: std is the standard deviation
+            Self::Unpaired => tr!("mean and std must be declared together"),
         }
     }
 }
@@ -239,10 +289,18 @@ impl Contract {
 
     /// Applies declared values (keys without the `eovae.` prefix). Returns
     /// whether anything was applied, and problems with bad values.
-    pub fn apply_declarations(&mut self, values: &BTreeMap<String, String>) -> (bool, Vec<String>) {
+    pub fn apply_declarations(
+        &mut self,
+        values: &BTreeMap<String, String>,
+    ) -> (bool, Vec<DeclarationProblem>) {
         let mut applied = false;
         let mut problems = Vec::new();
-        let mut bad = |key: &str, value: &str| problems.push(format!("ignored {key} = '{value}'"));
+        let mut bad = |key: &str, value: &str| {
+            problems.push(DeclarationProblem::Ignored {
+                key: key.to_string(),
+                value: value.to_string(),
+            })
+        };
         let mut input_mean = None;
         let mut input_std = None;
         let mut output_mean = None;
@@ -355,11 +413,11 @@ impl Contract {
                         *target = scaling;
                         applied = true;
                     } else {
-                        problems.push("ignored mean/std with a non-positive std".to_string());
+                        problems.push(DeclarationProblem::NonPositiveStd);
                     }
                 }
                 (None, None) => {}
-                _ => problems.push("mean and std must be declared together".to_string()),
+                _ => problems.push(DeclarationProblem::Unpaired),
             }
         }
         (applied, problems)
@@ -376,28 +434,27 @@ impl Contract {
             .collect()
     }
 
-    /// Declarations from a sidecar JSON object.
-    pub fn sidecar_declarations(
-        json: &serde_json::Value,
-    ) -> Result<BTreeMap<String, String>, String> {
-        let object = json
-            .as_object()
-            .ok_or_else(|| "the sidecar must be a JSON object".to_string())?;
-        Ok(object
-            .iter()
-            .map(|(key, value)| {
-                let text = match value {
-                    serde_json::Value::String(text) => text.clone(),
-                    serde_json::Value::Array(items) => items
-                        .iter()
-                        .map(|item| item.to_string())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    other => other.to_string(),
-                };
-                (key.trim_start_matches("eovae.").to_string(), text)
-            })
-            .collect())
+    /// Declarations from a sidecar JSON object; `None` when it is not an
+    /// object.
+    pub fn sidecar_declarations(json: &serde_json::Value) -> Option<BTreeMap<String, String>> {
+        let object = json.as_object()?;
+        Some(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    let text = match value {
+                        serde_json::Value::String(text) => text.clone(),
+                        serde_json::Value::Array(items) => items
+                            .iter()
+                            .map(|item| item.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                        other => other.to_string(),
+                    };
+                    (key.trim_start_matches("eovae.").to_string(), text)
+                })
+                .collect(),
+        )
     }
 
     pub fn summary(&self) -> String {

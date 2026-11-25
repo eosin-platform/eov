@@ -15,6 +15,7 @@
 
 use crate::results::{TilePayload, TileState};
 use crate::tiling::TileCoord;
+use eov_plugin_api::i18n::tr;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
@@ -522,7 +523,7 @@ fn serve(mut store: Store, rx: Receiver<Request>, status: Arc<Mutex<CacheStatus>
             let _ = store.connection.execute_batch("ROLLBACK");
             store.transaction_started = None;
             store.pending = 0;
-            report(&store, Some(format!("result cache: {error}")));
+            report(&store, Some(tr!("result cache: {}", error)));
         }
     }
     let _ = store.commit();
@@ -553,20 +554,24 @@ impl ResultCache {
                         side.push(suffix);
                         let _ = std::fs::remove_file(PathBuf::from(side));
                     }
-                    open_connection(&path).map_err(|again| format!("{error}; then {again}"))
+                    open_connection(&path).map_err(|again| {
+                        // Translators: two errors: opening the cache, then a new one
+                        tr!("{error}; then {again}", error, again)
+                    })
                 }
             });
         let connection = match opened {
             Ok(Some(connection)) => connection,
             Ok(None) => {
-                status.lock().unwrap_or_else(|e| e.into_inner()).error = Some(
-                    "the result cache was created by a newer eovae; results are kept in memory only".to_string(),
-                );
+                status.lock().unwrap_or_else(|e| e.into_inner()).error = Some(tr!(
+                    "the result cache was created by a newer eovae; results are kept in memory only"
+                ));
                 return Self::disabled(status);
             }
             Err(error) => {
-                status.lock().unwrap_or_else(|e| e.into_inner()).error = Some(format!(
-                    "the result cache is unavailable ({error}); results are kept in memory only"
+                status.lock().unwrap_or_else(|e| e.into_inner()).error = Some(tr!(
+                    "the result cache is unavailable ({}); results are kept in memory only",
+                    error
                 ));
                 return Self::disabled(status);
             }
@@ -671,13 +676,12 @@ impl ResultCache {
     /// Deletes everything. Blocks; never call it on the UI thread.
     pub fn clear(&self) -> Result<(), String> {
         let Some(tx) = self.sender() else {
-            return Err("the result cache is disabled".to_string());
+            return Err(tr!("the result cache is disabled"));
         };
         let (reply, wait) = mpsc::channel();
         tx.send(Request::Clear(reply))
-            .map_err(|_| "the result cache stopped".to_string())?;
-        wait.recv()
-            .map_err(|_| "the result cache stopped".to_string())?
+            .map_err(|_| tr!("the result cache stopped"))?;
+        wait.recv().map_err(|_| tr!("the result cache stopped"))?
     }
 
     /// Commits pending writes. Blocks.

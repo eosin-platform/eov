@@ -1,0 +1,253 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Für Forschung und Lehre. Kein Medizinprodukt; nicht für die Primärdiagnostik bestimmt.	Safety text: translate completely, never shorten or soften
+not a medical device	kein Medizinprodukt	Term of the EU MDR / MPDG
+primary diagnosis	Primärdiagnostik	Regulatory term (also: Primärdiagnose for one case)
+research use only (RUO)	nur für Forschungszwecke (RUO)	The phrase printed on RUO reagents; never weaken
+synthetic (image, channel, stain)	synthetisch	Computed by an algorithm; never „künstlich“ or „simuliert“
+predicted	vorhergesagt	e.g. vorhergesagter Marker; never „simuliert“
+generated, computed	generiert, berechnet	
+slide	Präparat (pl. Präparate)	The scanned specimen slide as the user opens and views it; never „Folie“
+glass slide	Objektträger	Only for the physical glass (Etikett, Makrobild)
+whole-slide image (WSI)	Whole-Slide-Image (WSI)	Keep WSI; compounds with hyphen: WSI-Datei, WSI-Werkzeug
+slide viewer, viewer	Viewer	e.g. Viewer für Whole-Slide-Images
+tab	Tab (der Tab, pl. Tabs)	As in web browsers: Neuer Tab, Tab schließen
+pane	Bereich	One of the side-by-side viewing areas; focused pane = aktiver Bereich
+view	Ansicht	Position, magnification and rotation shown in a pane
+viewport	Ansichtsfenster	Where the slide is drawn; in running text often simply „Ansicht“
+panel	Bedienfeld	Side panels of the window and plugins, e.g. Heatmap-Bedienfeld; not „Bereich“ (pane)
+minimap	Übersichtskarte	
+scale bar	Maßstabsbalken	Microscopy term
+HUD	Einblendung	Panels floating over the slide, e.g. Metadaten-Einblendung
+toolbar	Symbolleiste	
+sidebar	Seitenleiste	
+status bar	Statusleiste	
+series bar	Serienleiste	The bar listing the slides of a folder
+zoom	Zoom	Screen scale; „zoomen“ as a verb
+zoom in / zoom out	Vergrößern / Verkleinern	Buttons and menu items
+magnification (20×)	Vergrößerung (20×)	Optical, objective-equivalent; 20× stays 20×
+objective	Objektiv	
+objective power	Objektivvergrößerung	
+pixel size	Pixelgröße	
+MPP (µm per pixel)	MPP (µm pro Pixel)	MPP stays MPP; unit µm/px
+calibration	Kalibrierung	
+level, pyramid level	Auflösungsstufe (kurz: Stufe)	Not „Ebene“ (reserved for layers and focal planes); level 0 = Stufe 0; L0 stays L0
+image pyramid	Bildpyramide (Pyramide)	
+tile	Kachel	Square piece of the image
+downsample	Downsample-Faktor	Level-0 pixels per map pixel
+patch (dataset)	Patch (pl. Patches)	Dataset image for machine learning; the dataset dialog's „Tile size“ = Patchgröße
+cache	Cache	
+region of interest (ROI)	ROI (Region of Interest)	die ROI; „ROI“ in running text and labels; tool name: Region of Interest (ROI)
+measurement	Messung	
+Measure (tool)	Messen	Tool name
+distance (measure mode)	Strecke	Path length = Pfadlänge, polygon area = Polygonfläche
+annotation	Annotation	A drawn mark with a meaning; a free-text comment is „Kommentar“
+class (annotation class)	Klasse (Annotationsklasse)	
+cell count, counting	Zellzählung, Zählung	count = zählen
+high-power field (HPF)	Hauptgesichtsfeld (HPF)	Keep HPF as the abbreviation: „pro 10 HPF“
+H&E	H&E	HE-Färbung in running text is also usual
+hematoxylin	Hämatoxylin	One-letter abbreviation H
+eosin	Eosin	One-letter abbreviation E
+IHC	IHC (Immunhistochemie)	
+DAB	DAB	
+stain (staining method)	Färbung	H&E, Giemsa, Ki-67 …; Färbung: {} in slide info
+stain (one dye of a stain model)	Farbstoff	Isolated stain = isolierter Farbstoff; stain intensity = Farbstoffintensität
+stain normalization, colour normalisation	Farbnormalisierung	Both English terms mean the same
+stain target	Zielfärbung	The reference appearance normalisation maps onto
+stain model	Färbemodell	e.g. H-DAB; preset = Vorgabe
+stain vector	Farbstoffvektor	
+stain fit (fit the stains)	Schätzung (Farbstoffvektoren schätzen)	Not „anpassen“, which reads as changing the image
+color deconvolution	Farbdekonvolution	
+Macenko, Vahadane, Ruifrok	Macenko, Vahadane, Ruifrok	Method names, never translated
+channel	Kanal (pl. Kanäle)	
+multiplex immunofluorescence (mIF)	Multiplex-Immunfluoreszenz (mIF)	
+marker	Marker	Marker names (CD3, Ki-67, PanCK) are never translated
+focal plane (Z)	Fokusebene	
+Z-stack	Z-Stapel	
+time point (T)	Zeitpunkt	
+time series	Zeitreihe	
+heat map	Heatmap	
+overlay	Überlagerung	
+layer	Ebene	As in image editors: Neue Ebene
+opacity	Deckkraft	0–100 %
+tissue	Gewebe	
+tissue QC	Gewebe-QC	Qualitätskontrolle des Gewebes
+grid cell (of a check)	Rasterfeld	Not „Zelle“, which reads as a biological cell
+pen marks	Stiftmarkierungen	
+folds	Falten	
+blur, blurred areas, out of focus	Unschärfe, unscharfe Areale, unscharf	
+tissue detection	Gewebeerkennung	
+tissue mask	Gewebemaske	
+background	Hintergrund	
+dataset	Datensatz	
+patch extraction	Patch-Extraktion	
+stride	Schrittweite	Step between patches
+threshold	Schwellenwert	
+export	Exportieren / Export	Export Image… = Bild exportieren…
+save a copy	Kopie speichern	
+convert (file)	konvertieren	Colours to sRGB: in sRGB umrechnen
+de-identify, de-identified	De-identifizieren, de-identifiziert	Not „anonymisieren“: eov does not guarantee anonymisation in the legal sense
+label image	Etikett (Etikettbild)	Photo of the slide's paper label
+macro image	Makrobild	Photo of the whole glass slide
+thumbnail	Vorschaubild	
+bookmark	Lesezeichen	
+session	Sitzung	
+plugin	Plugin (pl. Plugins)	
+package (.eop)	Paket (Plugin-Paket)	
+model	Modell	Machine-learning model
+model store	Modellspeicher	
+inference	Inferenz	
+render	rendern	Also: darstellen
+renderer	Renderer	GPU-Renderer, CPU-Renderer
+backend (CPU, GPU)	Backend (CPU, GPU)	
+filtering, filtering mode	Filterung, Filtermodus	bilinear, trilinear, Lanczos
+sharpness	Schärfe	
+gamma	Gamma	
+brightness	Helligkeit	
+contrast	Kontrast	
+theme	Design	Dark = Dunkel, Light = Hell, High Contrast = Hoher Kontrast
+Home screen	Startseite	The Home tab: Start
+colour management	Farbmanagement	Colour-managed = Farbmanagement aktiv
+colour profile, ICC profile	Farbprofil, ICC-Profil	
+as scanned	wie gescannt	
+landmark	Landmarke	Alignment landmark = Ausrichtungslandmarke
+align, alignment	ausrichten, Ausrichtung	
+link / unlink (panes)	verknüpfen / Verknüpfung aufheben	
+viewport lock	Ansichtskopplung	Panes with the same slide move together
+quantify	quantifizieren	
+H-score	H-Score	Weak/Moderate/Strong (1+/2+/3+) = Schwach/Mäßig/Stark
+optical density	optische Dichte	
+Check for Updates…	Nach Updates suchen…	Asks before going online; never imply automatic updates
+update (noun / verb)	Update / aktualisieren	das Update; eov aktualisieren
+release	Version; technisch: Release	GitHub release = GitHub-Release; release notes = Versionshinweise
+update helper	Update-Hilfsprogramm	eov-update-helper stays as the program name
+staged (update)	vorgemerkt	Installed after eov exits
+roll back	zurücksetzen	The update was rolled back = wurde zurückgesetzt
+administrator policy	Administratorrichtlinie	
+signature, signed	Signatur, signiert	
+SHA-256, checksum	SHA-256, Prüfsumme	
+repository	Repository	
+catalog (plugin catalog)	Katalog (Plugin-Katalog)	
+plugin registry	Plugin-Registry	die Plugin-Registry
+safe mode	abgesicherter Modus	
+log, log folder	Protokoll, Protokollordner	
+messages (notifications)	Meldungen	
+keyboard shortcuts	Tastenkombinationen	Key names stay as written: Ctrl, Shift, Alt, Esc
+key	Taste	
+hotkey	Tastenkürzel	
+modifier key	Zusatztaste	
+Open / Open…	Öffnen / Öffnen…	Menu items and buttons: infinitive, no Title Case
+Close	Schließen	
+Cancel	Abbrechen	
+OK	OK	
+Save / Save…	Speichern / Speichern…	
+Import	Importieren	
+Delete	Löschen	Permanently removes data
+Remove	Entfernen	Plugins, inputs, a heat map
+Clear (a list)	Leeren	Clear the ROI or landmarks = entfernen; Clear All Measurements = Alle Messungen löschen
+Settings	Einstellungen	
+Apply	Anwenden	
+Reset	Zurücksetzen	
+Reset to Defaults	Auf Standardwerte zurücksetzen	
+Show / Hide	Anzeigen / Ausblenden	Show or hide, Toggle = Ein-/Ausblenden
+Enable / Disable	Aktivieren / Deaktivieren	
+Copy / Copy All	Kopieren / Alle kopieren	
+Undo / Redo	Rückgängig / Wiederholen	Undo {} = Rückgängig: {}
+Fit	Einpassen	Fit the slide to the pane = Präparat in den Bereich einpassen
+Rotate	Drehen	Rotate Right 90° = 90° nach rechts drehen; rotation = Drehung
+Flip horizontally	Horizontal spiegeln	Unflip = Spiegelung aufheben
+Add	Hinzufügen	
+Edit	Bearbeiten	
+Rename	Umbenennen	
+Confirm	Bestätigen	
+Done	Fertig	
+Back / Forward / Up	Zurück / Vorwärts / Nach oben	
+Next / Previous	Nächste / Vorherige	Inflect: nächster Tab, nächstes Präparat
+Download	Herunterladen	
+Install / Uninstall	Installieren / Deinstallieren	
+Restart	Neu starten	
+Error / Warning / Information	Fehler / Warnung / Information	
+Loading…	Wird geladen…	
+Ready	Bereit	
+Unknown	Unbekannt	
+N/A	k. A.	keine Angabe
+folder / file / path	Ordner / Datei / Pfad	
+clipboard	Zwischenablage	
+file manager	Dateimanager	
+Open Containing Folder	Dateispeicherort öffnen	
+Full screen	Vollbild	
+Quit	Beenden	
+Navigate (tool)	Navigieren	
+pan	verschieben	Pan left = Nach links verschieben
+Language	Sprache	
+Recently Opened, recent files	Zuletzt geöffnet, zuletzt geöffnete Dateien	
+Preview	Vorschau	
+Format / Quality / Compression	Format / Qualität / Komprimierung	
+Lossless	Verlustfrei	
+Resolution	Auflösung	
+Colour, Color	Farbe	
+Thickness (line)	Strichstärke	
+Font size	Schriftgröße	
+Stroke: Solid / Dashed / Dotted	Linienart: Volllinie / Strichlinie / Punktlinie	DIN line types; compact for small buttons
+Filter (verb / noun)	Filtern / Filter	
+properties	Eigenschaften	
+metadata	Metadaten	
+vendor	Hersteller	
+scan date	Scandatum	
+dimensions	Abmessungen	
+You (register)	Sie	Formal address in messages; buttons and menu items use the infinitive
+quotation marks	„…“	German quotes around inserted names: „{}“
+number and unit	12,5 % · 20× · 0,25 µm/px	Space before % and units; decimal separator is set by eov
+region (annotation shape)	Region (pl. Regionen)	Annotations plugin: a drawn area; not „Bereich“ (pane)
+outline	Umriss	
+shape	Form	Kind of shape = Formart
+vertex, corner (of a polygon)	Eckpunkt	
+hole (of a region)	Loch (pl. Löcher)	
+count point	Zählpunkt	Count tool = Zählwerkzeug; Count tab = Tab „Zählung“
+HPF field	HPF-Feld (pl. HPF-Felder)	HIGH-POWER FIELDS heading = HAUPTGESICHTSFELDER
+field number (FN, eyepiece)	Sehfeldzahl (SFZ)	FN (mm) = SFZ (mm)
+text label	Textbeschriftung	
+brush / eraser	Pinsel / Radiergummi	brush stroke = Pinselstrich; erase = radieren
+handle (to reshape)	Ziehpunkt	
+lock / unlock / locked (layer, annotation)	sperren / entsperren / gesperrt	
+review status: Draft / Verified / Rejected	Prüfstatus: Entwurf / Verifiziert / Abgelehnt	
+reader (multi-reader study), second reader	Befunder, Zweitbefundung	SECOND READER section = ZWEITBEFUNDUNG
+blinded copy	verblindete Kopie	
+attach (annotations to the open slide)	zuordnen	
+merge (a database)	zusammenführen	
+back up, backup	sichern, Sicherung	
+read-only	schreibgeschützt	
+unclassified	nicht klassifiziert	
+even-odd rule	Gerade-Ungerade-Regel	
+95% confidence interval	95-%-KI	e.g. {density} /mm² (95-%-KI {low}–{high})
+combined positive score (CPS), tumour cells	Combined Positive Score (CPS), Tumorzellen	Score name kept in English, as in German pathology
+DICOM bulk annotations	DICOM-Bulk-Annotationen	Object names (Microscopy Bulk Simple Annotations, SOP Class UID) stay English
+structured report (SR)	strukturierter Bericht (SR)	
+level-0 pixels	Pixel der Stufe 0	
+Whole slide (scope of an operation)	Gesamtes Präparat	As in eov's Save Copy dialog
+predicted markers (Cellaris)	vorhergesagte Marker	
+region readout	Regionsauswertung	Tool: Cellaris-Regionsauswertung
+window (square model input)	Fenster, Vorhersagefenster	
+display window (value range of a marker)	Anzeigefenster	Black/White ends = Schwarz/Weiß
+cell (Cellaris grid cell, 41.6 µm)	Rasterfeld	Not „Zelle“ (biological cell)
+tissue block (Cellaris, 5 µm square)	Gewebequadrat; block = Quadrat	Not „Gewebeblock“ (paraffin block)
+bright-field	Hellfeld	
+reconstruction error, error map	Rekonstruktionsfehler, Fehlerkarte	
+result cache	Ergebniscache	
+sidecar file (<model>.eovae.json)	Begleitdatei	
+model card	Modellkarte	
+preprocessing	Vorverarbeitung	
+device (inference: CPU, CUDA)	Gerät	
+ONNX Runtime	ONNX Runtime (die Runtime)	Runtime… = Runtime…; ONNX Runtime library = ONNX-Runtime-Bibliothek
+reference model; your site's model	Referenzmodell; Modell Ihrer Einrichtung	
+game controller, gamepad	Gamecontroller, Controller; Gamepad	
+stick / trigger / D-pad / shoulder button	Stick / Trigger / Steuerkreuz / Schultertaste	Face buttons: Taste unten/rechts/oben/links
+dead zone, response curve	Totzone, Ansprechkurve	
+mappings (gamepad)	Belegung (pl. Belegungen)	
+system pointer	Systemzeiger	Move Pointer = Zeiger bewegen
+marker (a placed point, example plugin)	Markierung	Not „Marker“, which is a stained or predicted protein
+worker thread	Arbeits-Thread	Background thread of eov or a plugin: Ein Arbeits-Thread konnte nicht gestartet werden
+<maker> whole-slide image (file type name)	<Hersteller>-Whole-Slide-Image	File managers: Aperio-Whole-Slide-Image, Hamamatsu-NDPI-Whole-Slide-Image; BigTIFF image = BigTIFF-Bild
+flagged (by tissue QC)	markiert (von der Gewebe-QC markiert)	Flags for review, not certainties; possible folds/blur = mögliche Falten/Unschärfe
+host (eov, which runs a plugin)	Host (der Host)	eovae errors: der Host lieferte {n} Byte für eine Region von …
+Whole slide / Viewport / Region of interest (eovae run finished, cancelled, failed)	Analyse des gesamten Präparats / der Ansicht / der ROI	e.g. Analyse der Ansicht nach {duration} abgeschlossen; the buttons themselves stay Gesamtes Präparat / Ansicht / ROI
+Low / High (ends of a Cellaris display window)	Untergrenze / Obergrenze	Replaces the earlier Black/White labels (Schwarz/Weiß)

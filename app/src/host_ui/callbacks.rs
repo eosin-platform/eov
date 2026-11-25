@@ -3,6 +3,7 @@
 use super::{UiHost, with_host};
 use crate::plugin_runtime::EventTarget;
 use crate::{AppWindow, PluginButtonData};
+use eov_plugin_api::i18n::{isolate, tr};
 use eov_plugin_api::protocol::{HostEvent, ViewInfo};
 use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 use std::cell::RefCell;
@@ -37,6 +38,21 @@ pub(crate) fn svg_image(svg: &str) -> Image {
     })
 }
 
+/// A plugin button's tooltip (the plugin's text) with its key, if it has
+/// one.
+fn with_key(tooltip: &str, hotkey: Option<&eov_plugin_api::protocol::Hotkey>) -> String {
+    match hotkey {
+        // Translators: the tooltip of a plugin's toolbar button and the
+        // key that does the same, e.g. "Count cells (C)".
+        Some(hotkey) => tr!(
+            "{tooltip} ({key})",
+            tooltip = tooltip,
+            key = isolate(hotkey.key.to_uppercase())
+        ),
+        None => tooltip.to_string(),
+    }
+}
+
 impl UiHost {
     /// Rebuilds the plugin part of the toolbar (buttons and tools).
     pub(crate) fn refresh_toolbar(&self) {
@@ -61,18 +77,12 @@ impl UiHost {
             let active = active_tool
                 .as_ref()
                 .is_some_and(|(p, t)| **p == *tool.plugin_id && *t == tool.spec.tool_id);
-            let hotkey = tool
-                .spec
-                .hotkey
-                .as_ref()
-                .map(|h| format!(" ({})", h.key.to_uppercase()))
-                .unwrap_or_default();
             entries.push((
                 tool.plugin_id.to_string(),
                 PluginButtonData {
                     plugin_id: tool.plugin_id.to_string().into(),
                     button_id: tool.spec.tool_id.clone().into(),
-                    tooltip: format!("{}{hotkey}", tool.spec.label).into(),
+                    tooltip: with_key(&tool.spec.label, tool.spec.hotkey.as_ref()).into(),
                     icon: svg_image(&tool.spec.icon_svg),
                     active,
                     enabled: true,
@@ -91,18 +101,12 @@ impl UiHost {
             } else {
                 &button.spec.icon_svg
             };
-            let hotkey = button
-                .spec
-                .hotkey
-                .as_ref()
-                .map(|h| format!(" ({})", h.key.to_uppercase()))
-                .unwrap_or_default();
             entries.push((
                 button.plugin_id.to_string(),
                 PluginButtonData {
                     plugin_id: button.plugin_id.to_string().into(),
                     button_id: button.spec.button_id.clone().into(),
-                    tooltip: format!("{}{hotkey}", button.spec.tooltip).into(),
+                    tooltip: with_key(&button.spec.tooltip, button.spec.hotkey.as_ref()).into(),
                     icon: svg_image(icon),
                     active: button.spec.active,
                     enabled: button.spec.enabled,
@@ -466,7 +470,7 @@ pub(super) fn install(ui: &AppWindow, host: &Rc<UiHost>) {
             with_host(|host| {
                 host.notify(
                     eov_plugin_api::protocol::NotifyLevel::Error,
-                    "Could not open the log folder",
+                    &tr!("Could not open the log folder"),
                     Some(&error),
                     None,
                 )

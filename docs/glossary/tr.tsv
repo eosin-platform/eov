@@ -1,0 +1,281 @@
+term	translation	note
+For research and education. Not a medical device; not for primary diagnosis.	Araştırma ve eğitim amaçlıdır. Tıbbi cihaz değildir; primer tanı amacıyla kullanılamaz.	Safety text: translate completely, never shorten or soften
+not a medical device	tıbbi cihaz değildir	Term of the Turkish Medical Device Regulation (Tıbbi Cihaz Yönetmeliği, EU MDR)
+primary diagnosis	primer tanı	Regulatory/pathology term; use it consistently (not “ilk teşhis”)
+research use only (RUO)	yalnızca araştırma amaçlı kullanım içindir (RUO)	The phrase printed on RUO reagents; never weaken
+synthetic (image, channel, stain)	sentetik	Computed by an algorithm; never “yapay” (reads as fake) or “simüle”
+predicted	tahmin edilen	e.g. tahmin edilen belirteç; never “simüle edilmiş”
+generated, computed	üretilmiş, hesaplanmış	
+slide	preparat (pl. preparatlar)	The scanned specimen slide as the user opens and views it; never “slayt” (presentation)
+glass slide	lam	Only for the physical glass (etiket, makro görüntü)
+whole-slide image (WSI)	tüm preparat görüntüsü (WSI)	Keep WSI; WSI dosyası, WSI dosyaları
+slide viewer, viewer	görüntüleyici	Whole Slide Image Viewer = Tüm preparat görüntüleyicisi
+tab	sekme	As in web browsers: Yeni sekme, Sekmeyi kapat
+pane	bölme	One of the side-by-side viewing areas; focused pane = etkin bölme; split = böl
+view	görünüm	Position, magnification and rotation shown in a pane
+viewport	görüntü alanı	Where the slide is drawn in a pane
+panel	panel	Side panels of the window and plugins, e.g. Isı haritası paneli; not “bölme” (pane)
+minimap	mini harita	
+scale bar	ölçek çubuğu	Microscopy term
+HUD	görüntü üstü panel (kısaca: panel)	Panels floating over the slide, e.g. metadata HUD = meta veri paneli
+toolbar	araç çubuğu	
+sidebar	kenar çubuğu	
+status bar	durum çubuğu	
+series bar	seri çubuğu	The bar listing the slides of a folder
+zoom	yakınlaştırma	Screen scale; zoom level = yakınlaştırma düzeyi
+zoom in / zoom out	yakınlaştır / uzaklaştır	Buttons and menu items
+magnification (20×)	büyütme (20×)	Optical, objective-equivalent; 20× stays 20×
+objective	objektif	
+objective power	objektif büyütmesi	
+pixel size	piksel boyutu	
+MPP (µm per pixel)	MPP (piksel başına µm)	MPP stays MPP; unit µm/px
+calibration	kalibrasyon	calibrate = kalibre et
+level, pyramid level	düzey, piramit düzeyi	level 0 = düzey 0; L0 stays L0; not “katman” (layer) or “düzlem” (focal plane)
+image pyramid	görüntü piramidi	
+tile	karo (pl. karolar)	Square piece of the image, as in map tiles
+downsample	alt örnekleme faktörü	Level-0 pixels per map pixel
+patch (dataset)	yama (pl. yamalar)	Dataset image for machine learning; the dataset dialog's “Tile size” = yama boyutu
+cache	önbellek	
+region of interest (ROI)	ilgi alanı (ROI)	“ROI” in compact labels; the ROI = ilgi alanı
+measurement	ölçüm	
+Measure (tool)	Ölç	Tool name
+distance (measure mode)	mesafe	path length = yol uzunluğu, polygon area = çokgen alanı, rectangle area = dikdörtgen alanı, ellipse area = elips alanı, angle = açı
+annotation	anotasyon (pl. anotasyonlar)	A drawn mark with a meaning; a free-text comment is “yorum”
+class (annotation class)	sınıf (anotasyon sınıfı)	
+cell count, counting	hücre sayımı, sayım	count (verb) = saymak
+high-power field (HPF)	büyük büyütme alanı (HPF)	Keep HPF as the abbreviation: “10 HPF başına” (Turkish reports also write BBA)
+H&E	H&E	H&E boyalı preparat
+hematoxylin	hematoksilen	One-letter abbreviation H
+eosin	eozin	One-letter abbreviation E
+IHC	IHC (immünohistokimya)	Keep the abbreviation IHC
+DAB	DAB	
+stain (staining method)	boyama	H&E, Giemsa, Ki-67 …; Stain: {} in slide info = Boyama: {}
+stain (one dye of a stain model)	boya	isolated stain = izole boya; stain intensity = boya yoğunluğu; stain channel = boya kanalı
+stain normalization	boya normalizasyonu	
+colour normalisation	renk normalizasyonu	Same idea as stain normalization
+stain target	hedef boyama	The reference appearance normalisation maps onto
+stain model	boya modeli	e.g. H-DAB; preset = hazır ayar
+stain vector	boya vektörü	
+stain fit (fit the stains)	boya kestirimi (boya vektörlerini kestir)	Not “uydur” or “ayarla”, which read as changing the image
+color deconvolution	renk dekonvolüsyonu	
+Macenko, Vahadane, Ruifrok	Macenko, Vahadane, Ruifrok	Method names, never translated
+channel	kanal	
+multiplex immunofluorescence (mIF)	multipleks immünofloresan (mIF)	
+marker	belirteç	Marker names (CD3, Ki-67, PanCK) are never translated
+focal plane (Z)	odak düzlemi	
+Z-stack	Z yığını	
+time point (T)	zaman noktası	
+time series	zaman serisi	
+heat map	ısı haritası	
+overlay	kaplama	Graphics drawn over the slide
+layer	katman	As in image editors: Yeni katman
+opacity	opaklık	%0–100
+tissue	doku	
+tissue QC	doku kalite kontrolü (doku QC)	QC = kalite kontrolü
+grid cell (of a check)	ızgara karesi	Not “hücre”, which reads as a biological cell
+pen marks	kalem izleri	
+folds	katlantılar	Tissue folds (doku katlantısı)
+blur, blurred areas, out of focus	bulanıklık, bulanık alanlar, odak dışı	
+tissue detection	doku algılama	
+tissue mask	doku maskesi	
+background	arka plan	
+dataset	veri kümesi	
+patch extraction	yama çıkarma	
+stride	adım aralığı	Step between patches
+threshold	eşik değeri (kısaca: eşik)	
+export	dışa aktar / dışa aktarma	Export Image… = Görüntüyü dışa aktar…
+save a copy	kopyasını kaydet	Save a Copy of the Slide… = Preparatın kopyasını kaydet…
+convert (file)	dönüştür	Colours to sRGB: sRGB'ye dönüştür
+de-identify, de-identified	kimliksizleştir, kimliksizleştirilmiş	Not “anonimleştir”: eov does not guarantee anonymisation in the legal (KVKK) sense
+label image	etiket görüntüsü	Photo of the slide's paper label
+macro image	makro görüntü	Photo of the whole glass slide
+thumbnail	küçük resim	
+bookmark	yer imi	
+session	oturum	
+plugin	eklenti	
+package (.eop)	paket (eklenti paketi)	
+model	model	Machine-learning model
+model store	model deposu	
+inference	çıkarım	
+render, rendering	çizmek, çizim	Drawing the image; not “işleme”, which reads as image processing
+renderer	oluşturucu	GPU oluşturucusu, CPU oluşturucusu, yazılım oluşturucusu (software renderer)
+backend (CPU, GPU)	arka uç (CPU, GPU)	
+filtering, filtering mode	filtreleme, filtreleme modu	bilinear = çift doğrusal, trilinear = üç doğrusal, Lanczos stays
+sharpness	keskinlik	
+gamma	gama	
+brightness	parlaklık	
+contrast	kontrast	
+theme	tema	Dark = Koyu, Light = Açık, High Contrast = Yüksek kontrast
+Home screen	Başlangıç ekranı	The Home tab: Başlangıç
+colour management	renk yönetimi	Colour-managed = renk yönetimli
+colour profile, ICC profile	renk profili, ICC profili	
+as scanned	tarandığı gibi	Colours as scanned = Renkler tarandığı gibi
+landmark	referans noktası	Alignment landmark = hizalama referans noktası
+align, alignment	hizala, hizalama	
+link / unlink (panes)	bağla / bağlantıyı kaldır	Linked panes = bağlı bölmeler
+quantify	nicelendir, nicelendirme	Quantify Stain = Boyayı nicelendir
+H-score	H skoru	Weak/Moderate/Strong (1+/2+/3+) = Zayıf/Orta/Güçlü
+optical density	optik yoğunluk	
+Check for Updates…	Güncellemeleri denetle…	Asks before going online; never imply automatic updates
+update (noun / verb)	güncelleme / güncelle	eov'u güncelle
+release	sürüm	GitHub release = GitHub sürümü; release notes = sürüm notları; prerelease = ön sürüm
+update helper	güncelleme yardımcısı	eov-update-helper stays as the program name
+staged (update)	kuruluma hazırlandı	Installed after eov exits
+roll back	geri al	The update was rolled back = güncelleme geri alındı
+administrator policy	yönetici ilkesi	
+signature, signed	imza, imzalı	
+SHA-256, checksum	SHA-256, sağlama toplamı	
+repository	depo	
+catalog (plugin catalog)	katalog (eklenti kataloğu)	
+plugin registry	eklenti kayıt defteri	The file recording the installed plugins
+safe mode	güvenli mod	
+log, log folder	günlük, günlük klasörü	
+messages (notifications)	bildirimler	
+keyboard shortcuts	klavye kısayolları	Key names stay as written: Ctrl, Shift, Alt, Esc
+key	tuş	
+hotkey	kısayol tuşu	
+modifier key	değiştirici tuş	
+Open / Open…	Aç / Aç…	Buttons and menu items: bare imperative, sentence case (no English Title Case)
+Close	Kapat	Close Others = Diğerlerini kapat; Close All = Tümünü kapat
+Cancel	İptal	
+OK	Tamam	
+Save / Save…	Kaydet / Kaydet…	
+Import	İçe aktar	
+Delete	Sil	Permanently removes data
+Remove	Kaldır	Plugins, inputs, a heat map
+Clear (a list)	Temizle	Clear All Measurements = Tüm ölçümleri temizle
+Settings	Ayarlar	
+Apply	Uygula	
+Reset	Sıfırla	
+Reset to Defaults	Varsayılanlara sıfırla	
+Show / Hide	Göster / Gizle	Toggle = Göster/gizle
+Enable / Disable	Etkinleştir / Devre dışı bırak	enabled = etkin, disabled = devre dışı
+Copy / Copy All	Kopyala / Tümünü kopyala	
+Undo / Redo	Geri al / Yinele	Undo {} = Geri al: {}
+Fit	Sığdır	Fit the slide to the pane = Preparatı bölmeye sığdır
+Rotate	Döndür	Rotate Right 90° = 90° sağa döndür; rotation = döndürme
+Flip horizontally	Yatay çevir	Unflip = Çevirmeyi geri al
+Add	Ekle	
+Edit	Düzenle	
+Rename	Yeniden adlandır	
+Confirm	Onayla	
+Done	Bitti	
+Back / Forward / Up	Geri / İleri / Yukarı	
+Next / Previous	Sonraki / Önceki	sonraki sekme, önceki preparat
+Download	İndir	
+Install / Uninstall	Kur / Kaldır	installed = kurulu, installation = kurulum; “yükle” is reserved for loading
+Restart	Yeniden başlat	
+Error / Warning / Information	Hata / Uyarı / Bilgi	
+Loading…	Yükleniyor…	
+Ready	Hazır	
+Unknown	Bilinmiyor	
+N/A	Yok	Not recorded by the file
+folder / file / path	klasör / dosya / yol	
+clipboard	pano	
+file manager	dosya yöneticisi	
+Open Containing Folder	Bulunduğu klasörü aç	
+window	pencere	
+dialog	iletişim kutusu	
+tooltip	araç ipucu	
+drag and drop	sürükleyip bırak	
+Full screen	Tam ekran	
+Quit	Çık	
+Navigate (tool)	Gezin	
+pan	kaydır	Pan left = Sola kaydır
+Language	Dil	
+Recently Opened, recent files	Son açılanlar, son açılan dosyalar	
+Preview	Önizleme	
+Format / Quality / Compression	Biçim / Kalite / Sıkıştırma	
+Lossless	Kayıpsız	
+Resolution	Çözünürlük	
+Colour, Color	Renk	
+Thickness (line)	Kalınlık	Line thickness = Çizgi kalınlığı
+Font size	Yazı tipi boyutu	
+Stroke: Solid / Dashed / Dotted	Çizgi: Düz / Kesikli / Noktalı	Compact for small buttons
+Filter (verb / noun)	Filtrele / Filtre	
+properties	özellikler	
+metadata	meta veri	
+vendor	üretici	
+scan date	tarama tarihi	
+dimensions	boyutlar	
+series (of slides)	seri	
+You (register)	siz	Formal address in messages (“…yapabilirsiniz”); buttons and menu items use the bare imperative (“Aç”, “Kaydet”)
+quotation marks	“…”	Around inserted names: “{}”
+suffixes after placeholders	{} dosyası, “{}” adlı …	Never attach case suffixes to a placeholder (vowel harmony cannot be known): rephrase, or add a noun that takes the suffix
+number and unit	%12,5 · 20× · 0,25 µm/px	Percent sign before the number (%50, %{}); space before units; decimal separator is set by eov
+plural forms	{n} kanal, {n} preparat	Two forms (one, other); a noun after a number stays singular in Turkish
+viewport lock	görüntü alanı kilidi	Panes with the same slide move together
+undo labels (Set region of interest, Add measurement …)	İlgi alanını belirleme, Ölçüm ekleme …	Verbal nouns, so that “Geri al: {}” / “Yinele: {}” read naturally
+case (patient case)	olgu	Series order by case = Olgu
+worker thread, threads	iş parçacığı, iş parçacıkları	
+script	betik	e.g. Boya nicelendiriliyor (betik)
+release manifest	sürüm bildirimi	release.toml stays as written
+artifact (release artifact)	yapıt	
+prerelease	ön sürüm	
+proxy	proxy sunucusu	HTTPS_PROXY, NO_PROXY and SSL_CERT_FILE stay as written
+outline (of a region)	sınır çizgisi	Show Outline = Sınır çizgisini göster
+line caps: Round / Square / Flat	Uçlar: Yuvarlak / Kare / Düz	
+Figure (export section)	Şekil	As in a publication figure
+Placement (heat map)	Yerleşim	
+Maximize / Minimize window	Ekranı kapla / Simge durumuna küçült	Platform terms
+Go (to a measurement)	Git	
+Order (sort order)	Sıralama	A–Z stays A–Z; Newest = En yeni
+drop zones: Open Left / Create Left Pane	Solda aç / Sol bölme oluştur	
+region (annotation)	bölge	Add region = Bölge ekleme; Select regions = Bölgeleri seçin
+annotation kinds: Point / Line / Arrow / Polygon / Rectangle / Ellipse / Text	Nokta / Çizgi / Ok / Çokgen / Dikdörtgen / Elips / Metin	Text label = Metin etiketi
+brush / eraser	fırça / silgi	Brush stroke = Fırça darbesi; Brush size = Fırça boyutu
+freehand outline	serbest el sınır çizgisi	
+add to / cut from (a region or selection)	ekle / çıkar	Shift: seçime ekle, Alt: seçimden çıkar; Cut from region = Bölgeden çıkarma
+vertex, corner	köşe	
+outline crosses itself; even-odd rule	sınır çizgisi kendisiyle kesişiyor; çift-tek kuralı	Repair = Onar
+lock / unlock / locked	kilitle / kilidini aç / kilitli	Lock layer = Katmanı kilitle
+undo labels of plugin operations	verbal nouns	Hücre sayma, Katmanı silme, “{}” sınıfını silme: read as “Geri al: {}”
+count points, Count tool, Count tab	sayım noktaları, Sayım aracı, Sayım	Biological cells stay “hücre” (Hücre say)
+HPF field	HPF alanı	The dashed circle placed with the HPF field tool (H)
+field number (FN)	alan numarası (FN)	FN stays FN in compact labels
+field area	alan büyüklüğü	Avoids “alan alanı”; Area (mm²) = Alan (mm²)
+95% confidence interval	%95 GA	(%95 GA {low}–{high})
+combined positive score (CPS)	kombine pozitif skor (CPS)	PD-L1-positive = PD-L1 pozitif
+review status: Draft / Verified / Rejected	Taslak / Doğrulandı / Reddedildi	Mark verified = Doğrulandı olarak işaretleme
+second reader, another reader	ikinci değerlendirici, başka bir değerlendirici	Interobserver comparison in the Data tab
+blinded copy	körleştirilmiş kopya	
+attach (annotations of another slide)	ilişkilendir	Attach annotations = Anotasyonları ilişkilendir
+merge / back up (a database)	birleştir / yedekle	Merge… = Birleştir…; Back up… = Yedekle…
+annotation database; read-only	anotasyon veritabanı; salt okunur	
+DICOM bulk annotations	DICOM toplu anotasyonları	The IOD name Microscopy Bulk Simple Annotations stays in English
+DICOM study; (private) attributes	çalışma; (özel) öznitelikler	patient attributes = hasta öznitelikleri
+GeoJSON feature	öğe (feature)	FeatureCollection stays
+level-0 pixels	düzey 0 pikselleri	
+predicted (banner)	TAHMİN — yalnızca araştırma amaçlı kullanım içindir, tanı amacıyla kullanılamaz	Cellaris; translate completely, never shorten
+region readout (Cellaris)	bölge ölçümü	readout = ölçüm; Cellaris region readout = Cellaris bölge ölçümü
+cell (Cellaris grid square, 41.6 µm)	ızgara karesi	Never “hücre”: it is not a biological cell
+tissue block (Cellaris, 5 µm square)	doku karesi	Never “doku bloğu”, which reads as a paraffin block
+window (square image a model predicts from)	pencere	s per window = pencere başına sn
+display window (marker value range)	görüntüleme aralığı	Not “pencere”, which is the model window
+intensity (predicted fluorescence)	şiddet	arcsinh şiddeti; keeps “yoğunluk” for density
+density r²; spread; mean (readout columns)	yoğunluk r²; yayılım; ortalama	
+legend	gösterge	
+bright-field	aydınlık alan	
+training data	eğitim verisi	Trained at = Eğitim çözünürlüğü
+reconstruction error; reconstruction	yeniden yapılandırma hatası; yeniden yapılandırma	VAE; reconstructions (images) = yeniden yapılandırılmış görüntüler
+error map; Original; Difference	hata haritası; Orijinal; Fark	Overlay choices of eovae
+tile (eovae analysis)	karo	tissue tile = doku karosu; glass tiles = cam karolar; background tiles = arka plan karoları
+batch (inference); batch size	yığın; yığın boyutu	batch run (eov batch) = toplu çalıştırma
+runtime (ONNX Runtime library)	çalışma zamanı	ONNX Runtime stays; library = kitaplık
+input / output (of a model)	girdi / çıktı	
+preprocessing	ön işleme	
+sidecar file	yan dosya	<model>.eovae.json
+embeddings	gömme vektörleri	
+resample / upsample	yeniden örnekle / yukarı örnekle	interpolated = enterpolasyonla
+your site's copy (of a model)	kurum içi kopya	As in eov's model download texts
+device (inference or input)	aygıt	Not “cihaz”, which the safety texts use for medical device
+thread(s)	iş parçacığı	CPU · {n} iş parçacığı
+durations: s / min / h	sn / dk / sa	{minutes} dk {seconds} sn, as in eov
+gamepad, game controller, controller	oyun kumandası, kumanda	Plugin name Gamepad = Oyun kumandası
+stick / trigger / shoulder button / D-pad	çubuk / tetik / omuz düğmesi / yön tuşu	Left Stick X = Sol çubuk X
+face buttons South / East / North / West	Güney / Doğu / Kuzey / Batı düğmesi	Not “Alt düğme”, which reads as the Alt key
+dead zone; response curve	ölü bölge; tepki eğrisi	
+mapping (gamepad)	eşleme	Map a stick to … = bir çubuğu … eylemine eşleyin
+pointer (mouse)	işaretçi	System pointer = Sistem işaretçisi
+profile	profil	Save As = Farklı kaydet
+marker (example plugin's point)	işaret	Not “belirteç”, which is a protein marker

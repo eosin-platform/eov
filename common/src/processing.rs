@@ -43,8 +43,8 @@ use crate::color_management::{DisplayTransform, GRID_SCALE, LUT_SIZE};
 use crate::postprocess::{self, ToneAdjustments, quantize};
 use crate::stain::{
     FitChecks, NormalizationTarget, StainBasis, StainChannel, StainEstimate, StainFitMethod,
-    StainGpuParams, StainPreset, StainTransform, StainTransformError, StainTransformSpec,
-    stain_model_warning,
+    StainGpuParams, StainModelMismatch, StainPreset, StainTransform, StainTransformError,
+    StainTransformSpec, stain_model_mismatch,
 };
 
 /// Which stain vectors deconvolution adjustments use when the slide is not
@@ -181,25 +181,32 @@ impl ColorSettings {
     }
 
     /// Problems with this configuration for a slide with the given stain
-    /// label, as user-facing messages.
+    /// label, as user-facing messages (in English; [`Self::warning_list`]
+    /// has them as data).
     pub fn warnings(&self, stain_label: Option<&str>) -> Vec<String> {
+        self.warning_list(stain_label)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// The problems [`Self::warnings`] describes, as data, for interfaces
+    /// that word them in another language.
+    pub fn warning_list(&self, stain_label: Option<&str>) -> Vec<ColorWarning> {
         let mut out = Vec::new();
         if self.normalization.is_some() && !self.stain_model.is_hematoxylin_eosin() {
-            out.push(format!(
-                "Stain normalisation only supports H&E; it is disabled for the {} stain model.",
-                self.stain_model.label()
-            ));
+            out.push(ColorWarning::NormalizationNeedsHe(self.stain_model.clone()));
         }
         let uses_he = self.stain_model.is_hematoxylin_eosin() && self.alters_stain_colors();
-        if let Some(warning) = stain_model_warning(stain_label, uses_he) {
-            out.push(warning);
+        if let Some(mismatch) = stain_model_mismatch(stain_label, uses_he) {
+            out.push(ColorWarning::StainLabel(mismatch));
         }
         out.extend(
             self.plan(None)
                 .1
-                .not_applied
+                .not_applied_details
                 .into_iter()
-                .map(|item| format!("Not applied: {item}.")),
+                .map(ColorWarning::NotApplied),
         );
         out
     }
@@ -238,9 +245,9 @@ impl ColorSettings {
                         summary.estimate = Some(est.summary());
                         spec = Some(s);
                     }
-                    Err(e) => summary
-                        .not_applied
-                        .push(format!("{} stain normalisation ({e})", method.label())),
+                    Err(error) => {
+                        summary.push_not_applied(NotApplied::Normalization { method, error })
+                    }
                 }
             }
             (None, _) => {}
@@ -262,11 +269,10 @@ impl ColorSettings {
             let names: Vec<String> = spec.source.names().iter().map(|s| s.to_string()).collect();
             let isolated = match self.isolated {
                 Some(index) if index >= names.len() => {
-                    summary.not_applied.push(format!(
-                        "isolating stain {} (the stain model has {} stains)",
-                        index + 1,
-                        names.len()
-                    ));
+                    summary.push_not_applied(NotApplied::Isolation {
+                        index,
+                        stains: names.len(),
+                    });
                     None
                 }
                 other => other,
@@ -277,10 +283,9 @@ impl ColorSettings {
                 .skip(names.len())
                 .any(|c| !c.is_neutral())
             {
-                summary.not_applied.push(format!(
-                    "adjustments of stains beyond the {} of the stain model",
-                    names.len()
-                ));
+                summary.push_not_applied(NotApplied::ExtraStains {
+                    stains: names.len(),
+                });
             }
             let spec = spec.with_channels(&self.channels).with_isolated(isolated);
             if spec.is_identity() {
@@ -312,7 +317,7 @@ impl ColorSettings {
                 // `plan` validates everything `compile` checks; never claim
                 // a stage that is not applied all the same.
                 summary.clear_stain();
-                summary.not_applied.push(e.to_string());
+                summary.push_not_applied(NotApplied::StainStage(e));
                 (StainTransform::identity(), None)
             }
             None => (StainTransform::identity(), None),
@@ -321,7 +326,99 @@ impl ColorSettings {
     }
 }
 
+/// A problem with [`ColorSettings`] for a slide: what
+/// [`ColorSettings::warnings`] says, as data for interfaces that word it in
+/// another language. Its `Display` is the warning in English.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ColorWarning {
+    /// Stain normalisation is asked for with this stain model, which is not
+    /// H&E: normalisation is off.
+    NormalizationNeedsHe(StainModel),
+    /// The H&E stain model is used on a slide labelled with another stain.
+    StainLabel(StainModelMismatch),
+    /// Requested processing that cannot be applied.
+    NotApplied(NotApplied),
+}
+
+impl std::fmt::Display for ColorWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NormalizationNeedsHe(model) => write!(
+                f,
+                "Stain normalisation only supports H&E; it is disabled for the {} stain model.",
+                model.label()
+            ),
+            Self::StainLabel(mismatch) => mismatch.fmt(f),
+            Self::NotApplied(item) => write!(f, "Not applied: {item}."),
+        }
+    }
+}
+
+/// Requested processing that could not be applied, and why: an entry of
+/// [`ProcessingSummary::not_applied`] as data. Its `Display` is that entry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NotApplied {
+    /// Stain normalisation with `method`: the target does not fit the
+    /// slide's fit.
+    Normalization {
+        method: StainFitMethod,
+        error: StainTransformError,
+    },
+    /// Isolating stain `index` (from 0) of a stain model with `stains`
+    /// stains.
+    Isolation { index: usize, stains: usize },
+    /// Adjustments of stains beyond the `stains` of the stain model.
+    ExtraStains { stains: usize },
+    /// The stain stage could not be built.
+    StainStage(StainTransformError),
+}
+
+impl std::fmt::Display for NotApplied {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normalization { method, error } => {
+                write!(f, "{} stain normalisation ({error})", method.label())
+            }
+            Self::Isolation { index, stains } => write!(
+                f,
+                "isolating stain {} (the stain model has {stains} stains)",
+                index + 1
+            ),
+            Self::ExtraStains { stains } => write!(
+                f,
+                "adjusting stains the stain model does not have (it has {stains} stains)"
+            ),
+            Self::StainStage(error) => error.fmt(f),
+        }
+    }
+}
+
+/// How an applied stain stage changes one stain: an entry of
+/// [`ProcessingSummary::stain_adjustments`] as data. Its `Display` is that
+/// entry (`"Eosin hidden"`, `"Hematoxylin ×1.20"`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum StainAdjustment {
+    /// The stain (by its name in the stain model) is hidden.
+    Hidden { stain: String },
+    /// The stain is shown at `factor` times its intensity.
+    Scaled { stain: String, factor: f32 },
+}
+
+impl std::fmt::Display for StainAdjustment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hidden { stain } => write!(f, "{stain} hidden"),
+            Self::Scaled { stain, factor } => write!(f, "{stain} ×{factor:.2}"),
+        }
+    }
+}
+
 /// What a pipeline does, for badges and provenance (CLR-9, EXP-5).
+///
+/// The texts are English: they go into exported files and scripts. The
+/// fields that hold the same facts as data, for interfaces that word them
+/// in another language, are not serialised (a summary read back has its
+/// texts only).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProcessingSummary {
     /// Normalisation method label, e.g. `"Macenko"`.
@@ -336,6 +433,10 @@ pub struct ProcessingSummary {
     pub stain_model: Option<String>,
     /// e.g. `"Hematoxylin ×1.20"`, `"Eosin hidden"`.
     pub stain_adjustments: Vec<String>,
+    /// [`stain_adjustments`](Self::stain_adjustments) as data, in the same
+    /// order. Not serialised.
+    #[serde(skip)]
+    pub stain_adjustment_details: Vec<StainAdjustment>,
     /// Name of the isolated stain.
     pub isolated: Option<String>,
     /// e.g. `"gamma 1.20"`.
@@ -345,6 +446,10 @@ pub struct ProcessingSummary {
     /// e.g. `"isolating stain 3 (the stain model has 2 stains)"`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_applied: Vec<String>,
+    /// [`not_applied`](Self::not_applied) as data, in the same order. Not
+    /// serialised.
+    #[serde(skip)]
+    pub not_applied_details: Vec<NotApplied>,
     /// The ICC profile converted to sRGB (colour management), by name. Not
     /// part of [`badge`](Self::badge) or [`is_modified`](Self::is_modified):
     /// converted colours are the slide's colours, shown correctly.
@@ -362,14 +467,28 @@ impl ProcessingSummary {
         isolated: Option<usize>,
     ) {
         for (name, channel) in names.iter().zip(channels) {
-            if !channel.visible {
-                self.stain_adjustments.push(format!("{name} hidden"));
+            let adjustment = if !channel.visible {
+                StainAdjustment::Hidden {
+                    stain: name.clone(),
+                }
             } else if (channel.intensity - 1.0).abs() > 0.001 {
-                self.stain_adjustments
-                    .push(format!("{name} ×{:.2}", channel.intensity));
-            }
+                StainAdjustment::Scaled {
+                    stain: name.clone(),
+                    factor: channel.intensity,
+                }
+            } else {
+                continue;
+            };
+            self.stain_adjustments.push(adjustment.to_string());
+            self.stain_adjustment_details.push(adjustment);
         }
         self.isolated = isolated.and_then(|i| names.get(i).cloned());
+    }
+
+    /// Records requested processing that is not applied.
+    fn push_not_applied(&mut self, item: NotApplied) {
+        self.not_applied.push(item.to_string());
+        self.not_applied_details.push(item);
     }
 
     fn describe_tone(&mut self, tone: ToneAdjustments, sharpness: f32) {
@@ -396,6 +515,7 @@ impl ProcessingSummary {
         self.estimate = None;
         self.stain_model = None;
         self.stain_adjustments.clear();
+        self.stain_adjustment_details.clear();
         self.isolated = None;
     }
 
@@ -437,7 +557,9 @@ impl ProcessingSummary {
             if self.normalization_pending {
                 parts.push(format!("Colour normalisation pending ({method})"));
             } else if self.normalization_fallback.is_some() {
-                parts.push(format!("Colour-normalised ({method}, reference vectors)"));
+                parts.push(format!(
+                    "Colour-normalised ({method}, fallback stain vectors)"
+                ));
             } else {
                 parts.push(format!("Colour-normalised ({method})"));
             }
@@ -1375,7 +1497,7 @@ mod tests {
                 .summary()
                 .badge()
                 .unwrap()
-                .contains("reference vectors")
+                .contains("fallback stain vectors")
         );
     }
 
@@ -1629,6 +1751,164 @@ mod tests {
         assert_eq!(
             ProcessingPipeline::identity().summary().provenance(),
             "Colours as scanned (no processing)."
+        );
+    }
+
+    /// The summaries' texts and serialised form are those of before they
+    /// held their facts as data too (export metadata, burned-in notes and
+    /// scripts read them), and the data says the same as the texts.
+    #[test]
+    fn summaries_keep_their_english_and_serialised_form() {
+        let mut fell_back = estimate();
+        fell_back.fallback = Some(crate::stain::FitFallback::InsufficientTissue {
+            tissue_pixels: 12,
+            tissue_fraction: 0.000_123,
+        });
+        let fallback = ColorSettings {
+            normalization: Some(StainFitMethod::Vahadane),
+            sharpness: 0.3,
+            ..ColorSettings::default()
+        }
+        .pipeline(Some(&fell_back));
+        let summary = fallback.summary();
+        assert_eq!(
+            summary.badge().as_deref(),
+            Some("Colour-normalised (Vahadane, fallback stain vectors) · Sharpened")
+        );
+        assert_eq!(
+            serde_json::to_string(summary).unwrap(),
+            r#"{"normalization":"Vahadane","normalization_pending":false,"normalization_fallback":"insufficient tissue (12 px, 0.01%)","estimate":"Macenko fit rejected (insufficient tissue (12 px, 0.01%)); reference stain vectors used (slide level 2)","stain_model":null,"stain_adjustments":[],"isolated":null,"tone":[],"sharpness":0.3}"#
+        );
+
+        let adjusted = ColorSettings {
+            channels: vec![
+                StainChannel::default(),
+                StainChannel {
+                    intensity: 0.0,
+                    visible: false,
+                },
+                StainChannel {
+                    intensity: 2.0,
+                    visible: true,
+                },
+            ],
+            isolated: Some(0),
+            tone: ToneAdjustments::new(0.8, -0.05, 1.25),
+            ..ColorSettings::default()
+        };
+        let pipeline = adjusted.pipeline(None);
+        let summary = pipeline.summary();
+        assert_eq!(
+            summary.badge().as_deref(),
+            Some(
+                "Isolated stain: Hematoxylin · Stain-adjusted (Eosin hidden) · Display-adjusted \
+                 · Some adjustments not applied"
+            )
+        );
+        assert_eq!(
+            summary.provenance(),
+            "Colour deconvolution with the H&E stain model. Stain adjustments: Eosin hidden. \
+             Showing the Hematoxylin channel only (greyscale absorbance). Tone: gamma 0.80, \
+             brightness -0.050, contrast ×1.25. Not applied: adjusting stains the stain model \
+             does not have (it has 2 stains)."
+        );
+        let json = serde_json::to_string(summary).unwrap();
+        assert_eq!(
+            json,
+            r#"{"normalization":null,"normalization_pending":false,"normalization_fallback":null,"estimate":null,"stain_model":"H&E","stain_adjustments":["Eosin hidden"],"isolated":"Hematoxylin","tone":["gamma 0.80","brightness -0.050","contrast ×1.25"],"sharpness":null,"not_applied":["adjusting stains the stain model does not have (it has 2 stains)"]}"#
+        );
+        assert_eq!(
+            summary.stain_adjustment_details,
+            vec![StainAdjustment::Hidden {
+                stain: "Eosin".into()
+            }]
+        );
+        assert_eq!(
+            summary.not_applied_details,
+            vec![NotApplied::ExtraStains { stains: 2 }]
+        );
+        // Read back, a summary has its texts (and no data).
+        let back: ProcessingSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.badge(), summary.badge());
+        assert_eq!(back.provenance(), summary.provenance());
+        assert!(back.stain_adjustment_details.is_empty() && back.not_applied_details.is_empty());
+        assert_eq!(
+            adjusted.warnings(Some("IHC")),
+            vec![
+                "This slide is labelled \"IHC\" (immunohistochemistry), but the H&E stain model \
+                 is selected; DAB and other chromogens will be shown in the wrong colours. Use \
+                 the H-DAB stain preset instead."
+                    .to_string(),
+                "Not applied: adjusting stains the stain model does not have (it has 2 stains)."
+                    .to_string(),
+            ]
+        );
+
+        let mut three_stains = ColorSettings::from_legacy(
+            crate::StainNormalization::Macenko,
+            1.3,
+            true,
+            1.0,
+            true,
+            0,
+            ToneAdjustments::default(),
+            0.0,
+        );
+        three_stains.target = Some(NormalizationTarget {
+            basis: StainPreset::HematoxylinEosinDab.basis(),
+            max_concentrations: vec![1.0; 3],
+        });
+        let pipeline = three_stains.pipeline(Some(&estimate()));
+        let summary = pipeline.summary();
+        assert_eq!(
+            summary.not_applied,
+            vec![
+                "Macenko stain normalisation (the normalisation target has 3 stains but the \
+                 source has 2)"
+                    .to_string()
+            ]
+        );
+        assert_eq!(
+            summary.not_applied_details,
+            vec![NotApplied::Normalization {
+                method: StainFitMethod::Macenko,
+                error: StainTransformError::StainCountMismatch {
+                    source_stains: 2,
+                    target: 3
+                },
+            }]
+        );
+        assert_eq!(
+            summary.badge().as_deref(),
+            Some("Stain-adjusted (Hematoxylin ×1.30) · Some adjustments not applied")
+        );
+
+        let trichrome = ColorSettings {
+            normalization: Some(StainFitMethod::Macenko),
+            stain_model: StainModel::Preset(StainPreset::MassonTrichrome),
+            isolated: Some(4),
+            ..ColorSettings::default()
+        };
+        assert_eq!(
+            trichrome.warning_list(None),
+            vec![
+                ColorWarning::NormalizationNeedsHe(StainModel::Preset(
+                    StainPreset::MassonTrichrome
+                )),
+                ColorWarning::NotApplied(NotApplied::Isolation {
+                    index: 4,
+                    stains: 2
+                }),
+            ]
+        );
+        assert_eq!(
+            trichrome.warnings(None),
+            vec![
+                "Stain normalisation only supports H&E; it is disabled for the Masson trichrome \
+                 stain model."
+                    .to_string(),
+                "Not applied: isolating stain 5 (the stain model has 2 stains).".to_string(),
+            ]
         );
     }
 

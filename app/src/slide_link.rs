@@ -23,6 +23,7 @@
 use crate::state::{AppState, PaneId};
 use eov_common::Viewport;
 use eov_common::viewport::Orientation;
+use eov_plugin_api::i18n::tr;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -517,11 +518,13 @@ pub(crate) fn can_align_from_landmarks(state: &AppState, pane: PaneId) -> bool {
 /// placed on both slides, saves the alignments and moves the panes there.
 pub(crate) fn align_from_landmarks(state: &mut AppState) -> Result<String, String> {
     if !state.slide_link.enabled {
-        return Err("Link the panes first".to_string());
+        return Err(tr!("Link the panes first"));
     }
     let pairs = landmark_pairs(state, state.active_viewport_pane());
     if pairs.is_empty() {
-        return Err("Place landmarks 1 and 2 on the focused slide and on another".to_string());
+        return Err(tr!(
+            "Place landmarks 1 and 2 on the focused slide and on another"
+        ));
     }
     let mut aligned = 0;
     for (a, b, mirrored) in pairs {
@@ -538,7 +541,7 @@ pub(crate) fn align_from_landmarks(state: &mut AppState) -> Result<String, Strin
         aligned += 1;
     }
     if aligned == 0 {
-        return Err("The landmarks of a slide must be apart".to_string());
+        return Err(tr!("The landmarks of a slide must be apart"));
     }
     save_dirty(state);
     // Move the others to the new alignment now.
@@ -546,9 +549,8 @@ pub(crate) fn align_from_landmarks(state: &mut AppState) -> Result<String, Strin
     let adjusting = std::mem::replace(&mut state.slide_link.adjusting, false);
     sync_views(state);
     state.slide_link.adjusting = adjusting;
-    Ok(format!(
-        "Aligned {aligned} slide{} from landmarks",
-        if aligned == 1 { "" } else { "s" }
+    Ok(tr!(
+        "Aligned {n} slide from landmarks" | "Aligned {n} slides from landmarks" % aligned
     ))
 }
 

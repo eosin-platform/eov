@@ -6,8 +6,10 @@
 //! `.onnx` file *and* every external-data file holding its weights, so
 //! changed weights never reuse cached results.
 
-use crate::contract::{Contract, ContractSource, Layout};
+use crate::contract::{Contract, ContractSource, DeclarationProblem, Layout};
+use crate::message::{Message, cancelled};
 use crate::onnx_scan::{self, Dim, ElemType, OnnxSummary, TensorInfo};
+use eov_plugin_api::i18n::{self, tr};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -72,9 +74,133 @@ pub struct ModelInfo {
     pub contract_source: ContractSource,
     /// Name of a model eovae recognises, if any.
     pub card: Option<&'static str>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<ModelWarning>,
     /// Bytes of the model and its weights.
     pub bytes: u64,
+}
+
+/// Something about a model the user should know: shown in the sidebar
+/// ([`Self::text`]) and recorded in batch summaries ([`Self::english`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ModelWarning {
+    /// The input has no fixed size: tiles of `size` pixels, as the model
+    /// declares (`declared`) or by default.
+    DynamicSize {
+        size: u32,
+        declared: bool,
+    },
+    /// The graph fixes the batch size (above 1).
+    FixedBatch(usize),
+    Float16,
+    /// Several image outputs; `using` is the default.
+    SeveralOutputs {
+        count: usize,
+        using: String,
+    },
+    /// A declaration in the model's metadata that is not used.
+    Metadata(DeclarationProblem),
+    /// A declaration in the sidecar file that is not used.
+    Sidecar(DeclarationProblem),
+    /// The sidecar file is not a JSON object.
+    SidecarNotObject {
+        file: String,
+    },
+    /// The sidecar file could not be read (`error`: the reader's).
+    SidecarIgnored {
+        file: String,
+        error: String,
+    },
+    /// No training resolution declared.
+    NoResolution,
+    /// No preprocessing declared.
+    NoPreprocessing,
+}
+
+impl ModelWarning {
+    /// In English, as batch summaries record it.
+    pub fn english(&self) -> String {
+        match self {
+            Self::DynamicSize {
+                size,
+                declared: true,
+            } => format!(
+                "The input size is dynamic; analysing {size}×{size} tiles as the model declares."
+            ),
+            Self::DynamicSize {
+                size,
+                declared: false,
+            } => format!(
+                "The input size is dynamic; analysing {size}×{size} tiles (declare eovae.tile_size to change)."
+            ),
+            Self::FixedBatch(batch) => format!(
+                "The model has a fixed batch of {batch}: tiles are analysed {batch} at a time and the last batch of each run is padded. Export with a dynamic batch axis for small viewport runs."
+            ),
+            Self::Float16 => "Float16 model: inputs are converted from float32.".to_string(),
+            Self::SeveralOutputs { count, using } => {
+                format!("{count} image outputs; using '{using}' (change it in the Model section).")
+            }
+            Self::Metadata(problem) => format!("Model metadata: {}.", problem.english()),
+            Self::Sidecar(problem) => format!("Sidecar: {}.", problem.english()),
+            Self::SidecarNotObject { file } => {
+                format!("Ignored {file}: the sidecar must be a JSON object.")
+            }
+            Self::SidecarIgnored { file, error } => format!("Ignored {file}: {error}."),
+            Self::NoResolution => "The model does not declare the resolution it was trained at (eovae.mpp); errors depend on the level you choose.".to_string(),
+            Self::NoPreprocessing => "No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check it in Preprocessing.".to_string(),
+        }
+    }
+
+    /// In the interface's language.
+    pub fn text(&self) -> String {
+        match self {
+            Self::DynamicSize {
+                size,
+                declared: true,
+            } => tr!(
+                "The input size is dynamic; analysing {size}×{size} tiles as the model declares.",
+                size
+            ),
+            Self::DynamicSize {
+                size,
+                declared: false,
+            } => tr!(
+                "The input size is dynamic; analysing {size}×{size} tiles (declare eovae.tile_size to change).",
+                size
+            ),
+            Self::FixedBatch(batch) => tr!(
+                "The model has a fixed batch of {n}: tiles are analysed {n} at a time and the last batch of each run is padded. Export with a dynamic batch axis for small viewport runs."
+                    | "The model has a fixed batch of {n}: tiles are analysed {n} at a time and the last batch of each run is padded. Export with a dynamic batch axis for small viewport runs."
+                        % *batch
+            ),
+            Self::Float16 => tr!("Float16 model: inputs are converted from float32."),
+            // Translators: "Model" is the sidebar's Model section
+            Self::SeveralOutputs { count, using } => tr!(
+                "{n} image output; using '{name}' (change it in the Model section)."
+                    | "{n} image outputs; using '{name}' (change it in the Model section)."
+                        % *count,
+                name = i18n::isolate(using)
+            ),
+            Self::Metadata(problem) => tr!("Model metadata: {}.", problem.text()),
+            // Translators: the sidecar is a model's <model>.eovae.json file
+            Self::Sidecar(problem) => tr!("Sidecar: {}.", problem.text()),
+            Self::SidecarNotObject { file } => tr!(
+                "Ignored {}: the sidecar must be a JSON object.",
+                i18n::isolate(file)
+            ),
+            Self::SidecarIgnored { file, error } => tr!(
+                "Ignored {file}: {error}.",
+                file = i18n::isolate(file),
+                error
+            ),
+            Self::NoResolution => tr!(
+                "The model does not declare the resolution it was trained at (eovae.mpp); errors depend on the level you choose."
+            ),
+            // Translators: "Preprocessing" is the sidebar's section of that name
+            Self::NoPreprocessing => tr!(
+                "No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check it in Preprocessing."
+            ),
+        }
+    }
 }
 
 impl ModelInfo {
@@ -169,12 +295,17 @@ pub fn reference() -> Reference {
 }
 
 /// Splits a 4-D input shape into (layout, height, width, batch).
-fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), String> {
+fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), Message> {
     if dims.len() != 4 {
-        return Err(format!(
-            "it has {} dimensions; an image tensor has 4 (batch, channels, height, width)",
-            dims.len()
-        ));
+        return Err(Message::new(|| {
+            tr!(
+                // Translators: about the model's input tensor; the words in
+                // parentheses name its four axes in order and may be translated.
+                "it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
+                    | "it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
+                        % dims.len()
+            )
+        }));
     }
     let channels_first = dims[1].fixed();
     let channels_last = dims[3].fixed();
@@ -191,10 +322,11 @@ fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), String> {
             dims[2].clone(),
             dims[0].clone(),
         )),
-        (Some(c), _) if c == 1 || c == 4 => {
-            Err(format!("it has {c} channels; eovae feeds RGB (3 channels)"))
-        }
-        _ => Err("its channel dimension is not 3 (RGB)".to_string()),
+        (Some(c), _) if c == 1 || c == 4 => Err(Message::new(|| {
+            tr!("it has {n} channel; eovae feeds RGB (3 channels)"
+                | "it has {n} channels; eovae feeds RGB (3 channels)" % c)
+        })),
+        _ => Err(Message::new(|| tr!("its channel dimension is not 3 (RGB)"))),
     }
 }
 
@@ -226,91 +358,112 @@ pub struct FeedPlan {
     pub outputs: Vec<ImageOutput>,
     pub default_output: usize,
     pub latent: Option<LatentOutput>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<ModelWarning>,
 }
 
 /// Checks a scanned model and works out how to feed it.
 pub fn analyse_summary(
     summary: &OnnxSummary,
     tile_size_hint: Option<u32>,
-) -> Result<FeedPlan, String> {
+) -> Result<FeedPlan, Message> {
     let mut warnings = Vec::new();
     let input = match summary.inputs.as_slice() {
         [single] => single.clone(),
-        [] => return Err("the model has no inputs".to_string()),
+        [] => return Err(Message::new(|| tr!("the model has no inputs"))),
         several => {
-            return Err(format!(
-                "the model needs {} inputs ({}); eovae feeds exactly one image input",
-                several.len(),
-                several
-                    .iter()
-                    .map(|t| t.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+            let names = several
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(Message::new(|| {
+                tr!(
+                    "the model needs {n} input ({names}); eovae feeds exactly one image input"
+                        | "the model needs {n} inputs ({names}); eovae feeds exactly one image input"
+                            % several.len(),
+                    names = i18n::isolate(&names)
+                )
+            }));
         }
     };
+    // The input's name in a message (in the language being written).
+    let name = || i18n::isolate(&input.name);
     let input_elem = tensor_type(input.elem_type).ok_or_else(|| {
-        format!(
-            "input '{}' is {}; eovae feeds float32 or float16",
-            input.name,
-            input.type_label()
-        )
+        Message::new(|| {
+            tr!(
+                "input '{name}' is {kind}; eovae feeds float32 or float16",
+                name = name(),
+                kind = input.type_label()
+            )
+        })
     })?;
     let dims = input
         .shape
         .as_ref()
-        .ok_or_else(|| format!("input '{}' does not declare its shape", input.name))?;
-    let (layout, height, width, batch) =
-        classify_image(dims).map_err(|e| format!("input '{}' is not an image: {e}", input.name))?;
+        .ok_or_else(|| Message::new(|| tr!("input '{}' does not declare its shape", name())))?;
+    let (layout, height, width, batch) = classify_image(dims).map_err(|error| {
+        Message::new(|| {
+            tr!(
+                "input '{name}' is not an image: {error}",
+                name = name(),
+                error = &error
+            )
+        })
+    })?;
     let tile_size = match (height.fixed(), width.fixed()) {
         (Some(h), Some(w)) if h == w => h as u32,
         (Some(h), Some(w)) => {
-            return Err(format!(
-                "input '{}' is {h}×{w}; eovae analyses square tiles",
-                input.name
-            ));
+            return Err(Message::new(|| {
+                tr!(
+                    "input '{name}' is {height}×{width}; eovae analyses square tiles",
+                    name = name(),
+                    height = h,
+                    width = w
+                )
+            }));
         }
         (None, None) => {
             let size = tile_size_hint.unwrap_or(256);
-            warnings.push(format!(
-                "The input size is dynamic; analysing {size}×{size} tiles{}.",
-                if tile_size_hint.is_some() {
-                    " as the model declares"
-                } else {
-                    " (declare eovae.tile_size to change)"
-                }
-            ));
+            warnings.push(ModelWarning::DynamicSize {
+                size,
+                declared: tile_size_hint.is_some(),
+            });
             size
         }
         (Some(size), None) | (None, Some(size)) => size as u32,
     };
     if !(16..=2048).contains(&tile_size) {
-        return Err(format!(
-            "tiles of {tile_size} px are not supported (16–2048)"
-        ));
+        return Err(Message::new(|| {
+            tr!("tiles of {} px are not supported (16–2048)", tile_size)
+        }));
     }
     let fixed_batch = batch.fixed().map(|b| b as usize);
     if let Some(batch) = fixed_batch
         && batch > 1
     {
-        warnings.push(format!(
-            "The model has a fixed batch of {batch}: tiles are analysed {batch} at a time and the last batch of each run is padded. Export with a dynamic batch axis for small viewport runs."
-        ));
+        warnings.push(ModelWarning::FixedBatch(batch));
     }
     if input_elem == TensorType::F16 {
-        warnings.push("Float16 model: inputs are converted from float32.".to_string());
+        warnings.push(ModelWarning::Float16);
     }
 
     let mut outputs = Vec::new();
-    let mut rejected = Vec::new();
+    // Outputs that are no image, as the message lists them.
+    let mut rejected: Vec<Message> = Vec::new();
     for output in &summary.outputs {
         let Some(elem) = tensor_type(output.elem_type) else {
-            rejected.push(format!("{} ({})", output.name, output.type_label()));
+            rejected.push(Message::plain(format!(
+                "{} ({})",
+                output.name,
+                output.type_label()
+            )));
             continue;
         };
         let Some(dims) = &output.shape else {
-            rejected.push(format!("{} (no shape)", output.name));
+            rejected.push(Message::new(|| {
+                // Translators: an output of the model (its name) that declares no shape
+                tr!("{} (no shape)", i18n::isolate(&output.name))
+            }));
             continue;
         };
         match classify_image(dims) {
@@ -326,7 +479,11 @@ pub fn analyse_summary(
                     elem,
                 });
             }
-            _ => rejected.push(format!("{} {}", output.name, output.shape_label())),
+            _ => rejected.push(Message::plain(format!(
+                "{} {}",
+                output.name,
+                output.shape_label()
+            ))),
         }
     }
     if outputs.is_empty() {
@@ -337,13 +494,24 @@ pub fn analyse_summary(
             .collect();
         let encoder = names.iter().any(|n| n == "mu") && names.iter().any(|n| n == "logvar");
         return Err(if encoder {
-            "the model only encodes (outputs mu and logvar); export the reconstruction model (HistoVAE: create_onnx --mode reconstruct)".to_string()
+            Message::new(|| {
+                tr!(
+                    "the model only encodes (outputs mu and logvar); export the reconstruction model (HistoVAE: create_onnx --mode reconstruct)"
+                )
+            })
         } else {
-            format!(
-                "no output is an RGB image matching the input {} (outputs: {})",
-                input.shape_label(),
-                rejected.join(", ")
-            )
+            Message::new(|| {
+                let outputs = rejected
+                    .iter()
+                    .map(Message::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                tr!(
+                    "no output is an RGB image matching the input {shape} (outputs: {outputs})",
+                    shape = i18n::isolate(input.shape_label()),
+                    outputs = i18n::isolate(outputs)
+                )
+            })
         });
     }
     let default_output = outputs
@@ -354,11 +522,10 @@ pub fn analyse_summary(
         })
         .unwrap_or(0);
     if outputs.len() > 1 {
-        warnings.push(format!(
-            "{} image outputs; using '{}' (change it in the Model section).",
-            outputs.len(),
-            outputs[default_output].name
-        ));
+        warnings.push(ModelWarning::SeveralOutputs {
+            count: outputs.len(),
+            using: outputs[default_output].name.clone(),
+        });
     }
 
     let latent = summary
@@ -427,10 +594,13 @@ fn hash_cache() -> &'static HashCache {
 
 /// SHA-256 over every file of a model (name, length and content of each),
 /// cached while the files' sizes and modification times are unchanged.
-pub fn hash_model_files(files: &[PathBuf], cancel: &AtomicBool) -> Result<String, String> {
+pub fn hash_model_files(files: &[PathBuf], cancel: &AtomicBool) -> Result<String, Message> {
+    // The system's reason, in English, after the path.
+    let failed =
+        |path: &Path, e: std::io::Error| Message::plain(format!("{}: {e}", path.display()));
     let versions = files
         .iter()
-        .map(|path| file_version(path).map_err(|e| format!("{}: {e}", path.display())))
+        .map(|path| file_version(path).map_err(|e| failed(path, e)))
         .collect::<Result<Vec<_>, _>>()?;
     if let Some((cached, digest)) = hash_cache()
         .lock()
@@ -451,14 +621,12 @@ pub fn hash_model_files(files: &[PathBuf], cancel: &AtomicBool) -> Result<String
         hasher.update(name.as_bytes());
         hasher.update([0]);
         hasher.update(version.len.to_le_bytes());
-        let mut file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut file = File::open(path).map_err(|e| failed(path, e))?;
         loop {
             if cancel.load(Ordering::Relaxed) {
-                return Err("cancelled".to_string());
+                return Err(cancelled());
             }
-            let read = file
-                .read(&mut buffer)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let read = file.read(&mut buffer).map_err(|e| failed(path, e))?;
             if read == 0 {
                 break;
             }
@@ -490,32 +658,46 @@ pub fn sidecar_path(model: &Path) -> PathBuf {
 /// Inspects a model file: reads its structure, checks it can be fed,
 /// hashes it with its weights and resolves its contract. Slow for large
 /// models (hashing reads every weight); call it off the UI thread.
-pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
+pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, Message> {
     let is_onnx = path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("onnx"));
     if !is_onnx {
-        return Err("only .onnx models are supported".to_string());
+        return Err(Message::new(|| tr!("only .onnx models are supported")));
     }
     if !path.is_file() {
-        return Err(format!("{} does not exist", path.display()));
+        return Err(Message::new(|| {
+            tr!("{} does not exist", i18n::isolate(path.display()))
+        }));
     }
-    let summary = onnx_scan::scan_file(path).map_err(|e| e.to_string())?;
+    let summary = onnx_scan::scan_file(path).map_err(|error| {
+        match onnx_scan::InvalidModel::detail(&error) {
+            // The detail is technical, and English like a library's.
+            Some(detail) => Message::new(|| tr!("not a valid ONNX model: {}", detail)),
+            None => Message::plain(error.to_string()),
+        }
+    })?;
 
     // External weights must sit next to the model, as ONNX Runtime expects.
     let directory = path.parent().unwrap_or(Path::new("."));
     let mut files = vec![path.to_path_buf()];
     for location in &summary.external_data {
         if !onnx_scan::is_safe_location(location) {
-            return Err(format!(
-                "the model's weights point outside its folder ('{location}')"
-            ));
+            return Err(Message::new(|| {
+                tr!(
+                    "the model's weights point outside its folder ('{}')",
+                    i18n::isolate(location)
+                )
+            }));
         }
         let weights = directory.join(location);
         if !weights.is_file() {
-            return Err(format!(
-                "the model's weights file '{location}' is missing; keep it next to the .onnx file"
-            ));
+            return Err(Message::new(|| {
+                tr!(
+                    "the model's weights file '{}' is missing; keep it next to the .onnx file",
+                    i18n::isolate(location)
+                )
+            }));
         }
         files.push(weights);
     }
@@ -544,31 +726,29 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
     if applied {
         source = ContractSource::Metadata;
     }
-    warnings.extend(
-        problems
-            .into_iter()
-            .map(|p| format!("Model metadata: {p}.")),
-    );
+    warnings.extend(problems.into_iter().map(ModelWarning::Metadata));
     let sidecar = sidecar_path(path);
     if sidecar.is_file() {
+        let file = sidecar
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         let parsed = std::fs::read_to_string(&sidecar)
             .map_err(|e| e.to_string())
             .and_then(|text| {
                 serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())
-            })
-            .and_then(|json| Contract::sidecar_declarations(&json));
-        match parsed {
-            Ok(declarations) => {
+            });
+        match parsed.map(|json| Contract::sidecar_declarations(&json)) {
+            Ok(Some(declarations)) => {
                 let (applied, problems) = contract.apply_declarations(&declarations);
                 if applied {
                     source = ContractSource::Sidecar;
                 }
-                warnings.extend(problems.into_iter().map(|p| format!("Sidecar: {p}.")));
+                warnings.extend(problems.into_iter().map(ModelWarning::Sidecar));
             }
-            Err(error) => warnings.push(format!(
-                "Ignored {}: {error}.",
-                sidecar.file_name().unwrap_or_default().to_string_lossy()
-            )),
+            Ok(None) => warnings.push(ModelWarning::SidecarNotObject { file }),
+            Err(error) => warnings.push(ModelWarning::SidecarIgnored { file, error }),
         }
     }
 
@@ -585,14 +765,10 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
     } = analyse_summary(&summary, contract.tile_size)?;
     warnings.append(&mut model_warnings);
     if contract.mpp.is_none() {
-        warnings.push(
-            "The model does not declare the resolution it was trained at (eovae.mpp); errors depend on the level you choose.".to_string(),
-        );
+        warnings.push(ModelWarning::NoResolution);
     }
     if source == ContractSource::Default {
-        warnings.push(
-            "No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check it in Preprocessing.".to_string(),
-        );
+        warnings.push(ModelWarning::NoPreprocessing);
     }
     Ok(ModelInfo {
         file_name: path
@@ -622,6 +798,48 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, String> {
 pub(crate) mod tests {
     use super::*;
     use crate::onnx_scan::encode::{ModelSpec, model};
+
+    /// Warnings are shown translated and recorded in English: in English
+    /// (as tests run), both say the same.
+    #[test]
+    fn shown_warnings_say_what_recorded_ones_say() {
+        let problem = DeclarationProblem::Ignored {
+            key: "mpp".into(),
+            value: "x".into(),
+        };
+        let warnings = [
+            ModelWarning::DynamicSize {
+                size: 256,
+                declared: true,
+            },
+            ModelWarning::DynamicSize {
+                size: 224,
+                declared: false,
+            },
+            ModelWarning::FixedBatch(4),
+            ModelWarning::Float16,
+            ModelWarning::SeveralOutputs {
+                count: 2,
+                using: "recon".into(),
+            },
+            ModelWarning::Metadata(problem.clone()),
+            ModelWarning::Sidecar(DeclarationProblem::NonPositiveStd),
+            ModelWarning::Sidecar(DeclarationProblem::Unpaired),
+            ModelWarning::SidecarNotObject {
+                file: "m.onnx.eovae.json".into(),
+            },
+            ModelWarning::SidecarIgnored {
+                file: "m.onnx.eovae.json".into(),
+                error: "EOF while parsing".into(),
+            },
+            ModelWarning::NoResolution,
+            ModelWarning::NoPreprocessing,
+        ];
+        for warning in warnings {
+            assert_eq!(warning.text(), warning.english());
+        }
+        assert_eq!(problem.english(), "ignored mpp = 'x'");
+    }
 
     /// Writes a model (and its external data) into `dir`.
     pub(crate) fn write_model(dir: &Path, name: &str, spec: &ModelSpec) -> PathBuf {
@@ -656,7 +874,11 @@ pub(crate) mod tests {
         assert_eq!(info.fixed_batch, Some(4));
         assert_eq!(info.default_output_name(), "reconstruction");
         assert_eq!(info.contract_source, ContractSource::Default);
-        assert!(info.warnings.iter().any(|w| w.contains("fixed batch")));
+        assert!(
+            info.warnings
+                .iter()
+                .any(|w| w.english().contains("fixed batch"))
+        );
         // Changing the external weights changes the identity.
         std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(dir.path().join("vae.onnx.data"), vec![2u8; 65]).unwrap();
@@ -667,6 +889,7 @@ pub(crate) mod tests {
         assert!(
             inspect(&path, &cancel)
                 .unwrap_err()
+                .english
                 .contains("weights file")
         );
     }
@@ -715,7 +938,7 @@ pub(crate) mod tests {
         for (index, (spec, expected)) in cases.iter().enumerate() {
             let path = write_model(dir.path(), &format!("m{index}.onnx"), spec);
             let error = inspect(&path, &cancel).unwrap_err();
-            assert!(error.contains(expected), "case {index}: {error}");
+            assert!(error.english.contains(expected), "case {index}: {error}");
         }
         assert!(inspect(&dir.path().join("x.pt"), &cancel).is_err());
     }

@@ -12,10 +12,12 @@ use crate::host_ui::with_host;
 use crate::state::AppState;
 use crate::{AppWindow, SaveCopySettings};
 use eov_common::convert::{
-    self, ConvertError, ConvertOptions, ConvertPlan, ConvertReport, SlideCompression, SlideFormat,
+    self, ConvertError, ConvertOptions, ConvertPlan, ConvertProblem, ConvertReport, CopyOmission,
+    SlideCompression, SlideFormat,
 };
 use eov_common::job::JobControl;
 use eov_common::{SlideBounds, WsiFile};
+use eov_plugin_api::i18n::{isolate, join_sentences, tr};
 use eov_plugin_api::protocol::{NotifyLevel, Rect};
 use parking_lot::RwLock;
 use slint::{ComponentHandle, SharedString, Timer, TimerMode};
@@ -152,36 +154,145 @@ fn options_for(settings: &SaveCopySettings, target: &Target) -> ConvertOptions {
 /// What the copy will be, for the dialog.
 fn summary(plan: &ConvertPlan) -> String {
     let (width, height) = plan.levels[0];
-    let mut text = format!(
-        "{width} × {height} px in {} levels of {}-px tiles",
-        plan.levels.len(),
-        plan.tile_size
-    );
-    if let Some((x, _)) = plan.mpp {
-        text.push_str(&format!(" at {} µm/px", eov_common::format_decimal(x)));
-    } else {
-        text.push_str("; the slide records no pixel size");
-    }
-    text.push('.');
+    let levels = plan.levels.len();
+    let mut text = match plan.mpp {
+        // Translators: the size of the copy, its pyramid levels, the size of
+        // its tiles and its pixel size.
+        Some((x, _)) => tr!(
+            "{width} × {height} px in {n} level of {tile}-px tiles at {mpp} µm/px."
+                | "{width} × {height} px in {n} levels of {tile}-px tiles at {mpp} µm/px." % levels,
+            width = width,
+            height = height,
+            tile = plan.tile_size,
+            mpp = crate::ui_update::localized_number(&eov_common::format_decimal(x))
+        ),
+        None => tr!(
+            "{width} × {height} px in {n} level of {tile}-px tiles; the slide records no pixel size."
+                | "{width} × {height} px in {n} levels of {tile}-px tiles; the slide records no pixel size."
+                    % levels,
+            width = width,
+            height = height,
+            tile = plan.tile_size
+        ),
+    };
     if let Some(channels) = plan.composite_channels {
-        text.push_str(&format!(
-            " The {channels} channels are copied as the colour composite shown, not as channels."
-        ));
+        text = join_sentences([
+            text,
+            tr!(
+                // Translators: the slide's {n} channels are copied as one colour
+                // image, the composite the window shows.
+                "The {n} channel is copied as the colour composite shown, not as a separate channel."
+                    | "The {n} channels are copied as the colour composite shown, not as separate channels."
+                        % channels
+            ),
+        ]);
     }
     text
 }
 
-/// `text` with a capital first letter and a full stop, for the dialog.
+/// An English message (as eov_common and the system word it) as a
+/// sentence: with a capital first letter and a full stop. The translated
+/// messages are whole sentences already.
 fn sentence(text: &str) -> String {
     let mut chars = text.chars();
     let mut out: String = chars
         .next()
         .map(|first| first.to_uppercase().chain(chars).collect())
         .unwrap_or_default();
-    if !out.ends_with(['.', ')']) {
+    // Not after the end of a sentence or a bracket, in any script.
+    if !out.ends_with(['.', ')', '。', '）', '!', '?', '！', '？', '؟', '।']) {
         out.push('.');
     }
     out
+}
+
+/// Why a copy cannot be made, as a sentence in the interface's language;
+/// what reading the slide or writing the file says as it comes.
+fn convert_error(error: &ConvertError) -> String {
+    match error {
+        ConvertError::Invalid(problem) => convert_problem(problem),
+        // Translators: shown as a sentence on its own; {} is the path of a
+        // file.
+        ConvertError::OutputExists(path) => tr!("{} already exists.", isolate(path.display())),
+        other => sentence(&other.to_string()),
+    }
+}
+
+/// Why the options of a copy cannot work ([`ConvertProblem`]), as a
+/// sentence in the interface's language.
+fn convert_problem(problem: &ConvertProblem) -> String {
+    match problem {
+        // Translators: shown as a sentence on its own: the region of
+        // interest chosen for a copy of the slide is empty.
+        ConvertProblem::EmptyRegion => tr!("The region is empty."),
+        ConvertProblem::RegionOutside {
+            region,
+            slide_width,
+            slide_height,
+        } => {
+            // Translators: shown as a sentence on its own: the region of
+            // interest (its position and size in pixels) is outside the
+            // slide (its size in pixels).
+            tr!(
+                "The region {x},{y},{width},{height} is outside the slide ({slide_width} × {slide_height} pixels)",
+                x = region.x,
+                y = region.y,
+                width = region.width,
+                height = region.height,
+                slide_width = slide_width,
+                slide_height = slide_height
+            )
+        }
+        // Translators: shown as a sentence on its own: the size of the copy
+        // of a slide, and the largest it can be.
+        ConvertProblem::TooLarge { width, height } => tr!(
+            "The copy would be {width} × {height} pixels; at most {max} per side.",
+            width = width,
+            height = height,
+            max = convert::MAX_SIDE
+        ),
+        // Translators: shown as a sentence on its own: the size of the copy
+        // of a slide, and the smallest it can be.
+        ConvertProblem::TooSmall { width, height } => tr!(
+            "The copy would be {width} × {height} pixels; it must be at least {min} × {min} (choose a larger region or a finer resolution)",
+            width = width,
+            height = height,
+            min = convert::MIN_SIDE
+        ),
+        ConvertProblem::NotAFileName(path) => {
+            // Translators: shown as a sentence on its own; {} is a path the
+            // copy of a slide was to be saved to.
+            tr!("{} is not a file name.", isolate(path.display()))
+        }
+        // Translators: shown as a sentence on its own; {} is a path the copy
+        // of a slide was to be saved to.
+        ConvertProblem::IsAFolder(path) => tr!("{} is a folder.", isolate(path.display())),
+        ConvertProblem::NoSuchFolder(path) => {
+            // Translators: shown as a sentence on its own; {} is the folder
+            // the copy of a slide was to be saved in.
+            tr!("The folder {} does not exist.", isolate(path.display()))
+        }
+        // Translators: shown as a sentence on its own; {} is a path the copy
+        // of a slide was to be saved to.
+        ConvertProblem::IsTheSlide(path) => tr!(
+            "{} is the slide being copied (or one of its files)",
+            isolate(path.display())
+        ),
+        // Translators: shown as a sentence on its own; {} is the temporary
+        // file of a copy of a slide.
+        ConvertProblem::PartialExists(path) => tr!(
+            "{} exists: another conversion is writing this file, or an interrupted one left it behind (delete it and try again)",
+            isolate(path.display())
+        ),
+        // Options the dialog never sets (the command line and scripts do):
+        // as eov_common words them.
+        ConvertProblem::TileSize(_)
+        | ConvertProblem::JpegQuality(_)
+        | ConvertProblem::NoSuchLevel { .. }
+        | ConvertProblem::NotAPixelSize(_)
+        | ConvertProblem::NoPixelSize
+        | ConvertProblem::FinerThanSlide { .. } => sentence(&problem.to_string()),
+    }
 }
 
 /// Re-plans the copy for `settings` and shows the result in the dialog.
@@ -200,7 +311,7 @@ fn refresh(ui: &AppWindow, mut settings: SaveCopySettings) {
         }
         Some(Err(err)) => {
             settings.summary = SharedString::new();
-            settings.error = SharedString::from(sentence(&err.to_string()));
+            settings.error = SharedString::from(convert_error(&err));
         }
         None => {}
     }
@@ -224,10 +335,7 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
         }
     };
     let whole = target.wsi.properties().content_bounds();
-    let roi_text = target
-        .roi
-        .map(|roi| format!("{} × {} px at {}, {}", roi.width, roi.height, roi.x, roi.y))
-        .unwrap_or_default();
+    let roi_text = target.roi.map(|roi| roi_text(&roi)).unwrap_or_default();
     let choices = DIALOG.with(|dialog| dialog.borrow().choices);
     let settings = SaveCopySettings {
         title: SharedString::from(target.file_name.as_str()),
@@ -244,6 +352,32 @@ fn open(ui: &AppWindow, state: &Arc<RwLock<AppState>>, file_id: i32) {
     DIALOG.with(|dialog| dialog.borrow_mut().target = Some(target));
     refresh(ui, settings);
     ui.set_save_copy_dialog_visible(true);
+}
+
+/// The region of interest, as the dialog offers it.
+fn roi_text(roi: &SlideBounds) -> String {
+    // Translators: the size of the region of interest, then the position
+    // of its top-left corner on the slide.
+    tr!(
+        "{width} × {height} px at {x}, {y}",
+        width = roi.width,
+        height = roi.height,
+        x = roi.x,
+        y = roi.y
+    )
+}
+
+/// Writes the open dialog's texts again, in the language of the interface
+/// (after it changed).
+pub(crate) fn refresh_texts(ui: &AppWindow) {
+    if !ui.get_save_copy_dialog_visible() {
+        return;
+    }
+    let mut settings = ui.get_save_copy_settings();
+    if let Some(roi) = DIALOG.with(|dialog| dialog.borrow().target.as_ref().and_then(|t| t.roi)) {
+        settings.roi_text = SharedString::from(roi_text(&roi));
+    }
+    refresh(ui, settings);
 }
 
 fn settings_changed(ui: &AppWindow, settings: SaveCopySettings) {
@@ -314,14 +448,14 @@ fn save(ui: &AppWindow) {
         return;
     };
     if let Err(err) = convert::plan_conversion(&wsi, &options) {
-        settings.error = SharedString::from(sentence(&err.to_string()));
+        settings.error = SharedString::from(convert_error(&err));
         ui.set_save_copy_settings(settings);
         return;
     }
     // Native dialogs take single extensions; `with_extension` makes the
     // name end in `.ome.tif` for OME-TIFF.
     let mut dialog = rfd::FileDialog::new()
-        .add_filter(options.format.label(), &["tif", "tiff"])
+        .add_filter(format_name(options.format), &["tif", "tiff"])
         .set_file_name(suggested_name(&file_name, &options));
     if let Some(folder) = folder.filter(|folder| folder.is_dir()) {
         dialog = dialog.set_directory(folder);
@@ -348,7 +482,7 @@ fn start(path: PathBuf, wsi: WsiFile, options: ConvertOptions) {
         Box::new(move || control.cancel()) as Box<dyn Fn()>
     };
     let Some(job_id) =
-        with_host(|host| host.start_host_job(&format!("Saving {name}"), Some(cancel)))
+        with_host(|host| host.start_host_job(&tr!("Saving {}", isolate(&name)), Some(cancel)))
     else {
         return;
     };
@@ -358,8 +492,12 @@ fn start(path: PathBuf, wsi: WsiFile, options: ConvertOptions) {
         let job_id = job_id.clone();
         timer.start(TimerMode::Repeated, PROGRESS_INTERVAL, move || {
             let progress = control.progress();
-            let message = (progress.total > 0)
-                .then(|| format!("{} of {} tiles", progress.done, progress.total));
+            let message = (progress.total > 0).then(|| {
+                tr!(
+                    "{done} of {n} tile" | "{done} of {n} tiles" % progress.total,
+                    done = progress.done
+                )
+            });
             with_host(|host| {
                 host.update_host_job(
                     &job_id,
@@ -444,42 +582,116 @@ fn finished(
         match result {
             Ok(report) => {
                 let (width, height) = report.plan.levels[0];
+                let levels = report.plan.levels.len();
                 let mut facts = vec![
                     format!("{width} × {height} px"),
-                    format!("{} levels", report.plan.levels.len()),
-                    eov_common::format_file_size(report.bytes),
+                    tr!("{n} level" | "{n} levels" % levels),
+                    crate::ui_update::localized_number(&eov_common::format_file_size(report.bytes)),
                 ];
                 if deidentified {
-                    facts.push("de-identified".to_string());
+                    // Translators: about a copy of a slide without its label,
+                    // macro and thumbnail images and with no properties but the
+                    // pixel size, objective power and stain; text or marks
+                    // inside the scanned tissue image are kept.
+                    facts.push(tr!("de-identified"));
                 }
-                let detail = format!("{}, saved to {}", facts.join(", "), path.display());
+                // Translators: facts about the copy ("1024 × 768 px, 3
+                // levels, 12 MB"), then where it was saved.
+                let detail = tr!(
+                    "{facts}, saved to {path}",
+                    facts = crate::processing_text::list(facts),
+                    path = isolate(path.display())
+                );
                 host.notify(
                     NotifyLevel::Success,
-                    &format!("Saved {name}"),
+                    &tr!("Saved {}", isolate(&name)),
                     Some(&detail),
                     None,
                 );
-                if let Some(warning) = report.shortfall_message() {
+                if let Some(warning) = shortfall(&report) {
                     host.notify(
                         NotifyLevel::Warning,
-                        &format!("{name} is incomplete"),
+                        &tr!("{} is incomplete", isolate(&name)),
                         Some(&warning),
                         None,
                     );
                 }
-                for warning in &report.warnings {
-                    host.notify(NotifyLevel::Warning, &name, Some(warning), None);
+                for warning in omissions(&report) {
+                    host.notify(NotifyLevel::Warning, &name, Some(&warning), None);
                 }
             }
-            Err(ConvertError::Cancelled) => host.status("Copy cancelled; nothing was saved"),
+            Err(ConvertError::Cancelled) => host.status(&tr!("Copy cancelled; nothing was saved")),
             Err(err) => host.notify(
                 NotifyLevel::Error,
-                &format!("Could not save {name}"),
-                Some(&err.to_string()),
+                &tr!("Could not save {}", isolate(&name)),
+                Some(&convert_error(&err)),
                 None,
             ),
         }
     });
+}
+
+/// What a copy could not read ([`ConvertReport::shortfall_message`]), in
+/// the interface's language. The plural form follows the tiles that could
+/// not be read, which the verb agrees with; the number of tiles is a bare
+/// number after them.
+fn shortfall(report: &ConvertReport) -> Option<String> {
+    (report.unreadable_tiles > 0).then(|| {
+        // Translators: {n} tiles of the slide could not be read for a copy
+        // of it (the form follows {n}); {total} is the number of tiles of
+        // the copy. The copy shows the slide's background colour there.
+        tr!(
+            "{n} tile of {total} could not be read from the slide and shows its background colour."
+                | "{n} tiles of {total} could not be read from the slide and show its background colour."
+                % report.unreadable_tiles,
+            total = report.plan.tiles
+        )
+    })
+}
+
+/// What a copy left out ([`ConvertReport::warnings`]), in the interface's
+/// language; the reasons (errors reading the slide) as they come.
+fn omissions(report: &ConvertReport) -> Vec<String> {
+    if report.omissions.len() != report.warnings.len() {
+        return report.warnings.clone();
+    }
+    report
+        .omissions
+        .iter()
+        .map(|omission| match omission {
+            CopyOmission::AssociatedImage { name, error } => match name.as_str() {
+                // Translators: {error} says why the slide's label image was not copied.
+                "label" => tr!("the label image was not copied: {error}", error = error),
+                // Translators: {error} says why the slide's macro image (a photo of
+                // the whole glass) was not copied.
+                "macro" => tr!("the macro image was not copied: {error}", error = error),
+                // Translators: {error} says why the slide's thumbnail image was not copied.
+                "thumbnail" => tr!("the thumbnail image was not copied: {error}", error = error),
+                // Translators: an extra image of the slide, by the name the file
+                // gives it ({name}, not translated), was not copied; {error} says why.
+                _ => tr!(
+                    "the extra image {name} was not copied: {error}",
+                    name = isolate(name),
+                    error = error
+                ),
+            },
+            CopyOmission::IccProfile { error } => {
+                // Translators: {error} says why the slide's colour profile
+                // was not copied.
+                tr!("the ICC profile was not copied: {error}", error = error)
+            }
+        })
+        .collect()
+}
+
+/// The name of a copy's file type, for the file dialog.
+fn format_name(format: SlideFormat) -> String {
+    match format {
+        // Translators: a file type: a TIFF file holding the slide at
+        // several resolutions.
+        SlideFormat::Tiff => tr!("Pyramidal TIFF"),
+        SlideFormat::OmeTiff => format.label().to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -680,6 +892,156 @@ mod tests {
             let comment = copy.properties().comment.clone().unwrap_or_default();
             assert!(!comment.contains("S12-3456"), "{comment}");
         });
+    }
+
+    /// The window says what the copy's report says (in English, word for
+    /// word, but where the report's English has "1 tiles").
+    #[test]
+    fn shortfalls_and_omissions_are_reported_as_the_report_has_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("slide.tif");
+        let spec = eov_common::test_support::TiffSpec::pyramid(512, 256, 256, 2);
+        eov_common::test_support::write_tiff(&path, &spec, |x, y| [x as u8, y as u8, 9]).unwrap();
+        let wsi = WsiFile::open(&path).unwrap();
+        let options = ConvertOptions {
+            tile_size: 64,
+            ..ConvertOptions::default()
+        };
+        let plan = convert::plan_conversion(&wsi, &options).unwrap();
+        let left_out = vec![
+            CopyOmission::AssociatedImage {
+                name: "macro".into(),
+                error: "unreadable".into(),
+            },
+            CopyOmission::IccProfile {
+                error: "truncated".into(),
+            },
+        ];
+        let mut report = ConvertReport {
+            path: dir.path().join("copy.tif"),
+            plan,
+            bytes: 0,
+            bigtiff: false,
+            unreadable_tiles: 0,
+            associated_images: Vec::new(),
+            icc_profile: false,
+            warnings: left_out.iter().map(ToString::to_string).collect(),
+            omissions: left_out,
+            elapsed: Duration::ZERO,
+        };
+        assert_eq!(shortfall(&report), None);
+        // The plural form follows the tiles that could not be read.
+        let total = report.plan.tiles;
+        assert!(total > 2);
+        report.unreadable_tiles = 1;
+        assert_eq!(
+            shortfall(&report),
+            Some(format!(
+                "1 tile of {total} could not be read from the slide and shows its background \
+                 colour."
+            ))
+        );
+        report.unreadable_tiles = 2;
+        assert_eq!(
+            shortfall(&report),
+            Some(format!(
+                "2 tiles of {total} could not be read from the slide and show its background \
+                 colour."
+            ))
+        );
+        assert_eq!(omissions(&report), report.warnings);
+        assert_eq!(format_name(SlideFormat::Tiff), SlideFormat::Tiff.label());
+        assert_eq!(format_name(SlideFormat::OmeTiff), "OME-TIFF");
+    }
+
+    /// In English the dialog says why a copy cannot be made as
+    /// `eov_common` does, word for word, as a sentence.
+    #[test]
+    fn convert_problems_say_what_common_says() {
+        let problems = [
+            ConvertProblem::EmptyRegion,
+            ConvertProblem::RegionOutside {
+                region: SlideBounds {
+                    x: 700,
+                    y: 0,
+                    width: 10,
+                    height: 10,
+                },
+                slide_width: 600,
+                slide_height: 400,
+            },
+            ConvertProblem::TooLarge {
+                width: 3_000_000_000,
+                height: 10,
+            },
+            ConvertProblem::TooSmall {
+                width: 8,
+                height: 8,
+            },
+            ConvertProblem::NotAFileName("/a/..".into()),
+            ConvertProblem::IsAFolder("/tmp".into()),
+            ConvertProblem::NoSuchFolder("/nowhere".into()),
+            ConvertProblem::IsTheSlide("/a/slide.svs".into()),
+            ConvertProblem::PartialExists("/a/copy.tif.7.eov-partial".into()),
+            ConvertProblem::NoPixelSize,
+        ];
+        for problem in problems {
+            assert_eq!(convert_problem(&problem), sentence(&problem.to_string()));
+            let error = ConvertError::Invalid(problem);
+            assert_eq!(convert_error(&error), sentence(&error.to_string()));
+        }
+        let exists = ConvertError::OutputExists("/a/copy.tif".into());
+        assert_eq!(convert_error(&exists), "/a/copy.tif already exists.");
+        let io = ConvertError::Io(std::io::Error::other("disk full"));
+        assert_eq!(convert_error(&io), "Disk full.");
+        assert_eq!(
+            convert_problem(&ConvertProblem::TooSmall {
+                width: 8,
+                height: 8
+            }),
+            "The copy would be 8 × 8 pixels; it must be at least 16 × 16 (choose a larger \
+             region or a finer resolution)"
+        );
+        assert_eq!(
+            convert_problem(&ConvertProblem::EmptyRegion),
+            "The region is empty."
+        );
+    }
+
+    /// The translated messages are shown as the translation writes them:
+    /// eov neither changes their first letter nor adds a full stop.
+    #[test]
+    fn translated_problems_are_shown_as_translated() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let turkish = i18n::by_tag("tr").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] =
+            [(None, "The region is empty.", &["ilgi alanı boş"])];
+        i18n::set_catalog(
+            turkish,
+            Some(i18n::Catalog::from_messages(turkish, "", messages).unwrap()),
+        );
+        assert_eq!(
+            convert_error(&ConvertError::Invalid(ConvertProblem::EmptyRegion)),
+            "ilgi alanı boş"
+        );
+        let japanese = i18n::by_tag("ja").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 1] =
+            [(None, "The region is empty.", &["領域が空です"])];
+        i18n::set_catalog(
+            japanese,
+            Some(i18n::Catalog::from_messages(japanese, "", messages).unwrap()),
+        );
+        assert_eq!(
+            convert_problem(&ConvertProblem::EmptyRegion),
+            "領域が空です"
+        );
     }
 
     #[test]

@@ -3,15 +3,16 @@
 //! This module contains functions for opening files and generating thumbnails.
 
 use crate::state::{
-    AppState, MinimapThumbnail, NewOpenFile, PaneId, SeriesEntry, SeriesNavigationMode,
-    SeriesThumbnail, TabActivation,
+    AppState, MinimapThumbnail, NewOpenFile, PaneId, SeriesDetails, SeriesEntry,
+    SeriesNavigationMode, SeriesSlideFacts, SeriesThumbnail, TabActivation,
 };
 use crate::tile_loader::{TileLoader, calculate_wanted_tiles};
-use crate::ui_update::{update_recent_files, update_tabs};
+use crate::ui_update::{localized_number, update_recent_files, update_tabs};
 use crate::{PaneRenderCacheEntry, PaneUiModels, PaneViewData, request_render_loop};
 use eov_common::{
     ThumbnailOptions, ThumbnailRegion, TileCache, TileManager, ViewportState, WsiFile,
 };
+use eov_plugin_api::i18n::{isolate, tr};
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use slint::{ComponentHandle, SharedString, Timer, VecModel};
@@ -156,20 +157,23 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
             }
             series_index.insert(uid, entries.len());
         }
-        let filename = path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.display().to_string());
+        let file_name = entry_file_name(&path);
         let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
         instances.push(1);
+        let details = if is_directory {
+            SeriesDetails::Folder
+        } else {
+            SeriesDetails::Loading
+        };
+        // The texts are made again on the UI thread when the entries are
+        // installed (`AppState::replace_opened_series_entries`).
         entries.push(SeriesEntry {
-            metadata_tooltip: if is_directory {
-                format!("{}\nFolder", display_name(&path))
-            } else {
-                "Loading metadata…".to_string()
-            },
+            metadata_tooltip: series_tooltip(&path, &details),
+            details,
+            instances: 1,
             path,
-            filename,
+            filename: file_name.clone(),
+            file_name,
             is_directory,
             modified,
             objective_label: None,
@@ -180,10 +184,88 @@ fn enumerate_series_entries(folder_path: &Path) -> Vec<SeriesEntry> {
     }
     for (entry, count) in entries.iter_mut().zip(instances) {
         if count > 1 {
-            entry.filename = format!("{} (DICOM series, {count} files)", entry.filename);
+            entry.instances = count;
+            entry.filename = series_entry_name(&entry.path, count);
         }
     }
     entries
+}
+
+/// The file name of a series entry.
+fn entry_file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+/// The name the series bar shows for `path`, the first of `instances` files
+/// of a DICOM series when there are several (in the interface's language;
+/// the series bar sorts and groups by the file name itself).
+pub(crate) fn series_entry_name(path: &Path, instances: usize) -> String {
+    series_name(entry_file_name(path), instances)
+}
+
+/// `name` (of a series entry, or the part of it shown under its case) as
+/// the series bar shows it for an entry that stands for `instances` files of
+/// a DICOM series.
+pub(crate) fn series_name(name: String, instances: usize) -> String {
+    if instances > 1 {
+        tr!(
+            "{name} (DICOM series, {n} file)" | "{name} (DICOM series, {n} files)" % instances,
+            name = isolate(&name)
+        )
+    } else {
+        name
+    }
+}
+
+/// An objective power ("20x"), in the interface's language.
+pub(crate) fn objective_text(power: f64) -> String {
+    format!("{}x", localized_number(&eov_common::format_decimal(power)))
+}
+
+/// The series bar's tooltip of the entry at `path`.
+pub(crate) fn series_tooltip(path: &Path, details: &SeriesDetails) -> String {
+    let header = display_name(path);
+    let facts = match details {
+        SeriesDetails::Loading => {
+            return format!("{header}\n{}", tr!("Loading metadata…"));
+        }
+        // Translators: in the series bar's tooltip of a folder.
+        SeriesDetails::Folder => return format!("{header}\n{}", tr!("Series bar" => "Folder")),
+        SeriesDetails::Unreadable => {
+            return format!("{header}\n{}", tr!("The slide could not be read"));
+        }
+        SeriesDetails::Slide(facts) => facts,
+    };
+    // Translators: "not available", for a slide property the file does not
+    // record.
+    let not_available = || tr!("N/A");
+    let number = |value: f64| localized_number(&eov_common::format_decimal(value));
+    let objective = facts
+        .objective_power
+        .map(objective_text)
+        .unwrap_or_else(not_available);
+    let mpp = facts
+        .mpp
+        .map(|(x, y)| format!("{} × {} µm/px", number(x), number(y)))
+        .unwrap_or_else(not_available);
+    // Translators: shown for a slide property the file does not record.
+    let vendor = facts.vendor.clone().unwrap_or_else(|| tr!("Unknown"));
+    let stain = facts.stain.clone().unwrap_or_else(not_available);
+    [
+        header,
+        tr!(
+            "{width} × {height} px, {n} level" | "{width} × {height} px, {n} levels" % facts.levels,
+            width = localized_number(&eov_common::format_u64(facts.width)),
+            height = localized_number(&eov_common::format_u64(facts.height))
+        ),
+        tr!("Vendor: {}", vendor),
+        tr!("Objective: {}", objective),
+        tr!("Pixel size: {}", mpp),
+        tr!("Stain: {}", stain),
+    ]
+    .join("\n")
 }
 
 fn thumbnail_cache_dir() -> PathBuf {
@@ -237,55 +319,21 @@ fn persist_thumbnail(path: &Path, thumbnail: &SeriesThumbnail) {
     }
 }
 
-fn build_series_metadata_tooltip(path: &Path, wsi: Option<&WsiFile>) -> String {
-    let header = display_name(path);
+/// What a slide of the series bar records, for its tooltip.
+fn series_details(wsi: Option<&WsiFile>) -> SeriesDetails {
     let Some(wsi) = wsi else {
-        return format!("{}\nThe slide could not be read", header);
+        return SeriesDetails::Unreadable;
     };
-
     let properties = wsi.properties();
-    let objective = properties
-        .objective_power
-        .map(|value| format!("{}x", eov_common::format_decimal(value)))
-        .unwrap_or_else(|| "N/A".to_string());
-    let mpp = properties
-        .mpp_x
-        .zip(properties.mpp_y)
-        .map(|(x, y)| {
-            format!(
-                "{} × {} µm/px",
-                eov_common::format_decimal(x),
-                eov_common::format_decimal(y)
-            )
-        })
-        .unwrap_or_else(|| "N/A".to_string());
-    let vendor = properties.vendor.as_deref().unwrap_or("Unknown");
-    let stain = properties.stain.as_deref().unwrap_or("N/A");
-
-    format!(
-        "{}\n{} × {} px, {} levels\nVendor: {}\nObjective: {}\nPixel size: {}\nStain: {}",
-        header,
-        eov_common::format_u64(properties.width),
-        eov_common::format_u64(properties.height),
-        properties.levels.len(),
-        vendor,
-        objective,
-        mpp,
-        stain,
-    )
-}
-
-fn build_series_overlay_labels(wsi: Option<&WsiFile>) -> (Option<String>, Option<String>) {
-    let Some(wsi) = wsi else {
-        return (None, None);
-    };
-
-    let properties = wsi.properties();
-    let objective_label = properties
-        .objective_power
-        .map(|value| format!("{}x", eov_common::format_decimal(value)));
-    let stain_label = properties.stain.clone();
-    (objective_label, stain_label)
+    SeriesDetails::Slide(SeriesSlideFacts {
+        width: properties.width,
+        height: properties.height,
+        levels: properties.levels.len(),
+        vendor: properties.vendor.clone(),
+        objective_power: properties.objective_power,
+        mpp: properties.mpp_x.zip(properties.mpp_y),
+        stain: properties.stain.clone(),
+    })
 }
 
 /// A series-bar thumbnail with bounded memory and I/O (WSI-3).
@@ -317,7 +365,6 @@ fn spawn_series_thumbnail_worker(
             let cached_thumbnail = load_cached_thumbnail(&path);
             let had_cached_thumbnail = cached_thumbnail.is_some();
             if let Some(cached_thumbnail) = cached_thumbnail.clone() {
-                let metadata_tooltip = format!("{}\nLoading metadata…", display_name(&path));
                 let state_handle = Arc::clone(&state);
                 let ui_weak = ui_weak.clone();
                 let update_path = path.clone();
@@ -331,9 +378,7 @@ fn spawn_series_thumbnail_worker(
                         state.update_series_entry_thumbnail(
                             revision,
                             &update_path,
-                            metadata_tooltip,
-                            None,
-                            None,
+                            SeriesDetails::Loading,
                             Some(cached_thumbnail),
                         )
                     };
@@ -346,8 +391,9 @@ fn spawn_series_thumbnail_worker(
             }
 
             let opened = WsiFile::open(&path).ok();
-            let metadata_tooltip = build_series_metadata_tooltip(&path, opened.as_ref());
-            let (objective_label, stain_label) = build_series_overlay_labels(opened.as_ref());
+            // Facts only: the texts are made on the UI thread, in the
+            // language of the moment.
+            let details = series_details(opened.as_ref());
             let thumbnail = cached_thumbnail.or_else(|| opened.as_ref().and_then(series_thumbnail));
 
             if !had_cached_thumbnail && let Some(thumbnail) = thumbnail.as_ref() {
@@ -364,14 +410,7 @@ fn spawn_series_thumbnail_worker(
 
                 let updated = {
                     let mut state = state_handle.write();
-                    state.update_series_entry_thumbnail(
-                        revision,
-                        &update_path,
-                        metadata_tooltip,
-                        objective_label,
-                        stain_label,
-                        thumbnail,
-                    )
+                    state.update_series_entry_thumbnail(revision, &update_path, details, thumbnail)
                 };
 
                 if updated {
@@ -430,9 +469,9 @@ pub fn load_series_entries_async(
                             )
                         });
                     }
-                    None => ui.set_status_text(SharedString::from(format!(
+                    None => ui.set_status_text(SharedString::from(tr!(
                         "Browsing {}",
-                        update_folder.display()
+                        isolate(update_folder.display())
                     ))),
                 }
             }
@@ -563,7 +602,9 @@ pub fn open_file(
     };
 
     if let Some((pane, tab_id)) = existing_tab {
-        let mut status_text = format!("Focused {}", normalized_path.display());
+        // Translators: the status line when a slide that is open already is
+        // shown again (its tab is brought to the front).
+        let mut status_text = tr!("Switched to {}", isolate(normalized_path.display()));
         let view = INITIAL_VIEWS.with(|views| views.borrow_mut().remove(&normalized_path));
 
         let warnings = {
@@ -589,7 +630,7 @@ pub fn open_file(
                     };
                     let duplicated_id = state_guard.duplicate_tab_to_pane(tab_id, target_pane);
                     state_guard.activate_tab_in_pane(target_pane, duplicated_id);
-                    status_text = format!("Opened new tab for {}", normalized_path.display());
+                    status_text = tr!("Opened new tab for {}", isolate(normalized_path.display()));
                 }
             }
             state_guard.add_to_recent(&normalized_path);
@@ -674,9 +715,9 @@ pub fn open_file(
         )
     });
     ui.set_is_loading(true);
-    ui.set_status_text(SharedString::from(format!(
+    ui.set_status_text(SharedString::from(tr!(
         "Opening {}…",
-        display_name(&normalized_path)
+        isolate(display_name(&normalized_path))
     )));
     // Shows the loading indicator in the pane the slide opens in (with the
     // caller's pane models: `crate::update_tabs` would borrow them again).
@@ -859,7 +900,7 @@ fn show_view_on_open_tab(
     let view = crate::launch::resolve_view(request, &scale, current, viewport.fit_view());
     viewport.smooth_set_center_zoom(view.center_x, view.center_y, view.zoom);
     state.request_render();
-    view.warnings
+    view.shown_warnings
 }
 
 /// Tells the user what of a requested view could not be applied.
@@ -870,7 +911,10 @@ fn report_view_warnings(path: &Path, warnings: &[String]) {
     crate::host_ui::with_host(|host| {
         host.notify(
             eov_plugin_api::protocol::NotifyLevel::Warning,
-            &format!("Could not show {} exactly as asked", display_name(path)),
+            &tr!(
+                "Could not show {} exactly as asked",
+                isolate(display_name(path))
+            ),
             Some(&warnings.join("\n")),
             None,
         )
@@ -970,11 +1014,15 @@ fn finish_open(
                 // Also takes the loading indicator away.
                 crate::update_tabs(&ui, &state_guard);
             }
-            ui.set_status_text(SharedString::from(format!("Could not open {name}: {err}")));
+            ui.set_status_text(SharedString::from(tr!(
+                "Could not open {name}: {error}",
+                name = isolate(&name),
+                error = err
+            )));
             crate::host_ui::with_host(|host| {
                 host.notify(
                     eov_plugin_api::protocol::NotifyLevel::Error,
-                    &format!("Could not open {name}"),
+                    &tr!("Could not open {}", isolate(&name)),
                     Some(&err),
                     None,
                 )
@@ -986,7 +1034,7 @@ fn finish_open(
 
     // Opened meanwhile under another spelling of the path.
     let existing_tab = state.read().find_tab_by_path(&path);
-    let mut planes = String::new();
+    let mut planes = Vec::new();
     let (level_count, warnings) = if let Some((pane, tab_id)) = existing_tab {
         let mut state_guard = state.write();
         state_guard.activate_tab_in_pane(pane, tab_id);
@@ -1032,9 +1080,18 @@ fn finish_open(
                 crate::logging::file_label(&path)
             );
             tracing::debug!("Opened {}", path.display());
-            format!("Opened {name} ({levels} levels){planes}")
+            let opened = tr!(
+                "Opened {name} ({n} level)" | "Opened {name} ({n} levels)" % levels,
+                name = isolate(&name)
+            );
+            std::iter::once(opened)
+                .chain(planes)
+                .collect::<Vec<_>>()
+                .join(" · ")
         }
-        None => format!("Focused {name}"),
+        // Translators: the status line when a slide that is open already is
+        // shown again (its tab is brought to the front).
+        None => tr!("Switched to {}", isolate(&name)),
     };
     ui.set_status_text(SharedString::from(status));
     report_view_warnings(&path, &warnings);
@@ -1043,39 +1100,49 @@ fn finish_open(
 }
 
 /// The focal planes and time points of a slide that has several, with the
-/// keys that step through them, for the status line when it opens ("" for
-/// most slides).
-fn plane_hint(wsi: &eov_common::WsiFile) -> String {
+/// keys that step through them, for the status line when it opens (none
+/// for most slides).
+fn plane_hint(wsi: &eov_common::WsiFile) -> Vec<String> {
     use crate::shortcuts::Action;
     let shortcuts = crate::shortcuts::current();
-    let mut text = String::new();
-    for (count, what, actions) in [
-        (
-            wsi.focal_planes(),
-            "focal planes",
-            [Action::NextFocalPlane, Action::PreviousFocalPlane],
-        ),
-        (
-            wsi.time_points(),
-            "time points",
-            [Action::NextTimePoint, Action::PreviousTimePoint],
-        ),
-    ] {
-        if count <= 1 {
-            continue;
-        }
-        let keys = actions
+    let keys = |actions: [Action; 2]| {
+        actions
             .map(|action| shortcuts.label(action))
             .into_iter()
             .filter(|key| !key.is_empty())
             .collect::<Vec<_>>()
-            .join(" / ");
-        text.push_str(&format!(" · {count} {what}"));
-        if !keys.is_empty() {
-            text.push_str(&format!(": {keys}"));
-        }
+            .join(" / ")
+    };
+    let mut parts = Vec::new();
+    let focal_planes = wsi.focal_planes();
+    if focal_planes > 1 {
+        let keys = keys([Action::NextFocalPlane, Action::PreviousFocalPlane]);
+        parts.push(if keys.is_empty() {
+            tr!("{n} focal plane" | "{n} focal planes" % focal_planes)
+        } else {
+            // Translators: after the colon, the keys that step through the
+            // focal planes.
+            tr!(
+                "{n} focal plane: {keys}" | "{n} focal planes: {keys}" % focal_planes,
+                keys = isolate(&keys)
+            )
+        });
     }
-    text
+    let time_points = wsi.time_points();
+    if time_points > 1 {
+        let keys = keys([Action::NextTimePoint, Action::PreviousTimePoint]);
+        parts.push(if keys.is_empty() {
+            tr!("{n} time point" | "{n} time points" % time_points)
+        } else {
+            // Translators: after the colon, the keys that step through the
+            // time points.
+            tr!(
+                "{n} time point: {keys}" | "{n} time points: {keys}" % time_points,
+                keys = isolate(&keys)
+            )
+        });
+    }
+    parts
 }
 
 /// Adds an opened slide to the state and starts loading its tiles.
@@ -1132,7 +1199,7 @@ fn install_slide(
             let scale = crate::launch::SlideScale::of_properties(props);
             let view = crate::launch::resolve_view(&request, &scale, fit, fit);
             viewport.set_center_zoom(view.center_x, view.center_y, view.zoom);
-            warnings = view.warnings;
+            warnings = view.shown_warnings;
         }
         _ => {}
     }
@@ -1243,6 +1310,53 @@ mod tests {
         );
         assert!(names.contains(&"c.dcm"), "{names:?}");
         assert!(entries.iter().all(|e| e.modified.is_some()));
+        // What the series bar sorts and groups by is the file name.
+        let series = entries.iter().find(|e| e.instances == 2).unwrap();
+        assert_eq!(series.file_name, "a.dcm");
+    }
+
+    /// What a worker read is worded on the UI thread when it is installed,
+    /// in the language of that moment (the worker may have run in another).
+    #[test]
+    fn series_texts_are_made_when_installed() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let folder = PathBuf::from("/series");
+        let entry = SeriesEntry {
+            path: folder.join("a.svs"),
+            file_name: "a.svs".into(),
+            filename: "a.svs".into(),
+            ..SeriesEntry::default()
+        };
+        let mut state = AppState::new();
+        state.opened_series = Some(crate::state::OpenedSeries {
+            current_path: folder.clone(),
+            ..Default::default()
+        });
+        let revision = state.series_revision;
+        assert!(state.replace_opened_series_entries(revision, &folder, vec![entry]));
+        // The language changes before the slide's facts arrive.
+        i18n::set_catalog(i18n::by_tag("de").unwrap(), None);
+        let facts = crate::state::SeriesSlideFacts {
+            objective_power: Some(20.5),
+            stain: Some("H&E".into()),
+            ..Default::default()
+        };
+        assert!(state.update_series_entry_thumbnail(
+            revision,
+            &folder.join("a.svs"),
+            SeriesDetails::Slide(facts),
+            None,
+        ));
+        let entry = &state.opened_series.as_ref().unwrap().entries[0];
+        assert_eq!(entry.objective_label.as_deref(), Some("20,5x"));
+        assert_eq!(entry.stain_label.as_deref(), Some("H&E"));
     }
 
     /// Opening a slide shows it loading in its pane without borrowing the

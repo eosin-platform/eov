@@ -71,13 +71,39 @@ pub(crate) fn now_rfc3339() -> String {
     rfc3339(unix_now())
 }
 
+/// The marks `eov_plugin_api::i18n::isolate` puts around values in
+/// right-to-left languages (U+2066 to U+2069).
+fn is_isolate(c: char) -> bool {
+    matches!(c, '\u{2066}'..='\u{2069}')
+}
+
+/// `value` without isolation marks in its texts. The log is in English, for
+/// programs and for people reading any language: what eov records is
+/// written for it, not for the window; this keeps a value made for the
+/// window from slipping invisible marks into it.
+fn without_isolates(value: Value) -> Value {
+    match value {
+        Value::String(text) if text.contains(is_isolate) => {
+            Value::String(text.replace(is_isolate, ""))
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(without_isolates).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key, without_isolates(value)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
 fn record_in(path: &Path, event: &str, fields: Value) -> std::io::Result<()> {
     let unix = unix_now();
     let mut line = Map::new();
     line.insert("time".into(), json!(rfc3339(unix)));
     line.insert("unix".into(), json!(unix));
     line.insert("event".into(), json!(event));
-    if let Value::Object(fields) = fields {
+    if let Value::Object(fields) = without_isolates(fields) {
         line.extend(fields);
     }
     let mut text = Value::Object(line).to_string();
@@ -129,5 +155,23 @@ mod tests {
         assert_eq!(lines[0]["plugin"], "a");
         assert_eq!(lines[1]["eov"], "1.0.0");
         assert!(lines[1]["time"].as_str().unwrap().ends_with('Z'));
+    }
+
+    /// The log never holds the invisible marks that order right-to-left
+    /// text in the window.
+    #[test]
+    fn isolation_marks_are_not_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        record_in(
+            &path,
+            "session_started",
+            json!({"plugins": [{"state": "Failed: requires eov \u{2068}>=2.0.0\u{2069}"}]}),
+        )
+        .unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains(is_isolate), "{text}");
+        let line: Value = serde_json::from_str(text.trim()).unwrap();
+        assert_eq!(line["plugins"][0]["state"], "Failed: requires eov >=2.0.0");
     }
 }

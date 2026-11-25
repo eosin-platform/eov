@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme, ThemeKind } from "theme.slint";
 import {
     FilteringMode,
@@ -74,10 +75,18 @@ export component WindowToolbar inherits Rectangle {
     property <length> plugin-hovered-tooltip-top-y: 0px;
     /// Keys from the shortcut table, for tooltips.
     in property <ShortcutLabels> shortcuts;
-    property <string> undo-tooltip-text: (root.undo-label != "" ? @tr("Undo {}", root.undo-label) : @tr("Undo"))
-        + (root.shortcuts.undo != "" ? " (" + root.shortcuts.undo + ")" : "");
-    property <string> redo-tooltip-text: (root.redo-label != "" ? @tr("Redo {}", root.redo-label) : @tr("Redo"))
-        + (root.shortcuts.redo != "" ? " (" + root.shortcuts.redo + ")" : "");
+    // Translators: tooltip of Undo; {} names the edit it reverts ("Add measurement", or a plugin's own wording).
+    property <string> undo-text: root.undo-label != "" ? @tr("Undo {}", root.undo-label)
+        : @tr("Undo");
+    // Translators: tooltip of Redo; {} names the edit it repeats ("Add measurement", or a plugin's own wording).
+    property <string> redo-text: root.redo-label != "" ? @tr("Redo {}", root.redo-label)
+        : @tr("Redo");
+    property <string> undo-tooltip-text: root.shortcuts.undo == "" ? root.undo-text
+        // A tooltip and the key of its shortcut ("Undo (Ctrl+Z)").
+        : @tr("{} ({})", root.undo-text, Locale.isolate(root.shortcuts.undo));
+    property <string> redo-tooltip-text: root.shortcuts.redo == "" ? root.redo-text
+        // A tooltip and the key of its shortcut ("Redo (Ctrl+Y)").
+        : @tr("{} ({})", root.redo-text, Locale.isolate(root.shortcuts.redo));
 
     callback open-file-requested();
     callback open-recent-menu-requested(length, length);
@@ -99,6 +108,8 @@ export component WindowToolbar inherits Rectangle {
     callback plugins-panel-requested();
     // The theme menu, at this window position.
     callback theme-menu-requested(length, length);
+    /// The Language dialog.
+    callback language-requested();
     callback window-minimize();
     callback window-maximize();
     callback window-close();
@@ -235,7 +246,7 @@ export component WindowToolbar inherits Rectangle {
 
                 viewport-lock-button := SvgToolButton {
                     icon-source: root.viewport-lock-enabled ? @image-url("icons/viewport-lock-enabled.svg") : @image-url("icons/viewport-lock-disabled.svg");
-                    tooltip-text: @tr("Viewport lock");
+                    tooltip-text: @tr("Link the views of panes that show the same slide");
                     is-active: root.viewport-lock-enabled;
                     checkable: true;
                     clicked => {
@@ -278,7 +289,10 @@ export component WindowToolbar inherits Rectangle {
 
                 navigate-button := SvgToolButton {
                     icon-source: @image-url("icons/navigate.svg");
-                    tooltip-text: @tr("Navigate") + (root.shortcuts.navigate != "" ? " (" + root.shortcuts.navigate + ")" : "");
+                    property <string> tool-name: @tr("Navigate");
+                    tooltip-text: root.shortcuts.navigate == "" ? self.tool-name
+                        // A tooltip and the key of its shortcut ("Navigate (N)").
+                        : @tr("{} ({})", self.tool-name, Locale.isolate(root.shortcuts.navigate));
                     is-active: root.current-tool == ToolType.navigate;
                     checkable: true;
                     clicked => {
@@ -287,7 +301,10 @@ export component WindowToolbar inherits Rectangle {
                 }
 
                 roi-button := RoiToolButton {
-                    tooltip-text: @tr("Region of interest") + (root.shortcuts.roi != "" ? " (" + root.shortcuts.roi + ")" : "");
+                    property <string> tool-name: @tr("Region of interest");
+                    tooltip-text: root.shortcuts.roi == "" ? self.tool-name
+                        // A tooltip and the key of its shortcut ("Region of interest (R)").
+                        : @tr("{} ({})", self.tool-name, Locale.isolate(root.shortcuts.roi));
                     is-active: root.current-tool == ToolType.region-of-interest;
                     checkable: true;
                     clicked => {
@@ -298,7 +315,7 @@ export component WindowToolbar inherits Rectangle {
                 measure-button := SvgToolButton {
                     icon-source: @image-url("icons/measure.svg");
                     tooltip-text: root.shortcuts.measure != ""
-                        ? @tr("Measure: {} ({}; right-click for more)", root.measure-mode-label, root.shortcuts.measure)
+                        ? @tr("Measure: {} ({}; right-click for more)", root.measure-mode-label, Locale.isolate(root.shortcuts.measure))
                         : @tr("Measure: {} (right-click for more)", root.measure-mode-label);
                     is-active: root.current-tool == ToolType.measure;
                     checkable: true;
@@ -340,9 +357,21 @@ export component WindowToolbar inherits Rectangle {
                 // Dark, light or high contrast (`theme` in config.toml).
                 theme-button := SvgToolButton {
                     icon-source: @image-url("icons/theme.svg");
-                    tooltip-text: @tr("Theme: {}", Theme.kind == ThemeKind.light ? @tr("Light") : Theme.kind == ThemeKind.high-contrast ? @tr("High Contrast") : @tr("Dark"));
+                    // The current theme ("Theme: Dark"), named as in the theme menu.
+                    tooltip-text: @tr("Theme: {}", Theme.kind == ThemeKind.light ? @tr("Theme" => "Light") : Theme.kind == ThemeKind.high-contrast ? @tr("Theme" => "High Contrast") : @tr("Theme" => "Dark"));
                     clicked => {
                         root.theme-menu-requested(self.absolute-position.x, self.absolute-position.y + self.height + 2px);
+                    }
+                }
+
+                // The interface language: a globe, which people who cannot
+                // read the current language still recognise; its tooltip also
+                // says "Language" in English.
+                language-button := SvgToolButton {
+                    icon-source: @image-url("icons/language.svg");
+                    tooltip-text: Locale.tag == "en" ? @tr("Language") : @tr("Language") + " (Language)";
+                    clicked => {
+                        root.language-requested();
                     }
                 }
 

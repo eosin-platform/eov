@@ -1,0 +1,336 @@
+term	translation	note
+(style) register	สุภาพ เป็นทางการ	ภาษาเขียนแบบซอฟต์แวร์ทางวิชาชีพ ไม่ใช้คำลงท้าย (ครับ/ค่ะ) ใช้ “คุณ” เฉพาะเมื่อจำเป็น และใช้ “โปรด” แทน please ข้อความแจ้งผลนิยมรูปไม่ระบุผู้กระทำ (เช่น “บันทึกแล้ว” “เปิด {} แล้ว”)
+(style) buttons, menu items, titles	เปิด, บันทึก, ส่งออก…	ใช้คำกริยารูปพื้นฐาน กระชับ ไม่มี Title Case แบบอังกฤษ ชื่อเฉพาะ รูปแบบไฟล์ และแป้นพิมพ์คงตามต้นฉบับ
+(style) spacing	เว้นวรรคหนึ่งครั้งรอบคำละติน ตัวเลข และตัวยึดตำแหน่ง	เช่น “เปิด {}”, “สไลด์ {n} แผ่น”, “โปรแกรมดูสไลด์ eov” ใช้การเว้นวรรคแทนจุดเพื่อแยกประโยคและวลี ไม่เว้นวรรคระหว่างคำไทยด้วยกันภายในวลี
+(style) punctuation	ไม่ใส่จุดท้ายประโยค	ภาษาไทยไม่ใช้มหัพภาคปิดท้ายประโยค แยกประโยคด้วยการเว้นวรรค คงเครื่องหมาย : ; ( ) ตามต้นฉบับ คำถามใช้ “หรือไม่” โดยไม่ใส่ ? เครื่องหมาย ; ในต้นฉบับอาจแทนด้วยการเว้นวรรค
+(style) quotation marks	“…”	ชื่อไฟล์ ชื่อโปรไฟล์ และข้อความที่ผู้ใช้ป้อนใส่ในอัญประกาศคู่แบบโค้ง ค่าการตั้งค่า คำสั่ง และตัวอย่างใน config.toml ใช้อัญประกาศตามต้นฉบับ
+(style) ellipsis	…	คง … ท้ายเมนูที่เปิดกล่องโต้ตอบ สถานะที่กำลังดำเนินการใช้ “กำลัง…” เช่น “กำลังโหลด…”
+(style) numbers and units	12.5 µm, 50%, 20×	ใช้เลขอารบิก หน่วยคงตามต้นฉบับ เว้นวรรคระหว่างตัวเลขกับหน่วยตามต้นฉบับ แต่ไม่เว้นวรรคหน้า % (“{} %” = “{}%”) หน่วยนิ้วเขียนเป็นภาษาไทย (“{} in” = “{} นิ้ว”, “in²” = “ตร.นิ้ว”) eov จัดรูปแบบทศนิยมเอง
+(style) plural forms	นาม + {n} + ลักษณนาม	ภาษาไทยมีรูปเดียว ต้องมี {n} เสมอ เช่น “สไลด์ {n} แผ่น”, “ไฟล์ {n} ไฟล์”, “ช่องสัญญาณ {n} ช่อง”, “{n} รายการ”
+(style) classifiers	แผ่น, ไฟล์, ช่อง, ระดับ, ระนาบ, จุด, ตัว, รายการ	สไลด์ = แผ่น ภาพ = ภาพ ไทล์/แพตช์ = ชิ้น ช่องสัญญาณ = ช่อง ปลั๊กอิน/โมเดล = ตัว ข้อความ/บุ๊กมาร์ก/แอนโนเทชัน/ผลการวัด = รายการ
+(style) time units (1h 02m, 4m 05s, 12s)	1 ชม. 02 นาที, 4 นาที 05 วินาที, 12 วินาที	“{} left” = “เหลืออีก {}”
+For research and education. Not a medical device; not for primary diagnosis.	สำหรับการวิจัยและการศึกษา ไม่ใช่เครื่องมือแพทย์ ห้ามใช้เพื่อการวินิจฉัยหลัก	ข้อความด้านความปลอดภัย แปลครบถ้วน ห้ามตัดทอนหรือทำให้อ่อนลง
+medical device	เครื่องมือแพทย์	ศัพท์ตาม พ.ร.บ. เครื่องมือแพทย์ ไม่ใช้ “อุปกรณ์การแพทย์”
+primary diagnosis	การวินิจฉัยหลัก	ศัพท์ด้านกฎระเบียบ: การวินิจฉัยครั้งแรกที่เป็นข้อสรุปของเคส ห้ามใช้ “เบื้องต้น” ซึ่งอ่านเป็นการวินิจฉัยคร่าว ๆ
+not for diagnosis	ห้ามใช้เพื่อการวินิจฉัย	ข้อความด้านความปลอดภัย ไม่ลดเป็น “ไม่แนะนำ”
+research use only (RUO)	สำหรับการวิจัยเท่านั้น (RUO)	ตามฉลากน้ำยาสำหรับการวิจัย คงตัวย่อ RUO ผลลัพธ์ห้ามใช้ประกอบการตัดสินใจทางคลินิก
+intended use	วัตถุประสงค์การใช้งาน	
+synthetic (image, channel, stain)	สังเคราะห์	พิกเซลที่อัลกอริทึมคำนวณขึ้น เช่น “ภาพสังเคราะห์” ห้ามใช้ “ปลอม” “เทียม” หรือ “จำลอง”
+predicted	ที่ทำนาย, ทำนายโดยโมเดล	“มาร์กเกอร์ที่ทำนาย” ห้ามตัดคำว่าทำนายออก
+generated	ที่สร้างขึ้น	“ภาพที่สร้างขึ้นโดยโมเดล”
+slide	สไลด์	สไลด์แก้วกล้องจุลทรรศน์และภาพสแกนของสไลด์ ไม่ใช่สไลด์นำเสนอ
+glass slide	สไลด์แก้ว	เมื่อต้องแยกตัวสไลด์จริงออกจากภาพสแกน
+whole-slide image (WSI)	ภาพสไลด์ทั้งแผ่น (WSI)	คงตัวย่อ WSI “ไฟล์ WSI”
+image (general UI)	ภาพ	“ส่งออกภาพ” “คัดลอกภาพ”
+slide viewer, viewer	โปรแกรมดูสไลด์	
+tab	แท็บ	สไลด์ที่เปิดอยู่หนึ่งแผ่นในบานหน้าต่าง (เหมือนแท็บเบราว์เซอร์)
+pane	บานหน้าต่าง	พื้นที่แสดงภาพที่วางเรียงกันในหน้าต่าง (ตามศัพท์ Microsoft)
+panel	แผง	แผงเครื่องมือ เช่น แผงปลั๊กอิน แผงการวัด แผงช่องสัญญาณ
+focused pane	บานหน้าต่างที่ใช้งานอยู่	
+split (the view)	แบ่ง	“แบ่งไปทางขวา”
+view	มุมมอง	ตำแหน่ง กำลังขยาย และการหมุนที่บานหน้าต่างแสดง
+viewport	พื้นที่แสดงภาพ	บริเวณในบานหน้าต่างที่วาดสไลด์
+minimap	แผนที่ย่อ	ภาพรวมขนาดเล็กของสไลด์ทั้งแผ่นพร้อมกรอบบริเวณที่มองเห็น
+scale bar	แถบมาตราส่วน	
+HUD	แผงบนภาพ	แผงเล็กที่ลอยอยู่เหนือสไลด์ (heads-up display)
+toolbar	แถบเครื่องมือ	
+sidebar	แถบด้านข้าง	
+status bar	แถบสถานะ	
+series bar	แถบชุดสไลด์	แถบแสดงสไลด์ในโฟลเดอร์เดียวกัน
+series	ชุดสไลด์	ชุด DICOM = “ชุด DICOM”
+case (accession)	เคส	
+Home screen	หน้าจอหลัก	หน้าเริ่มต้นเมื่อไม่มีสไลด์เปิดอยู่ แท็บชื่อ “หน้าหลัก”
+zoom	การซูม, ระดับการซูม	มาตราส่วนบนหน้าจอ (100% = พิกเซลภาพหนึ่งพิกเซลต่อพิกเซลจอ) ต่างจากกำลังขยาย
+Zoom in / Zoom out	ซูมเข้า / ซูมออก	
+magnification (20×)	กำลังขยาย (20×)	กำลังขยายเทียบเท่าเลนส์ใกล้วัตถุ 20× คงเป็น 20×
+objective	เลนส์ใกล้วัตถุ	“เลนส์ใกล้วัตถุ 40×”
+objective power	กำลังขยายของเลนส์ใกล้วัตถุ	
+optical-equivalent zoom	ซูมเทียบเท่าเชิงแสง	
+digital zoom	ซูมดิจิทัล	
+pixel size	ขนาดพิกเซล	
+MPP (µm per pixel)	MPP (µm ต่อพิกเซล)	คง MPP และหน่วย µm/px ตามเดิม
+calibration	การปรับเทียบ	“ปรับเทียบขนาดพิกเซล”
+level, pyramid level	ระดับ, ระดับพีระมิด	ระดับความละเอียดของพีระมิดภาพ L0 = ความละเอียดสูงสุด
+level-0 pixels	พิกเซลระดับ 0	
+pyramidal TIFF	TIFF แบบพีระมิด	
+tile	ไทล์	ชิ้นภาพสี่เหลี่ยมที่โหลดทีละชิ้น ลักษณนาม “ชิ้น”
+patch (dataset)	แพตช์	ภาพย่อยของชุดข้อมูล ลักษณนาม “ชิ้น”
+cache	แคช	
+region of interest (ROI)	บริเวณที่สนใจ (ROI)	ใช้ ROI เป็นตัวย่อในป้ายสั้น
+region (in general)	บริเวณ	พื้นที่ที่วัดได้ใช้ “พื้นที่”
+measurement	การวัด, ผลการวัด	
+Measure (tool)	วัด	ชื่อเครื่องมือ ในประโยคใช้ “เครื่องมือวัด”
+distance	ระยะทาง	
+path length	ความยาวเส้นทาง	
+area (measured)	พื้นที่	“พื้นที่รูปหลายเหลี่ยม” “พื้นที่สี่เหลี่ยมผืนผ้า” “พื้นที่วงรี”
+angle	มุม	
+perimeter	เส้นรอบรูป	
+annotation	แอนโนเทชัน	เครื่องหมายที่วาดและมีความหมาย (จุด บริเวณ เส้น ข้อความ) ไม่ใช่ความคิดเห็นอิสระ
+comment	ความคิดเห็น	
+class (annotation class)	คลาส	หมวดหมู่ เช่น “เนื้องอก” หรือ “สโตรมา”
+cell count, counting	การนับเซลล์	
+high-power field (HPF)	ลานสายตากำลังขยายสูง (HPF)	ศัพท์ห้องปฏิบัติการ คงตัวย่อ HPF เช่น “/10 HPF”
+landmark (alignment)	จุดอ้างอิง	จุดอ้างอิงสำหรับจัดแนว
+align, alignment	จัดแนว, การจัดแนว	
+link / unlink (panes)	เชื่อมโยง / ยกเลิกการเชื่อมโยง	“บานหน้าต่างที่เชื่อมโยงกัน”
+rotate, rotation	หมุน, การหมุน	“หมุนไปทางซ้าย 90°”
+flip horizontally	พลิกแนวนอน	
+pan	เลื่อนภาพ	
+fit (to the pane)	พอดี	“ปรับสไลด์ให้พอดีกับบานหน้าต่าง”
+H&E	H&E	ฮีมาทอกซิลินและอีโอซิน คงเป็น H&E
+hematoxylin	ฮีมาทอกซิลิน	ตัวย่อหนึ่งตัวอักษรคงเป็น H
+eosin	อีโอซิน	ตัวย่อหนึ่งตัวอักษรคงเป็น E
+IHC	IHC	อิมมูโนฮิสโตเคมี คงตัวย่อ IHC
+immunohistochemistry	อิมมูโนฮิสโตเคมี	
+DAB	DAB	โครโมเจนสีน้ำตาล
+chromogen	โครโมเจน	
+stain (a dye: hematoxylin, eosin, DAB)	สีย้อม	“ความเข้มข้นของสีย้อม” “เวกเตอร์สีย้อม”
+stain, staining (method; a slide's stain)	การย้อม	“การย้อม: H&E” “การย้อม Giemsa”
+stain normalization	การปรับมาตรฐานสีย้อม	Macenko และ Vahadane เป็นชื่อวิธี ไม่แปล
+colour normalisation	การปรับมาตรฐานสี	
+stain target	เป้าหมายสีย้อม	ลักษณะสีที่ใช้เป็นเป้าหมายในการปรับมาตรฐาน
+stain model	โมเดลสีย้อม	ชุดเวกเตอร์สีย้อม (H&E, H-DAB…)
+stain vector	เวกเตอร์สีย้อม	
+fit (stain fit)	ประมาณค่า, การประมาณค่าสีย้อม	การหาเวกเตอร์สีย้อมจากสไลด์
+reference (stain vectors, H&E)	อ้างอิง	“เวกเตอร์สีย้อมอ้างอิง”
+color deconvolution	การแยกสีย้อม	color deconvolution (Ruifrok–Johnston)
+isolated stain / channel	แสดงสีย้อมเดี่ยว / ช่องสัญญาณเดี่ยว	แสดงสีย้อมหรือช่องสัญญาณเดียวเป็นภาพระดับเทา
+intensity	ความเข้ม	
+optical density	ความหนาแน่นเชิงแสง (OD)	
+concentration	ความเข้มข้น	
+quantify	วัดปริมาณ	“วัดปริมาณสีย้อม”
+H-score	H-score	คงตามเดิม
+weak / moderate / strong (1+/2+/3+)	อ่อน / ปานกลาง / เข้ม	ระดับความเข้มของการติดสี IHC
+positive	ผลบวก, ติดสีบวก	“นิวเคลียสที่ติดสี DAB บวก”
+threshold	ค่าเกณฑ์	
+channel	ช่องสัญญาณ	ช่องฟลูออเรสเซนซ์หรือช่องที่คำนวณขึ้น ไม่แปลชื่อช่องสัญญาณ
+multiplex immunofluorescence (mIF)	อิมมูโนฟลูออเรสเซนซ์แบบมัลติเพล็กซ์ (mIF)	
+marker	มาร์กเกอร์	ไม่แปลชื่อมาร์กเกอร์ (CD3, Ki-67, PanCK)
+focal plane (Z)	ระนาบโฟกัส (Z)	
+Z-stack	Z-stack	
+time point (T)	จุดเวลา (T)	
+time series	อนุกรมเวลา	
+heat map	แผนที่ความร้อน	
+colour map	ชุดสีไล่ระดับ	ชุดสีของแผนที่ความร้อน
+overlay	ภาพซ้อนทับ	กราฟิกที่วาดทับบนสไลด์
+layer	เลเยอร์	
+opacity	ความทึบ	0–100%
+colour profile, ICC profile	โปรไฟล์สี, โปรไฟล์ ICC	
+colour management, colour-managed	การจัดการสี, จัดการสีแล้ว	
+colours as scanned	สีตามที่สแกน	ไม่มีการจัดการสี
+scan, scanner	สแกน, เครื่องสแกน	
+tissue	เนื้อเยื่อ	
+tissue QC	QC เนื้อเยื่อ	การควบคุมคุณภาพเนื้อเยื่อที่สแกน “Check Tissue Quality” = “ตรวจคุณภาพเนื้อเยื่อ”
+pen marks	รอยปากกา	
+folds	รอยพับ	รอยพับของเนื้อเยื่อ
+blur, out of focus	ภาพเบลอ, หลุดโฟกัส	
+tissue detection, tissue mask	การตรวจหาเนื้อเยื่อ, มาสก์เนื้อเยื่อ	
+background	พื้นหลัง	
+dataset	ชุดข้อมูล	
+patch extraction	การตัดแพตช์	
+stride	ระยะเลื่อน	ระยะห่างระหว่างแพตช์ที่อยู่ติดกัน
+white threshold	ค่าเกณฑ์สีขาว	สัดส่วนพื้นที่สีขาว (พื้นหลัง) ที่ใช้คัดแพตช์ออก
+export	ส่งออก	
+save a copy	บันทึกสำเนา	
+convert	แปลง	
+de-identify, de-identified	ลบข้อมูลระบุตัวตน, ไม่มีข้อมูลระบุตัวตน	ลบข้อมูลที่อาจระบุตัวผู้ป่วยได้ (ภาพฉลาก เมทาดาทา)
+label image	ภาพฉลาก	ภาพถ่ายฉลากกระดาษของสไลด์ อาจระบุตัวผู้ป่วยได้
+macro image	ภาพมาโคร	ภาพถ่ายสไลด์แก้วทั้งแผ่น
+thumbnail	ภาพขนาดย่อ	
+overview	ภาพรวม	
+metadata	เมทาดาทา	
+property (slide)	คุณสมบัติ	
+vendor	ผู้ผลิต	
+bookmark	บุ๊กมาร์ก	มุมมองของสไลด์ที่บันทึกไว้
+session	เซสชัน	
+recent files	ไฟล์ล่าสุด	
+plugin	ปลั๊กอิน	
+package (.eop)	แพ็กเกจ (.eop)	
+plugin API	API ของปลั๊กอิน	
+model, model store	โมเดล, คลังโมเดล	โมเดลการเรียนรู้ของเครื่องและที่เก็บโมเดลของ eov
+inference	การอนุมาน	การรันโมเดลกับภาพ
+render, renderer	เรนเดอร์, ตัวเรนเดอร์	“ตัวเรนเดอร์ GPU” CPU และ GPU คงตามเดิม
+backend	แบ็กเอนด์	
+filtering (bilinear, trilinear, Lanczos)	การกรอง (ไบลิเนียร์, ไตรลิเนียร์, Lanczos)	Lanczos เป็นชื่อ ไม่แปล
+sharpness	ความคมชัด	
+gamma	แกมมา	
+brightness	ความสว่าง	
+contrast	คอนทราสต์	
+adjustment	การปรับแต่ง	
+theme (dark, light, high contrast)	ธีม (มืด, สว่าง, คอนทราสต์สูง)	
+colour palette	ชุดสี	
+colour-blind safe	สำหรับผู้ตาบอดสี	ชุดสีของช่องสัญญาณ
+Check for Updates…	ตรวจหาการอัปเดต…	ถามก่อนเชื่อมต่ออินเทอร์เน็ตเสมอ ห้ามสื่อว่าอัปเดตอัตโนมัติเบื้องหลัง
+update (n. / v.)	การอัปเดต / อัปเดต	
+up to date	เป็นเวอร์ชันล่าสุด	
+release	รุ่น	“บันทึกประจำรุ่น” (release notes)
+version	เวอร์ชัน	
+install, uninstall	ติดตั้ง, ถอนการติดตั้ง	
+download	ดาวน์โหลด	
+update helper	ตัวช่วยอัปเดต	eov-update-helper เป็นชื่อโปรแกรม ไม่แปล
+staged (installed after eov exits)	รอติดตั้ง	ติดตั้งหลังจากออกจาก eov
+roll back	ย้อนกลับไปเวอร์ชันก่อนหน้า	
+signature, signed, verified	ลายเซ็น, ลงนามแล้ว, ตรวจสอบแล้ว	
+administrator policy	นโยบายของผู้ดูแลระบบ	
+safe mode	เซฟโหมด	
+restart	เริ่มใหม่	“เริ่ม eov ใหม่”
+crash	ขัดข้อง	“รายงานข้อขัดข้อง”
+file	ไฟล์	
+folder, directory	โฟลเดอร์	
+path	เส้นทาง	
+file manager	ตัวจัดการไฟล์	
+clipboard	คลิปบอร์ด	
+log folder	โฟลเดอร์บันทึก	
+keyboard shortcut	แป้นพิมพ์ลัด	
+key (keyboard)	แป้น	ชื่อแป้น (Ctrl, Shift, Esc) คงตามเดิม
+hotkey	ปุ่มลัด	
+right-click	คลิกขวา	
+drag and drop	ลากและวาง	
+message (notification)	ข้อความ	
+error / warning / information	ข้อผิดพลาด / คำเตือน / ข้อมูล	
+operating system	ระบบปฏิบัติการ	
+thread	เธรด	
+official (plugin)	ทางการ	“ปลั๊กอินทางการ”
+Annotations (plugin name)	แอนโนเทชัน	ชื่อเชิงพรรณนา จึงแปล
+Gamepad (plugin name)	เกมแพด	
+Example Plugin	ปลั๊กอินตัวอย่าง	
+Cellaris, eovae/EOVAE, HistoVAE	Cellaris, eovae/EOVAE, HistoVAE	ชื่อผลิตภัณฑ์ ไม่แปล
+Open	เปิด	
+Open File	เปิดไฟล์	
+Open Folder…	เปิดโฟลเดอร์…	
+Close	ปิด	
+Cancel	ยกเลิก	
+OK	ตกลง	
+Confirm	ยืนยัน	
+Save, Save…	บันทึก, บันทึก…	
+Save As…	บันทึกเป็น…	
+Export…	ส่งออก…	
+Import	นำเข้า	
+Delete	ลบ	
+Remove	เอาออก	เอาออกจากรายการหรือจากมุมมอง การลบไฟล์หรือข้อมูลถาวรใช้ “ลบ”
+Clear	ล้าง	
+Settings	การตั้งค่า	
+Apply	นำไปใช้	
+Reset	รีเซ็ต	
+Reset to Defaults	คืนค่าเริ่มต้น	
+Show / Hide	แสดง / ซ่อน	
+Toggle …	แสดง/ซ่อน …	ปุ่มสลับสถานะ
+Copy	คัดลอก	“คัดลอกแล้ว”
+Paste	วาง	
+Undo / Redo	เลิกทำ / ทำซ้ำ	
+Add	เพิ่ม	
+Edit	แก้ไข	
+Enable / Disable	เปิดใช้งาน / ปิดใช้งาน	สถานะ: เปิดใช้งานอยู่ / ปิดใช้งานอยู่
+Update (button)	อัปเดต	
+Check (button)	ตรวจสอบ	
+Done	เสร็จสิ้น	
+Download (button)	ดาวน์โหลด	
+Retry	ลองอีกครั้ง	
+Back / Forward / Up	ย้อนกลับ / ไปข้างหน้า / ขึ้น	
+Next / Previous	ถัดไป / ก่อนหน้า	
+Filter	ตัวกรอง, กรอง	
+Order (sort)	เรียงลำดับ	
+Preview	แสดงตัวอย่าง	
+Loading…	กำลังโหลด…	
+Ready	พร้อม	
+Language	ภาษา	
+Automatic (System Default)	อัตโนมัติ (ค่าเริ่มต้นของระบบ)	
+Full screen	เต็มหน้าจอ	
+Quit	ออก	
+Window	หน้าต่าง	
+Tools	เครื่องมือ	
+Navigate, navigation	นำทาง, การนำทาง	
+Change	เปลี่ยน	
+Unknown	ไม่ทราบ	
+None	ไม่มี	
+Could not … / Cannot …	ไม่สามารถ…ได้ / …ไม่ได้	รายงานความล้มเหลว
+… failed	…ไม่สำเร็จ	
+Format	รูปแบบ	รูปแบบไฟล์
+Quality	คุณภาพ	
+Resolution	ความละเอียด	
+Compression	การบีบอัด	
+lossless	ไม่สูญเสียข้อมูล	
+Colour	สี	
+Units	หน่วย	
+micrometres, millimetres	ไมโครเมตร, มิลลิเมตร	หน่วย µm, mm คงตามเดิม
+Keyboard Shortcuts	แป้นพิมพ์ลัด	
+N/A (not recorded)	ไม่มีข้อมูล	ไฟล์ไม่ได้บันทึกค่านี้ไว้
+language names (Language name context)	อังกฤษ, เยอรมัน, ญี่ปุ่น, …	ไม่ขึ้นต้นด้วย “ภาษา” ตามรายการภาษาของ Windows/macOS ชื่อภาษาไทยจึงตรงกับชื่อเดิม “ไทย” ในประโยคเขียน “ภาษา{current}”
+window (display range of a channel)	ช่วงการแสดงผล	ไม่ใช่หน้าต่างโปรแกรม
+Solo (show one channel alone)	เดี่ยว	ปุ่ม “เดี่ยว” คำอธิบาย “แสดงเฉพาะ {}”
+figure (export dialog section)	องค์ประกอบภาพ	แถบมาตราส่วนและหมายเหตุการประมวลผลที่เพิ่มในภาพส่งออก
+downsample	อัตราการย่อ	
+label (slide label)	ฉลาก	
+repository	ที่เก็บ	ที่เก็บ GitHub
+release manifest	แมนิเฟสต์ของรุ่น	release.toml
+artifact (release)	อาร์ทิแฟกต์	ไฟล์ของรุ่นสำหรับแต่ละแพลตฟอร์ม
+catalog (plugin catalog)	แค็ตตาล็อก	“แค็ตตาล็อกปลั๊กอินทางการ”
+plugin registry	ทะเบียนปลั๊กอิน	
+build (n.)	บิลด์	“บิลด์สำหรับการพัฒนา”
+bundle (Flatpak, macOS app)	บันเดิล	“บันเดิล Flatpak” “แอปบันเดิล macOS”
+archive (ZIP)	ไฟล์เก็บถาวร	“แตกไฟล์” = extract
+input / output	อินพุต / เอาต์พุต	กล่องโต้ตอบส่งออกชุดข้อมูล
+event (programming)	เหตุการณ์	
+preset	พรีเซ็ต	“พรีเซ็ตสีย้อม H-DAB”
+proxy, firewall, certificate	พร็อกซี, ไฟร์วอลล์, ใบรับรอง	ชื่อการตั้งค่า (HTTPS_PROXY, SSL_CERT_FILE) คงตามเดิม
+Undo {} / Redo {}	เลิกทำ: {} / ทำซ้ำ: {}	{} คือชื่อการกระทำ
+inches and mils	นิ้วและมิล	ปุ่มหน่วย “in/mil” = “นิ้ว/มิล”
+stain methods (Giemsa, Gram, Ziehl–Neelsen, Masson trichrome, Congo red, Alcian blue, Van Gieson, Reticulin, …)	กีมซา, แกรม, ซีล–นีลเซน, แมสสันไตรโครม, คองโกเรด, อัลเชียนบลู, แวนกีสัน, เรติคูลิน, …	ทับศัพท์ตามตำราจุลพยาธิวิทยาไทย “การย้อม{}”
+one-letter labels (R, G, B; L, G, S; H, E)	R, G, B; L, G, S; H, E	คงอักษรละติน คำอธิบายเต็มอยู่ในชื่อสำหรับเทคโนโลยีช่วยเหลือ
+colour names	แดง, ส้ม, เหลือง, เขียว, ฟ้าอมเขียว, น้ำเงิน, ม่วง, ชมพู, ขาว, เทา, ดำ, กรมท่า	ไม่ต้องใส่คำว่า “สี” ในรายการสี
+Grey (colour map)	ระดับเทา	ชุดสีไล่ระดับของแผนที่ความร้อน ต่างจากสีเทา (เทา)
+Solid / Dashed / Dotted (stroke)	เส้นทึบ / เส้นประ / เส้นจุด	
+Round / Square / Flat (line caps)	มน / เหลี่ยม / ตัดตรง	“ปลายเส้น” = Caps
+Area (whole slide / region of interest)	ขอบเขต	กล่องโต้ตอบบันทึกสำเนา ไม่ใช่พื้นที่ที่วัดได้
+Viewport lock	ล็อกพื้นที่แสดงภาพ	เชื่อมมุมมองของบานหน้าต่างที่แสดงสไลด์เดียวกัน
+Recently Opened	เปิดล่าสุด	“Recent Files” = “ไฟล์ล่าสุด”
+Open Containing Folder	เปิดโฟลเดอร์ที่เก็บไฟล์	
+Messages (panel), Open Log Folder	ข้อความ, เปิดโฟลเดอร์บันทึก	อ้างถึงในประโยคด้วย “ข้อความ”
+is available (new version)	พร้อมให้ใช้งานแล้ว	“eov {} พร้อมให้ใช้งานแล้ว”
+necrosis, fibrin	เนื้อตาย, ไฟบริน	
+condition number	เลขเงื่อนไข	การประมาณค่าสีย้อมที่ไม่เสถียรเชิงตัวเลข
+order: A–Z / Newest / Stain / Case	A–Z / ใหม่ล่าสุด / การย้อม / เคส	การเรียงลำดับแถบชุดสไลด์
+{}-positive (DAB-positive)	ผลบวก {}	“ผลบวก DAB”
+Isolated channel (export)	ช่องสัญญาณเดี่ยว	ฮีมาทอกซิลินหรืออีโอซินเพียงอย่างเดียว
+Hotkey ignored	ละเว้นปุ่มลัด	
+HPF field (annotations)	ลาน HPF	ลานสายตากำลังขยายสูงที่วางบนสไลด์ ลักษณนาม “ลาน” “{} /HPF field” = “{} /ลาน HPF” หัวข้อ HIGH-POWER FIELDS = “ลานสายตากำลังขยายสูง”
+field number (FN, eyepiece)	เลขลานสายตา	ป้ายสั้นคง “FN (mm)”
+Count tab, Count tool, count points	นับเซลล์, เครื่องมือนับ, จุดนับ	“Clear counts” = “ล้างผลการนับ”
+region (annotation shape)	บริเวณ	ลักษณนาม “บริเวณ” “Add to region / Cut from region” = “เพิ่มเข้าในบริเวณ / ตัดออกจากบริเวณ”
+outline, Repair	เส้นขอบ, ซ่อมแซม	“Repair outline” = “ซ่อมเส้นขอบ” “crosses itself” = “ตัดกันเอง” “even-odd rule” = “กฎคู่-คี่ (even-odd)”
+shape, vertex, hole	รูปทรง, จุดยอด, รู	
+polygon, rectangle, ellipse	รูปหลายเหลี่ยม, สี่เหลี่ยมผืนผ้า, วงรี	
+arrow, text label	ลูกศร, ป้ายข้อความ	ลักษณนามลูกศร “อัน”
+Line / path (polyline)	เส้น / เส้นหลายช่วง	ไม่ใช้ “เส้นทาง” ซึ่งหมายถึง path ของไฟล์
+brush, eraser	แปรง, ยางลบ	“Brush stroke” = “ระบายด้วยแปรง” “Erase” = “ลบด้วยยางลบ”
+Unclassified	ไม่มีคลาส	แอนโนเทชันที่ไม่มีคลาส
+review status: Draft / Verified / Rejected	ฉบับร่าง / ตรวจสอบแล้ว / ปฏิเสธแล้ว	“Review status” = “สถานะการตรวจทาน”
+author (annotations, exports)	ผู้สร้าง	“Unknown author” = “ไม่ทราบผู้สร้าง”
+notes (layer)	หมายเหตุ	
+lock / unlock	ล็อก / ปลดล็อก	สถานะ “ล็อกอยู่”
+attach (annotations of another slide)	แนบ	
+merge, back up (database)	ผสาน, สำรอง	“Merge a database…” = “ผสานฐานข้อมูล…” “Back up…” = “สำรอง…”
+database, read-only	ฐานข้อมูล, อ่านอย่างเดียว	
+second reader, blinded copy	ผู้อ่านผลคนที่สอง, สำเนาแบบปกปิด	การอ่านผลซ้ำแบบอิสระโดยผู้อ่านอีกคน
+combined positive score (CPS)	คะแนนผลบวกรวม (CPS)	PD-L1 “PD-L1-positive” = “ให้ผลบวกต่อ PD-L1”
+tumour cells, immune cells	เซลล์เนื้องอก, เซลล์ภูมิคุ้มกัน	
+DICOM bulk annotations	แอนโนเทชัน DICOM แบบ bulk	ชื่อ IOD/แอตทริบิวต์ DICOM (Microscopy Bulk Simple Annotations, SOP Class UID) คงภาษาอังกฤษ
+DICOM study, attribute	การตรวจ (study), แอตทริบิวต์	Patient/Study/Series = ผู้ป่วย/การตรวจ/ชุด
+coordinates	พิกัด	
+readout (Cellaris region readout)	การอ่านค่า, ผลการอ่านค่า	“Cellaris region readout” = “การอ่านค่าบริเวณของ Cellaris”
+cell (Cellaris grid cell)	ช่องกริด	ช่องสี่เหลี่ยมของสไลด์ที่ทำนายพร้อมกัน ไม่ใช่เซลล์ทางชีววิทยา ลักษณนาม “ช่อง”
+window (model input, Cellaris)	หน้าต่างภาพ	ภาพสี่เหลี่ยมจัตุรัสที่โมเดลใช้ทำนาย ลักษณนาม “หน้าต่าง” ต่างจาก display window = ช่วงการแสดงผล
+tissue block (5 µm square)	บล็อกเนื้อเยื่อ	สี่เหลี่ยมเนื้อเยื่อขนาด 5 µm ไม่ใช่บล็อกพาราฟิน ลักษณนาม “บล็อก”
+legend	คำอธิบายสัญลักษณ์	
+bright-field	สนามสว่าง	
+training data, trained at	ข้อมูลฝึกสอน, ฝึกที่	
+reconstruction, reconstruction error	ภาพที่สร้างคืน, ค่าความคลาดเคลื่อนการสร้างคืน	ตัวเลือกภาพซ้อนทับ Original/Reconstruction/Error map/Difference = ต้นฉบับ/ภาพสร้างคืน/แผนที่ความคลาดเคลื่อน/ผลต่าง
+model card, sidecar file	การ์ดโมเดล, ไฟล์ sidecar	
+runtime, batch, preprocessing	รันไทม์, แบตช์, การประมวลผลล่วงหน้า	ONNX Runtime คงชื่อ
+your site's copy/model	สำเนา/โมเดลของหน่วยงานคุณ	สำเนาโมเดลภายในองค์กร
+Cellaris palette colours	เหลือง, บานเย็น, เขียวอมฟ้า, ฟ้า, ส้ม, แดงชาด	yellow, magenta, bluish green, sky blue, orange, vermilion
+game controller	คอนโทรลเลอร์ (เกม)	ลักษณนาม “ตัว”
+stick, trigger, D-Pad, shoulder button, dead zone	สติก, ทริกเกอร์, D-Pad, ปุ่มไหล่, เดดโซน	ปุ่มหน้า South/East/North/West = ปุ่มด้านล่าง/ขวา/บน/ซ้าย
+mappings (gamepad)	การกำหนดปุ่ม	
+pointer (system pointer)	ตัวชี้	“Move Pointer” = “เลื่อนตัวชี้”
+marker (example plugin)	เครื่องหมาย	จุดที่วางบนสไลด์ ไม่ใช่มาร์กเกอร์โปรตีน

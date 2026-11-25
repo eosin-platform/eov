@@ -1,0 +1,124 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: example_plugin\n"
+"Report-Msgid-Bugs-To: https://github.com/eosin-platform/eov/issues\n"
+"Language-Team: Hindi\n"
+"Language: hi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Review-Status: machine-translated; not yet reviewed by a native speaker\n"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid ""
+"Demonstrates toolbar buttons, a sidebar, overlay layers, a point tool with "
+"undo, a filter and background jobs."
+msgstr ""
+"टूलबार बटन, साइडबार, ओवरले परतें, पूर्ववत करने की सुविधा वाला बिंदु टूल, एक फ़िल्टर और "
+"पृष्ठभूमि कार्य प्रदर्शित करता है।"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example Plugin"
+msgstr "उदाहरण प्लगइन"
+
+#: plugin.toml
+msgctxt "plugin.toml"
+msgid "Example checkerboard slides"
+msgstr "उदाहरण चेकरबोर्ड स्लाइडें"
+
+#: src/lib.rs:52
+msgid "Example sidebar"
+msgstr "उदाहरण साइडबार"
+
+#: src/lib.rs:59
+msgid "Place marker"
+msgstr "मार्कर रखें"
+
+#: src/lib.rs:66
+msgid "Invert colours"
+msgstr "रंग उलटें"
+
+#: src/lib.rs:75
+msgid "Invert"
+msgstr "उलटें"
+
+#: src/lib.rs:84
+msgid "Tissue fraction and mean tissue colour of each slide"
+msgstr "हर स्लाइड का ऊतक अंश और माध्य ऊतक रंग"
+
+#: src/lib.rs:87
+msgid "Read the finest level with at most this many pixels"
+msgstr "अधिकतम इतने पिक्सेल वाला सबसे अधिक रिज़ॉल्यूशन वाला स्तर पढ़ें"
+
+#: src/lib.rs:95
+msgid "Markers"
+msgstr "मार्कर"
+
+#: src/lib.rs:218
+msgid "Marker {}"
+msgstr "मार्कर {}"
+
+#: src/lib.rs:242
+msgid "Add marker"
+msgstr "मार्कर जोड़ना"
+
+#: src/lib.rs:266
+msgid "Counting to ten"
+msgstr "दस तक गिनती"
+
+#. Translators: the progress of the background job, e.g. "3 of 10"
+#: src/lib.rs:273
+msgid "{step} of {total}"
+msgstr "{total} में से {step}"
+
+#: src/lib.rs:616
+msgid "Add marker here"
+msgstr "यहाँ मार्कर जोड़ें"
+
+#. Translators: the answer to the sidebar's Describe button
+#: src/lib.rs:649
+msgid "{n} marker on the open slides"
+msgid_plural "{n} markers on the open slides"
+msgstr[0] "खुली स्लाइडों पर {n} मार्कर"
+msgstr[1] "खुली स्लाइडों पर {n} मार्कर"
+
+#: ui/example-sidebar.slint:29
+msgctxt "ExampleSidebar"
+msgid "Example plugin"
+msgstr "उदाहरण प्लगइन"
+
+#: ui/example-sidebar.slint:35
+msgctxt "ExampleSidebar"
+msgid "No slide"
+msgstr "कोई स्लाइड नहीं"
+
+#: ui/example-sidebar.slint:42
+msgctxt "ExampleSidebar"
+msgid "{n} marker"
+msgid_plural "{n} markers"
+msgstr[0] "{n} मार्कर"
+msgstr[1] "{n} मार्कर"
+
+#: ui/example-sidebar.slint:46
+msgctxt "ExampleSidebar"
+msgid "Clear markers"
+msgstr "मार्कर साफ़ करें"
+
+#: ui/example-sidebar.slint:52
+msgctxt "ExampleSidebar"
+msgid "Invert colours"
+msgstr "रंग उलटें"
+
+#: ui/example-sidebar.slint:59
+msgctxt "ExampleSidebar"
+msgid "Run background job"
+msgstr "पृष्ठभूमि कार्य चलाएँ"
+
+#: ui/example-sidebar.slint:65
+msgctxt "ExampleSidebar"
+msgid "Describe"
+msgstr "वर्णन करें"

@@ -17,6 +17,7 @@
 //! corrupt the directory or the registry.
 
 use anyhow::{Context, Result, bail};
+use eov_plugin_api::i18n::{isolate, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
@@ -82,7 +83,73 @@ impl ManagedRegistry {
     }
 }
 
-/// Reads the registry; a missing file is an empty registry.
+/// Why the registry cannot be read. `Display` says it in English, and so
+/// does `{:#}` of an error holding it, with the system's or the TOML
+/// reader's words after it (the log, the command line); [`shown_error`]
+/// says it in the interface's language, for the window. eov reads the
+/// registry at every start, and logs why it could not.
+#[derive(Debug, thiserror::Error)]
+pub enum RegistryError {
+    #[error("could not read plugin registry {}", .path.display())]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("could not parse plugin registry {}", .path.display())]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+    #[error(
+        "plugin registry {} uses schema {schema}, which this eov does not support",
+        .path.display()
+    )]
+    Schema { path: PathBuf, schema: u32 },
+}
+
+impl RegistryError {
+    /// Why, in the interface's language, without the words of the system
+    /// or the TOML reader (its `source`, the next cause of an error that
+    /// holds it): see [`shown_error`].
+    fn shown_reason(&self) -> String {
+        match self {
+            RegistryError::Read { path, .. } => {
+                tr!("could not read plugin registry {}", isolate(path.display()))
+            }
+            RegistryError::Parse { path, .. } => tr!(
+                "could not parse plugin registry {}",
+                isolate(path.display())
+            ),
+            // Translators: {schema} is the number of the file's format.
+            RegistryError::Schema { path, schema } => tr!(
+                "plugin registry {file} uses schema {schema}, which this eov does not support",
+                file = isolate(path.display()),
+                schema = schema
+            ),
+        }
+    }
+}
+
+/// `error` as the window shows it: every cause, joined with ": " as `{:#}`
+/// writes them (the log keeps that English), with the registry's reasons
+/// ([`RegistryError`]) in the interface's language. For the errors of what
+/// reads the registry (listing, enabling, updating or removing plugins,
+/// planning an update of eov).
+pub fn shown_error(error: &anyhow::Error) -> String {
+    error
+        .chain()
+        .map(|cause| match cause.downcast_ref::<RegistryError>() {
+            Some(registry) => registry.shown_reason(),
+            None => cause.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(": ")
+}
+
+/// Reads the registry; a missing file is an empty registry. An error is a
+/// [`RegistryError`].
 pub fn load(plugin_dir: &Path) -> Result<ManagedRegistry> {
     let path = plugin_dir.join(REGISTRY_FILENAME);
     let path = if path.exists() {
@@ -107,16 +174,20 @@ pub fn load(plugin_dir: &Path) -> Result<ManagedRegistry> {
     if !path.exists() {
         return Ok(ManagedRegistry::default());
     }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("could not read plugin registry {}", path.display()))?;
-    let registry: ManagedRegistry = toml::from_str(&content)
-        .with_context(|| format!("could not parse plugin registry {}", path.display()))?;
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(source) => return Err(RegistryError::Read { path, source }.into()),
+    };
+    let registry: ManagedRegistry = match toml::from_str(&content) {
+        Ok(registry) => registry,
+        Err(source) => return Err(RegistryError::Parse { path, source }.into()),
+    };
     if registry.schema != REGISTRY_SCHEMA {
-        bail!(
-            "plugin registry {} uses schema {}, which this eov does not support",
-            path.display(),
-            registry.schema
-        );
+        return Err(RegistryError::Schema {
+            path,
+            schema: registry.schema,
+        }
+        .into());
     }
     Ok(registry)
 }
@@ -128,7 +199,12 @@ pub fn save(plugin_dir: &Path, registry: &ManagedRegistry) -> Result<()> {
     staged
         .persist(&target)
         .map_err(|error| error.error)
-        .with_context(|| format!("could not write plugin registry {}", target.display()))?;
+        .with_context(|| {
+            tr!(
+                "could not write plugin registry {}",
+                isolate(target.display())
+            )
+        })?;
     sync_directory(plugin_dir);
     Ok(())
 }
@@ -138,7 +214,7 @@ pub fn save(plugin_dir: &Path, registry: &ManagedRegistry) -> Result<()> {
 /// deleted if the returned handle is dropped without being persisted.
 pub fn stage(plugin_dir: &Path, registry: &ManagedRegistry) -> Result<tempfile::NamedTempFile> {
     fs::create_dir_all(plugin_dir)
-        .with_context(|| format!("could not create {}", plugin_dir.display()))?;
+        .with_context(|| tr!("could not create {}", isolate(plugin_dir.display())))?;
     let mut file = tempfile::Builder::new()
         .prefix(".eov-managed-")
         .suffix(".tmp")
@@ -201,7 +277,7 @@ impl Drop for PluginDirLock {
 pub fn acquire_lock_file(path: &Path, what: &str) -> Result<(File, PathBuf)> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .with_context(|| format!("could not create {}", parent.display()))?;
+            .with_context(|| tr!("could not create {}", isolate(parent.display())))?;
     }
     let file = OpenOptions::new()
         .read(true)
@@ -209,7 +285,7 @@ pub fn acquire_lock_file(path: &Path, what: &str) -> Result<(File, PathBuf)> {
         .create(true)
         .truncate(false)
         .open(path)
-        .with_context(|| format!("could not open lock file {}", path.display()))?;
+        .with_context(|| tr!("could not open lock file {}", isolate(path.display())))?;
     let start = Instant::now();
     let mut announced = false;
     loop {
@@ -224,16 +300,23 @@ pub fn acquire_lock_file(path: &Path, what: &str) -> Result<(File, PathBuf)> {
                     announced = true;
                 }
                 if start.elapsed() > LOCK_TIMEOUT {
+                    let minutes = LOCK_TIMEOUT.as_secs() / 60;
                     bail!(
-                        "another eov process has been holding {} for over {} minutes; try again later",
-                        path.display(),
-                        LOCK_TIMEOUT.as_secs() / 60
+                        "{}",
+                        // Translators: {path} is a lock file.
+                        tr!(
+                            "another eov process has been holding {path} for over {n} minute; try again later"
+                                | "another eov process has been holding {path} for over {n} minutes; try again later"
+                                    % minutes,
+                            path = isolate(path.display())
+                        )
                     );
                 }
                 std::thread::sleep(Duration::from_millis(200));
             }
             Err(fs::TryLockError::Error(error)) => {
-                return Err(error).with_context(|| format!("could not lock {}", path.display()));
+                return Err(error)
+                    .with_context(|| tr!("could not lock {}", isolate(path.display())));
             }
         }
     }
@@ -306,6 +389,94 @@ mod tests {
         fs::write(temp.path().join(REGISTRY_FILENAME), "schema = 7\n").unwrap();
         assert!(load(temp.path()).is_err());
         assert!(disabled_plugins(temp.path()).is_empty());
+    }
+
+    /// eov reads the registry at every start and logs why it could not:
+    /// in English, as eov wrote it before it was translated, and without
+    /// the marks that keep a path in order in right-to-left languages. The
+    /// window says it in its language.
+    #[test]
+    fn load_errors_are_english_for_the_log() {
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(REGISTRY_FILENAME);
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 2] = [
+            (
+                None,
+                "could not parse plugin registry {}",
+                &["Plugin-Verzeichnis {} ist nicht lesbar"],
+            ),
+            (
+                None,
+                "plugin registry {file} uses schema {schema}, which this eov does not support",
+                &["Plugin-Verzeichnis {file} hat das Schema {schema}, das dieses eov nicht kennt"],
+            ),
+        ];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+
+        fs::write(&path, "schema = 7\n").unwrap();
+        let error = load(temp.path()).unwrap_err();
+        assert_eq!(
+            format!("{error:#}"),
+            format!(
+                "plugin registry {} uses schema 7, which this eov does not support",
+                path.display()
+            )
+        );
+        assert_eq!(
+            shown_error(&error),
+            format!(
+                "Plugin-Verzeichnis {} hat das Schema 7, das dieses eov nicht kennt",
+                path.display()
+            )
+        );
+        // What other code says around it stays (each cause, as `{:#}`).
+        let around = error.context("Plugins could not be listed");
+        assert_eq!(
+            shown_error(&around),
+            format!(
+                "Plugins could not be listed: Plugin-Verzeichnis {} hat das Schema 7, das \
+                 dieses eov nicht kennt",
+                path.display()
+            )
+        );
+
+        fs::write(&path, "schema = \"one\"\n").unwrap();
+        let error = load(temp.path()).unwrap_err();
+        let toml_error = toml::from_str::<ManagedRegistry>("schema = \"one\"\n").unwrap_err();
+        assert_eq!(
+            format!("{error:#}"),
+            format!(
+                "could not parse plugin registry {}: {toml_error}",
+                path.display()
+            )
+        );
+        assert_eq!(
+            shown_error(&error),
+            format!(
+                "Plugin-Verzeichnis {} ist nicht lesbar: {toml_error}",
+                path.display()
+            )
+        );
+
+        i18n::set_catalog(i18n::by_tag("he").unwrap(), None);
+        let error = load(temp.path()).unwrap_err();
+        assert!(!format!("{error:#}").contains('\u{2068}'));
+        assert!(shown_error(&error).contains('\u{2068}'));
+        // Errors that are not the registry's: as `{:#}` writes them.
+        let other = anyhow::anyhow!("disk full").context("could not save");
+        assert_eq!(shown_error(&other), "could not save: disk full");
     }
 
     #[test]

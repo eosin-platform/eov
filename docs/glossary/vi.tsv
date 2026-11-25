@@ -1,0 +1,346 @@
+term	translation	note
+(register: you)	bạn	Address the user as “bạn” (as Windows, macOS and Android do in Vietnamese) and only when needed; prefer impersonal phrasing. Never “mày/cậu”, never the stiff “quý vị”.
+(buttons, menu items)	imperative verb, sentence case	Mở, Lưu, Đóng, Hủy, Xuất…; no English Title Case: only the first word and proper nouns are capitalised (Mở gần đây, Lưu bản sao…).
+(spelling)	traditional tone-mark placement; y in Sino-Vietnamese words	hóa, xóa, khóa, hòa, thủy, hủy, tùy; lý, kỹ, tỷ lệ, kỹ thuật. Keep it uniform.
+(quotation marks)	“…”	Curly double quotes around names and values (“{}”); straight quotes only inside commands to type.
+(ellipsis)	…	Keep the single character … of menu items that open a dialog (also for "..." in the source).
+(percent, units)	50%, 20 µm, 20×	No space before %; a space between a number and µm/mm/px/MB; 20× stays 20×.
+(punctuation)	no space before : ; ? !	As in English. Because the decimal separator is a comma, write intervals and coordinates with semicolons: (0; 1], ({x}; {y}); the list separator is “; ”.
+For research and education. Not a medical device; not for primary diagnosis.	Dành cho nghiên cứu và giáo dục. Không phải là thiết bị y tế; không dùng để chẩn đoán chính thức.	Safety text: translate in full, never shorten or soften.
+research use only (RUO)	chỉ dùng cho nghiên cứu (RUO)	Phrase printed on RUO reagents; keep RUO.
+not a medical device	không phải là thiết bị y tế	thiết bị y tế (trang thiết bị y tế in legal texts).
+primary diagnosis	chẩn đoán chính thức	The diagnosis of record of a case (regulatory “primary diagnosis”). Never “chẩn đoán sơ bộ” or “chẩn đoán ban đầu”, which read as preliminary and would weaken the restriction.
+synthetic (image, channel, stain)	tổng hợp	Computed by an algorithm (ảnh tổng hợp, kênh tổng hợp). Never “giả”, “nhân tạo” or “mô phỏng”.
+predicted	dự đoán	kênh dự đoán, màu nhuộm dự đoán.
+generated	được tạo	ảnh được tạo (bằng mô hình).
+computed	được tính toán
+slide	tiêu bản	The glass microscope slide with its specimen, and its scan. Never “trang chiếu”. The bare glass = lam kính.
+whole-slide image (WSI)	ảnh toàn bộ tiêu bản (WSI)	Keep WSI (tệp WSI, ảnh WSI). “Whole Slide Image Viewer” = Trình xem ảnh toàn bộ tiêu bản.
+slide viewer	trình xem tiêu bản
+viewer	trình xem
+tab	thẻ	As browser tabs in Vietnamese (thẻ mới, đóng thẻ). Home (tab) = Trang chủ.
+pane	ngăn	One of the side-by-side viewing areas (Microsoft term); distinct from “bảng” (panel).
+focused pane	ngăn đang chọn
+panel	bảng	Channels panel = bảng Kênh; Plugins panel = bảng Plugin.
+view	khung nhìn	Position, zoom and rotation shown in a pane. Menu “View” = Xem.
+viewport	vùng hiển thị	Area of a pane where the slide is drawn.
+viewport lock	khóa vùng hiển thị
+minimap	bản đồ thu nhỏ
+scale bar	thanh tỷ lệ
+HUD	bảng nổi	The floating panels over the slide; metadata HUD = bảng nổi siêu dữ liệu.
+toolbar	thanh công cụ
+sidebar	thanh bên
+status bar	thanh trạng thái
+series bar	thanh loạt tiêu bản	The bar listing the slides of a folder or case.
+series (of slides)	loạt tiêu bản
+menu, context menu	menu, menu ngữ cảnh
+dialog	hộp thoại
+window	cửa sổ
+zoom	thu phóng	Screen scale (mức thu phóng). 100% = one image pixel per screen pixel.
+Zoom in / Zoom out	Phóng to / Thu nhỏ
+magnification	độ phóng đại	20× stays 20×.
+optical-equivalent zoom	độ phóng đại quang học tương đương
+objective	vật kính	objective power = độ phóng đại vật kính.
+pixel	điểm ảnh	px stays px.
+pixel size	kích thước điểm ảnh
+MPP (µm per pixel)	MPP (µm trên mỗi điểm ảnh)	MPP stays MPP; µm/px stays µm/px.
+calibration	hiệu chuẩn
+level, pyramid level	mức, mức kim tự tháp	level-0 pixels = điểm ảnh mức 0; L{level} = Mức {level} (no letter abbreviation).
+pyramid (image pyramid)	kim tự tháp ảnh
+tile	ô ảnh	Square piece of the image loaded at a time. In the Export Dataset dialog “Tile Size” is the patch size = Kích thước mảnh ảnh.
+patch (dataset)	mảnh ảnh	Small image cut from a slide for machine learning.
+patch extraction	trích xuất mảnh ảnh
+stride	bước nhảy	Step between patches.
+dataset	tập dữ liệu
+white threshold	ngưỡng trắng
+cache	bộ nhớ đệm
+region of interest (ROI)	vùng quan tâm (ROI)	Keep ROI as the abbreviation.
+measurement	số đo	The result; the act = phép đo. Measurements panel = bảng Số đo.
+Measure (tool)	Đo	Tool name (công cụ Đo); verb đo.
+Navigate (tool)	Điều hướng	Tool name (công cụ Điều hướng).
+ruler	thước đo
+distance, length, area, perimeter, angle	khoảng cách, chiều dài, diện tích, chu vi, góc
+annotation	chú thích	A drawn mark with a meaning; not “bình luận/nhận xét” (comment). Annotations plugin = Chú thích.
+class (annotation class)	loại	Tumour, Stroma… Never “lớp”, which is a layer.
+cell count, counting	đếm tế bào, đếm
+high-power field (HPF)	vi trường độ phóng đại lớn (HPF)	Keep HPF as the abbreviation.
+H&E	H&E	Never translated.
+hematoxylin	hematoxylin	Abbreviation H.
+eosin	eosin	Abbreviation E.
+IHC	IHC	hóa mô miễn dịch when spelled out.
+DAB	DAB	Brown chromogen; DAB-positive = dương tính DAB.
+stain (dye: hematoxylin, eosin, DAB)	thuốc nhuộm	Isolated stain = thuốc nhuộm được tách riêng; Stain to measure = Thuốc nhuộm cần đo.
+stain (staining method: H&E, IHC)	phương pháp nhuộm, nhuộm	by stain = theo phương pháp nhuộm; stained with H&E = nhuộm H&E.
+stain (the colours of a slide)	màu nhuộm	stain colours of a slide.
+stain normalization	chuẩn hóa màu nhuộm	Macenko, Vahadane stay as they are.
+colour normalisation, colour-normalised	chuẩn hóa màu, đã chuẩn hóa màu	Same feature as stain normalization, following the English wording.
+stain target	màu nhuộm đích	The appearance normalization maps a slide onto.
+stain model	mô hình nhuộm	H&E, H-DAB…
+stain vectors	vectơ màu nhuộm	reference stain vectors = vectơ màu nhuộm tham chiếu.
+reference (vectors, H&E)	tham chiếu
+fit the stains	ước lượng màu nhuộm	Estimating the stain vectors from a region.
+color deconvolution	giải chập màu	Ruifrok–Johnston.
+optical density	mật độ quang
+intensity	cường độ	weak / moderate / strong = yếu / trung bình / mạnh (1+, 2+, 3+).
+H-score	H-score
+quantify	định lượng	Quantify Stain = Định lượng thuốc nhuộm.
+channel	kênh
+multiplex immunofluorescence (mIF)	miễn dịch huỳnh quang đa kênh (mIF)
+marker	dấu ấn	Marker names (CD3, Ki-67, PanCK) are never translated.
+focal plane (Z)	mặt phẳng tiêu cự (Z)
+Z-stack	chồng ảnh Z
+time point (T)	thời điểm (T)
+time series	chuỗi thời gian
+heat map	bản đồ nhiệt
+colour map	thang màu
+overlay	lớp phủ
+layer	lớp
+opacity	độ mờ đục	0–100%.
+threshold	ngưỡng
+tissue	mô
+background	nền
+tissue QC	QC mô	kiểm soát chất lượng mô when spelled out.
+grid cell (QC grid)	ô lưới	Never “tế bào”.
+pen marks	vết bút	Marker-pen ink on the slide.
+folds	nếp gấp	possible folds = có thể là nếp gấp.
+blur, out of focus	mờ, mất nét	blurred areas = vùng bị mờ.
+tissue detection	phát hiện mô
+tissue mask	mặt nạ mô
+export (verb / noun)	xuất / bản xuất
+save a copy	lưu bản sao
+convert	chuyển đổi
+de-identify, de-identified	khử định danh, đã khử định danh	Not “ẩn danh hóa”: text inside the tissue image is not removed.
+label (of a slide), label image	nhãn, ảnh nhãn
+macro image	ảnh macro	Photo of the whole glass slide.
+thumbnail	ảnh thu nhỏ
+overview (image)	ảnh tổng quan
+associated image	ảnh đi kèm	Label, macro, thumbnail.
+metadata	siêu dữ liệu
+property, properties	thuộc tính
+case (accession)	ca bệnh	The patient case the slides belong to; by case = theo ca bệnh.
+bookmark	dấu trang	A saved view of a slide.
+session	phiên làm việc	this session = phiên này.
+plugin	plugin	Loanword, no plural; plugin API = API plugin.
+package (.eop)	gói (.eop)	plugin package = gói plugin.
+model	mô hình	Machine-learning model.
+model store	kho mô hình	eov's storage for model files.
+inference	suy luận
+render, rendering	kết xuất
+renderer	trình kết xuất	GPU renderer = trình kết xuất GPU; software renderer = trình kết xuất phần mềm.
+backend (CPU, GPU)	phần xử lý (CPU, GPU)	CPU, GPU stay.
+graphics adapter	bộ điều hợp đồ họa
+filtering	lọc	Filtering mode = Chế độ lọc.
+bilinear, trilinear, Lanczos	song tuyến tính, tam tuyến tính, Lanczos	Lanczos is a name. The narrow toolbar box uses Song tuyến / Tam tuyến.
+sharpness	độ sắc nét
+gamma	gamma
+brightness	độ sáng
+contrast	độ tương phản	Auto contrast = Tương phản tự động.
+theme	chủ đề	Dark = Tối; Light = Sáng; High Contrast = Tương phản cao.
+Home screen, Home (tab)	trang chủ, Trang chủ	The start page with recent slides.
+Check for Updates…	Kiểm tra bản cập nhật…	Asks before going online; never imply automatic updates.
+update (noun / verb)	bản cập nhật / cập nhật
+self-update	cập nhật trong ứng dụng	eov updating itself when asked; never “tự động”.
+update helper	trình hỗ trợ cập nhật	eov-update-helper stays.
+release	bản phát hành	latest release = bản phát hành mới nhất.
+prerelease	bản phát hành thử nghiệm
+release notes	ghi chú phát hành
+version	phiên bản
+release manifest, plugin manifest	tệp kê khai phát hành, tệp kê khai plugin
+artifact (release)	tệp phát hành	artifact [{}] = tệp phát hành [{}].
+asset (GitHub release)	tệp đính kèm	GitHub release asset = tệp đính kèm của bản phát hành GitHub.
+catalog	danh mục	plugin catalog = danh mục plugin.
+repository	kho lưu trữ	GitHub repository = kho lưu trữ GitHub.
+tag (release)	tag	release tag = tag phát hành (loanword, as in Git).
+staged (update)	chờ áp dụng	Downloaded and installed by the update helper after eov exits.
+app bundle (macOS)	gói ứng dụng
+Flatpak bundle	gói Flatpak
+cask, tap (Homebrew)	cask, tap	Homebrew terms stay.
+sandbox, host (Flatpak)	sandbox, hệ thống chủ	host = the system outside the Flatpak sandbox.
+administrator, administrator policy	quản trị viên, chính sách của quản trị viên	policy file = tệp chính sách.
+signature, signed	chữ ký, đã ký
+verify, verified	xác minh, đã xác minh
+SHA-256 digest, checksum	mã băm SHA-256, tổng kiểm
+download	tải xuống
+install, uninstall	cài đặt, gỡ cài đặt	Settings is also “Cài đặt” (platform usage); context tells them apart.
+installation	bản cài đặt	this installation = bản cài đặt này.
+proxy	proxy
+network	mạng
+offline	ngoại tuyến
+safe mode	chế độ an toàn
+crash, crashed	sự cố, gặp sự cố	crash report = báo cáo sự cố.
+log, log folder	nhật ký, thư mục nhật ký
+colour management	quản lý màu
+colour profile (ICC)	cấu hình màu (ICC)
+colour-managed	đã quản lý màu
+as scanned	như khi quét	Colours as scanned = Màu như khi quét.
+scan, scanned, scanner	quét, đã quét, máy quét
+vendor	nhà sản xuất
+landmark	điểm mốc	Alignment landmark = điểm mốc căn chỉnh.
+alignment, align	căn chỉnh
+link / unlink (panes)	liên kết / hủy liên kết
+split	chia	Split Right = Chia sang phải.
+pan	di chuyển khung nhìn
+rotate, rotation	xoay, góc xoay
+flip horizontally	lật ngang	Unflip = Bỏ lật.
+fit	vừa khung	Fit the slide to the pane = Hiển thị vừa tiêu bản trong ngăn.
+Maximize / Minimize (window)	Phóng to / Thu nhỏ	As Windows does.
+Open	Mở	Open Recent = Mở gần đây.
+Close	Đóng
+Cancel	Hủy
+OK	OK
+Confirm	Xác nhận
+Save	Lưu	Save As… = Lưu thành…
+Delete	Xóa	Data or files are deleted.
+Remove	Gỡ bỏ / Xóa	Gỡ bỏ = take out of a list or view (nothing deleted); Xóa when data is deleted.
+Clear	Xóa hết	Clear Recent Files = Xóa danh sách tệp gần đây.
+Add	Thêm
+Edit	Chỉnh sửa
+Rename	Đổi tên
+Copy	Sao chép	Copy All = Sao chép tất cả.
+Paste	Dán
+Undo	Hoàn tác	Undo {} = Hoàn tác: {}.
+Redo	Làm lại	Redo {} = Làm lại: {}.
+Import	Nhập
+Export	Xuất
+Restart	Khởi động lại
+Quit	Thoát
+Retry	Thử lại
+Dismiss	Bỏ qua
+Enable, disable	Bật, tắt	Enabled = Đã bật; Disabled = Đã tắt.
+Show, hide	Hiện, ẩn	Toggle X = Hiện/ẩn X.
+Apply	Áp dụng
+Reset	Đặt lại	Reset to Defaults = Khôi phục mặc định.
+Restore	Khôi phục
+Settings	Cài đặt
+Preferences	Tùy chọn
+Filter	Lọc / bộ lọc
+Search	Tìm kiếm
+Select	Chọn	Select All = Chọn tất cả.
+Browse…, Choose…	Duyệt…, Chọn…
+Back, Forward, Up (folders)	Quay lại, Tiến tới, Lên thư mục cha
+Next, Previous	tiếp theo, trước	Next tab = Thẻ tiếp theo.
+Done	Xong
+Ready	Sẵn sàng
+Loading…	Đang tải…
+Error, Warning, Information	Lỗi, Cảnh báo, Thông tin
+Messages (status bar popup)	Thông báo
+Details	Chi tiết
+Help, About	Trợ giúp, Giới thiệu	About eov = Giới thiệu về eov.
+Default	Mặc định
+Automatic	Tự động	Automatic (System Default) = Tự động (theo hệ thống).
+None	Không có
+Name	Tên
+Size	Kích thước	file size = dung lượng.
+Width / Height	Chiều rộng / Chiều cao
+Format	Định dạng
+Quality	Chất lượng
+Compression, lossless	Nén, không mất dữ liệu
+resolution, DPI	độ phân giải, DPI
+folder, file, path	thư mục, tệp, đường dẫn	file name = tên tệp.
+parent folder	thư mục cha
+file manager	trình quản lý tệp
+archive (zip, tar)	tệp nén	release archive = tệp nén của bản phát hành.
+recent files	tệp gần đây	Recently Opened = Đã mở gần đây.
+preview	xem trước
+invalid	không hợp lệ
+unsupported	không được hỗ trợ
+Cannot … / Could not …	Không thể …
+N/A (not recorded)	Không có
+byte, bytes	byte	Unit symbols stay as written: MB, GiB.
+thread, UI thread	luồng, luồng giao diện
+clipboard	bảng nhớ tạm
+full screen	toàn màn hình
+keyboard shortcut, hotkey	phím tắt	Keyboard Shortcuts panel = Phím tắt.
+key (keyboard)	phím	no key = không có phím.
+Ctrl, Shift, Alt, Esc, Enter, Tab	Ctrl, Shift, Alt, Esc, Enter, Tab	Key names stay as written; they match the keys eov shows.
+key (cryptographic)	khóa
+tooltip	chú giải công cụ
+language	ngôn ngữ	Language names: “tiếng Đức” in running text, “Tiếng Đức” as a list item.
+units	đơn vị	Micrometres = Micromet (µm); Millimetres = Milimet (mm).
+inch, mil	inch, mil
+stroke: solid, dashed, dotted	nét: liền, đứt, chấm	Dash length = Độ dài nét gạch; Gap between dashes = Khoảng cách giữa các nét gạch.
+caps: round, square, flat	đầu nét: tròn, vuông, bằng
+outline	đường viền
+colour palette	bảng màu	Colour-blind safe (palette button) = Cho người mù màu; Okabe–Ito stays.
+histogram	biểu đồ tần suất
+brush	cọ	Annotation tools (plugins).
+polygon, rectangle, ellipse, point	đa giác, hình chữ nhật, hình elip, điểm
+nucleus, nuclei	nhân tế bào
+database	cơ sở dữ liệu
+gamepad, controller	tay cầm chơi game, tay cầm
+pointer	con trỏ
+latent space	không gian tiềm ẩn
+reconstruction	tái tạo
+composite (colour composite)	ảnh phối màu	Never “tổng hợp”, which is reserved for synthetic.
+display window (channels)	cửa sổ hiển thị	Lower end / upper end = giới hạn dưới / giới hạn trên.
+Solo (channel button)	Riêng	Show {} alone = Chỉ hiện {}.
+chromogen	chất tạo màu	DAB, AEC.
+special stains	Ba màu Masson, Đỏ Congo, Xanh Alcian, Sợi chun, Xanh Phổ Perls, Bạc methenamine Grocott, Mucicarmin, Xanh methyl	Giemsa, Reticulin, Van Gieson, Gram, Ziehl–Neelsen, Ponceau-fuchsin, PAS stay as written.
+downsample (factor)	hệ số giảm mẫu
+placement (heat map)	định vị
+figure (export section)	hình minh họa
+script	tập lệnh	(script) after a job title = (tập lệnh).
+registry (plugin registry)	sổ đăng ký
+schema (file format version)	lược đồ
+portable (Windows)	portable	Loanword: thư mục portable trên Windows.
+signed comment (signature)	phần ghi chú đã ký	Not “chú thích” (= annotation).
+one-letter labels	R, G, B; H, E; D (độ dài nét), K (khoảng cách)	RGB and H/E stay; dash length = D, gap / dot spacing = K.
+job title in “Cancel {}” / “{} failed”	Hủy: {} / {}: thất bại	Job titles are “Đang …” phrases, so they follow a colon.
+lock, locked, unlock (layer, annotation)	khóa, đã khóa / đang bị khóa, mở khóa	Status label = Đã khóa; in messages “Lớp “{}” đang bị khóa.”
+comment (on an annotation)	nhận xét	Never “chú thích” (annotation) or “bình luận”.
+notes (of a layer)	ghi chú
+description, property, author	mô tả, thuộc tính, tác giả
+review status: Draft, Verified, Rejected	trạng thái duyệt: Nháp, Đã xác minh, Bị từ chối	Mark verified = Đánh dấu là đã xác minh.
+reader, second reader	người đọc, người đọc thứ hai	Inter-observer comparison (annotations plugin).
+blinded copy	bản sao làm mù	Copy without authors, comments, statuses, descriptions or properties.
+outline crosses itself	đường viền tự cắt chính nó	Self-intersecting outline; repaired with the even-odd rule = quy tắc chẵn-lẻ.
+shape, vertex, hole (of a polygon)	hình, đỉnh, lỗ
+freehand outline	đường viền tự do
+line / path (tool)	đường thẳng / đường gấp khúc	Annotation kind Line = Đường.
+text label	nhãn văn bản
+HPF field	vi trường HPF	Place HPF field = Đặt vi trường HPF.
+field number (FN, eyepiece)	số trường (FN)	FN (mm) stays.
+count point, Count tool	điểm đếm, công cụ Đếm	Clear counts = Xóa hết điểm đếm; Count tab = thẻ Đếm.
+active class	loại đang dùng
+combined positive score (CPS)	điểm dương tính kết hợp (CPS)	PD-L1; tumour cells = tế bào u; immune cells = tế bào miễn dịch.
+95% confidence interval	KTC 95%	(KTC 95%: {low}–{high}).
+Feret diameter, min caliper	đường kính lớn nhất (Feret), đường kính nhỏ nhất (Feret)	Min caliper = smallest width over all directions.
+DICOM bulk annotations	chú thích hàng loạt DICOM	Microscopy Bulk Simple Annotations, SOP Class UID, modality ANN and other DICOM attribute names stay in English.
+DICOM series, study, patient	chuỗi DICOM, study, người bệnh	As eov: “(chuỗi DICOM, {n} tệp)”; study stays as the DICOM term.
+eov annotation archive	tệp lưu trữ chú thích eov	A JSON file with every slide’s annotations (not a compressed archive).
+merge, back up (database)	hợp nhất, sao lưu	Merge… = Hợp nhất…; Back up… = Sao lưu….
+attach (annotations of another slide)	gắn	Attach = Gắn.
+Bring them in (old annotations)	Đưa vào
+slide identity	định danh tiêu bản
+hotkey	phím tắt	Set class hotkey = Đặt phím tắt cho loại.
+click, Shift+click, double-click, drag	nhấp, Shift+nhấp, nhấp đúp, kéo	Ctrl+click selects several = Ctrl+nhấp để chọn nhiều.
+brush, eraser, erase	cọ, tẩy / chế độ tẩy, tẩy	Brush stroke = Nét cọ.
+legend (of an overlay)	chú giải	Never “chú thích” (annotation).
+region readout (Cellaris)	đo vùng, kết quả đo	Tool “Cellaris region readout” = Đo vùng Cellaris; REGION READOUT = ĐO VÙNG.
+window (model input, Cellaris/eovae)	cửa sổ	Square image the model predicts from; {n} s per window = {n} giây mỗi cửa sổ.
+cell (Cellaris computation square)	ô	Not a biological cell: never “tế bào” there.
+tissue block (Cellaris, 5 µm square)	khối mô	near-black block = khối gần như đen.
+mean, spread, density r² (readout columns)	TB, phân tán, r² mật độ	Narrow columns; the note spells out TB (trung bình).
+bright-field	trường sáng	not bright-field H&E = không phải ảnh H&E trường sáng.
+upsample, resample	tăng mẫu, lấy mẫu lại	Downsample = giảm mẫu.
+ONNX Runtime library, runtime	thư viện ONNX Runtime, runtime	Choose runtime… = Chọn runtime…; model card label Runtime stays.
+model card	thẻ mô hình
+training data, trained at	dữ liệu huấn luyện, huấn luyện ở
+inference engine, session (ONNX)	công cụ suy luận, phiên	Building CPU session… = Đang tạo phiên CPU….
+batch (inference), dynamic / fixed batch	lô, lô động / lô cố định	Batch parameter values (auto, cpu, cuda, off, store, reuse, lo,hi) stay.
+reconstruction, reconstruction error	ảnh tái tạo, sai số tái tạo	Overlays: Original = Ảnh gốc; Reconstruction = Ảnh tái tạo; Error map = Bản đồ sai số; Difference = Chênh lệch.
+MAE, median, p95	MAE, trung vị, p95	MAE = sai số tuyệt đối trung bình when spelled out.
+preprocessing, sidecar file	tiền xử lý, tệp đi kèm	Sidecar = the model’s <model>.eovae.json.
+embeddings	vectơ nhúng
+result cache	bộ nhớ đệm kết quả
+reference model, your site’s model	mô hình tham chiếu, mô hình của cơ sở bạn	site = the user’s institution (cơ sở).
+Load ONNX… (eovae button)	Mở ONNX…	“Tải” is kept for download/loading messages; the button opens a file.
+stick, trigger, D-Pad, shoulder button	cần, cò, D-Pad, nút vai	Left Stick X = Cần trái X; face buttons by position: Nút dưới/phải/trên/trái.
+dead zone, response curve	vùng chết, đường cong phản hồi	Stick drift = hiện tượng trôi cần.
+profile (gamepad)	hồ sơ	Save As (profile) = Lưu thành.
+mappings (gamepad)	gán nút	Move Pointer (mapping) = Di chuyển con trỏ.
+system pointer	con trỏ hệ thống	macOS: Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Trợ năng.
+has focus (window)	đang được chọn	while eov has focus = khi cửa sổ eov đang được chọn.
+marker (placed point, example plugin)	điểm đánh dấu	Not a biomarker (dấu ấn).
+background job	tác vụ nền
+legend colours (Okabe–Ito)	vàng, hồng cánh sen, xanh ngọc, xanh da trời, cam, đỏ son	yellow, magenta, bluish green, sky blue, orange, vermilion.

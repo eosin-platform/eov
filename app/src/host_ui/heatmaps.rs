@@ -15,6 +15,7 @@ use crate::HeatMapPanel;
 use crate::overlay::store::{Owner, StoredRaster};
 use crate::{AppWindow, ChoiceItem};
 use eov_common::heatmap::{self, ColorMap, HeatMap, HeatStyle, Placement, SlideRect};
+use eov_plugin_api::i18n::{self, isolate, tr};
 use eov_plugin_api::protocol::{FileId, LayerSpec, LayerUpdate, Rect};
 use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
@@ -33,6 +34,12 @@ const LAYER_PREFIX: &str = "host-heatmap-";
 /// file records one, else over the whole slide.
 const AUTO_PLACEMENT: &str = "auto";
 
+/// Why a map has no place: kept in English (as eov_common gives its
+/// reasons) and translated when the panel shows it, see
+/// [`placement_problem_text`].
+const SLIDE_CLOSED: &str = "the slide is closed";
+const TYPE_A_NUMBER: &str = "Type a positive number.";
+
 fn layer_id(file_id: i32) -> String {
     format!("{LAYER_PREFIX}{file_id}")
 }
@@ -47,8 +54,18 @@ struct Shown {
     path: PathBuf,
     map: Arc<HeatMap>,
     placement: Placement,
-    /// What the user typed for a downsample or pixel size.
+    /// The scale field's text: what the user typed for a downsample or
+    /// pixel size, or `scale` as eov wrote it.
     scale_text: String,
+    /// The last number the scale field held. It is kept while the
+    /// placement does not use one (choosing Downsample or µm per pixel
+    /// again finds it), and it is what the field shows after a change of
+    /// language: text is only ever read in the language it was written in
+    /// ("4.032" is four thousand and thirty-two in German).
+    scale: Option<f64>,
+    /// Whether `scale_text` is `scale` written out (not text being typed
+    /// that is not a number).
+    scale_text_is_scale: bool,
     color_map: ColorMap,
     threshold: f32,
     opacity: f32,
@@ -151,11 +168,7 @@ fn placement_from(id: &str, scale: Option<f64>) -> Placement {
 }
 
 fn parse_scale(text: &str) -> Option<f64> {
-    text.trim()
-        .replace(',', ".")
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite() && *value > 0.0)
+    i18n::parse_decimal(text).filter(|value| *value > 0.0)
 }
 
 impl Shown {
@@ -192,8 +205,8 @@ impl UiHost {
 
     fn choose_heatmap(&self, file_id: i32) {
         let Some(path) = rfd::FileDialog::new()
-            .set_title("Heat map")
-            .add_filter("Images", &["png", "jpg", "jpeg", "tif", "tiff"])
+            .set_title(tr!("Heat map"))
+            .add_filter(tr!("Images"), &["png", "jpg", "jpeg", "tif", "tiff"])
             .pick_file()
         else {
             return;
@@ -224,7 +237,7 @@ impl UiHost {
         if !saved.path.is_file() {
             self.notify(
                 NotifyLevel::Info,
-                "The heat map shown on this slide before was not found",
+                &tr!("The heat map shown on this slide before was not found"),
                 Some(&saved.path.display().to_string()),
                 None,
             );
@@ -235,7 +248,7 @@ impl UiHost {
 
     /// Reads `settings.path` on a worker and shows it over `file_id`.
     fn load_heatmap(&self, file_id: i32, settings: Saved, open_panel: bool) {
-        let job = self.start_host_job("Reading the heat map", None);
+        let job = self.start_host_job(&tr!("Reading the heat map"), None);
         let spawned = std::thread::Builder::new()
             .name("eov-heatmap-read".to_string())
             .spawn({
@@ -277,7 +290,7 @@ impl UiHost {
                     .unwrap_or_default();
                 self.notify(
                     NotifyLevel::Error,
-                    &format!("Could not show {name} as a heat map"),
+                    &tr!("Could not show {} as a heat map", isolate(&name)),
                     Some(&error),
                     None,
                 );
@@ -293,11 +306,17 @@ impl UiHost {
         } else {
             placement_from(&settings.placement, settings.scale)
         };
+        // The number saved, when it is one the field takes.
+        let scale = settings
+            .scale
+            .filter(|value| value.is_finite() && *value > 0.0);
         let shown = Shown {
             path: settings.path.clone(),
             map: Arc::new(map),
             placement,
             scale_text: settings.scale.map(trim_number).unwrap_or_default(),
+            scale,
+            scale_text_is_scale: scale == settings.scale,
             color_map: ColorMap::from_id(&settings.color_map).unwrap_or_default(),
             threshold: settings.threshold.clamp(0.0, 1.0) as f32,
             opacity: settings.opacity.clamp(0.0, 1.0) as f32,
@@ -326,7 +345,7 @@ impl UiHost {
         let state = self.state.read();
         let file = state
             .get_file(file_id)
-            .ok_or_else(|| "the slide is closed".to_string())?;
+            .ok_or_else(|| SLIDE_CLOSED.to_string())?;
         let props = file.wsi.properties();
         let bounds = props.bounds.map(|b| SlideRect {
             x: b.x as f64,
@@ -456,7 +475,7 @@ impl UiHost {
 
     // -- the panel -----------------------------------------------------------------
 
-    fn refresh_heatmap_panel(&self) {
+    pub(super) fn refresh_heatmap_panel(&self) {
         let Some(ui) = self.ui() else {
             return;
         };
@@ -481,14 +500,20 @@ impl UiHost {
 
     pub(super) fn heatmap_placement_chosen(&self, id: &str) {
         self.edit_heatmap(true, |shown| {
-            let scale = parse_scale(&shown.scale_text);
             shown.placement = match id {
-                "downsample" | "micrometres" => placement_from(id, scale.or(Some(1.0))),
+                "downsample" | "micrometres" => {
+                    // The field's number (the text is not read again: it
+                    // was read as it was typed), else 1.
+                    let value = shown.scale.unwrap_or(1.0);
+                    if shown.scale.is_none() || !shown.scale_text_is_scale {
+                        shown.scale_text = trim_number(value);
+                        shown.scale_text_is_scale = true;
+                    }
+                    shown.scale = Some(value);
+                    placement_from(id, Some(value))
+                }
                 other => placement_from(other, None),
             };
-            if matches!(id, "downsample" | "micrometres") && scale.is_none() {
-                shown.scale_text = "1".to_string();
-            }
         });
     }
 
@@ -497,6 +522,10 @@ impl UiHost {
         // A number being typed keeps the map where it is until it is valid.
         self.edit_heatmap(value.is_some(), |shown| {
             shown.scale_text = text.to_string();
+            shown.scale_text_is_scale = value.is_some();
+            if value.is_some() {
+                shown.scale = value;
+            }
             match (shown.placement, value) {
                 (Placement::Downsample(_), Some(value)) => {
                     shown.placement = Placement::Downsample(value)
@@ -505,7 +534,7 @@ impl UiHost {
                     shown.placement = Placement::Micrometres(value)
                 }
                 (Placement::Downsample(_) | Placement::Micrometres(_), None) => {
-                    shown.placed = Err("Type a positive number.".to_string());
+                    shown.placed = Err(TYPE_A_NUMBER.to_string());
                 }
                 _ => {}
             }
@@ -596,6 +625,23 @@ impl UiHost {
     pub(super) fn has_heatmap(&self, file_id: i32) -> bool {
         SHOWN.with(|all| all.borrow().contains_key(&file_id))
     }
+
+    /// The interface changed language: the scale of every map (also of
+    /// slides whose panel is closed) is written again with the new decimal
+    /// separator, from its number. Text that is not a number is left as it
+    /// was typed. Nothing is placed or saved again: the numbers are the
+    /// same.
+    pub(super) fn heatmap_language_changed(&self) {
+        SHOWN.with(|all| {
+            for shown in all.borrow_mut().values_mut() {
+                if shown.scale_text_is_scale
+                    && let Some(value) = shown.scale
+                {
+                    shown.scale_text = trim_number(value);
+                }
+            }
+        });
+    }
 }
 
 /// The map's tiles, coloured, as rasters over `rect` (worker thread).
@@ -628,18 +674,106 @@ fn colour_tiles(
         .collect()
 }
 
+/// A number for the scale field, with the language's decimal separator
+/// (written again when the language changes, see
+/// [`UiHost::heatmap_language_changed`]).
 fn trim_number(value: f64) -> String {
     let text = format!("{value:.4}");
-    text.trim_end_matches('0').trim_end_matches('.').to_string()
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    let separator = i18n::current().decimal_separator;
+    if separator == '.' {
+        text.to_string()
+    } else {
+        text.replacen('.', &separator.to_string(), 1)
+    }
 }
 
-fn choices(items: &[(&str, &str)]) -> ModelRc<ChoiceItem> {
+/// Why a map cannot be placed, in the language of the interface: the
+/// reasons eov_common gives (in English) and this module's own. `None`
+/// for a reason this list does not know.
+fn known_placement_problem(problem: &str) -> Option<String> {
+    Some(match problem {
+        "the file does not say where it lies" => tr!("the file does not say where it lies"),
+        "the slide does not report a scanned region" => {
+            tr!("the slide does not report a scanned region")
+        }
+        "the downsample must be a positive number" => {
+            tr!("the downsample must be a positive number")
+        }
+        "the pixel size must be a positive number" => {
+            tr!("the pixel size must be a positive number")
+        }
+        "the slide has no pixel size; set it in Slide Information, or place the map another way" => {
+            tr!(
+                "the slide has no pixel size; set it in Slide Information, or place the map another way"
+            )
+        }
+        "the heat map would cover nothing" => tr!("the heat map would cover nothing"),
+        SLIDE_CLOSED => tr!("the slide is closed"),
+        TYPE_A_NUMBER => tr!("Type a positive number."),
+        _ => return None,
+    })
+}
+
+fn placement_problem_text(problem: &str) -> String {
+    known_placement_problem(problem).unwrap_or_else(|| problem.to_string())
+}
+
+/// How the map's values are shown, in the language of the interface
+/// (eov_common describes it in English, with `.` before the decimals of
+/// its numbers). `None` for a description this list does not know.
+fn known_scaling(scaling: &str) -> Option<String> {
+    let number = |text: &str| isolate(crate::ui_update::localized_number(text));
+    Some(match scaling {
+        "8-bit values, 0–255 shown as 0–1" => tr!("8-bit values, 0–255 shown as 0–1"),
+        "16-bit values, 0–65535 shown as 0–1" => tr!("16-bit values, 0–65535 shown as 0–1"),
+        "grey pixels, 0–255 shown as 0–1" => tr!("grey pixels, 0–255 shown as 0–1"),
+        "colour image, drawn as it is" => tr!("colour image, drawn as it is"),
+        // Translators: how a heat map's values are shown: they all lie
+        // between 0 and 1 and are shown as they are.
+        "values 0–1" => tr!("values 0–1"),
+        // Translators: how a heat map's values are shown: it holds no
+        // number at all (every pixel is empty).
+        "no finite values" => tr!("no finite values"),
+        other => {
+            if let Some((min, max)) = other
+                .strip_prefix("values ")
+                .and_then(|rest| rest.strip_suffix(" shown as 0–1"))
+                .and_then(|range| range.split_once(" to "))
+            {
+                tr!(
+                    "values {min} to {max} shown as 0–1",
+                    min = number(min),
+                    max = number(max)
+                )
+            } else {
+                let value = other.strip_prefix("every value is ")?;
+                tr!("every value is {}", number(value))
+            }
+        }
+    })
+}
+
+fn scaling_text(scaling: &str) -> String {
+    known_scaling(scaling).unwrap_or_else(|| scaling.to_string())
+}
+
+/// A colour map's name in the language of the interface (the others are
+/// names of their own).
+fn color_map_label(map: ColorMap) -> String {
+    match map {
+        ColorMap::Gray => tr!("Colour map" => "Grey"),
+        other => other.label().to_string(),
+    }
+}
+
+fn choices(items: &[(&str, String)]) -> ModelRc<ChoiceItem> {
     ModelRc::from(Rc::new(VecModel::from(
         items
             .iter()
             .map(|(id, label)| ChoiceItem {
                 id: (*id).into(),
-                label: (*label).into(),
+                label: label.into(),
             })
             .collect::<Vec<_>>(),
     )))
@@ -654,48 +788,68 @@ fn legend_image(color_map: ColorMap) -> Image {
 }
 
 fn describe_rect(rect: &SlideRect, slide_wide: bool) -> String {
-    let whole = if slide_wide { " (the whole slide)" } else { "" };
-    format!(
-        "Covers {} × {} level-0 pixels from ({}, {}){whole}.",
+    let (width, height, x, y) = (
         rect.width.round(),
         rect.height.round(),
         rect.x.round(),
-        rect.y.round()
-    )
+        rect.y.round(),
+    );
+    if slide_wide {
+        tr!(
+            "Covers {width} × {height} level-0 pixels from ({x}, {y}) (the whole slide).",
+            width = width,
+            height = height,
+            x = x,
+            y = y
+        )
+    } else {
+        tr!(
+            "Covers {width} × {height} level-0 pixels from ({x}, {y}).",
+            width = width,
+            height = height,
+            x = x,
+            y = y
+        )
+    }
 }
 
 fn fill_panel(ui: &AppWindow, slide_name: &str, has_bounds: bool, shown: &Shown) {
     let panel = ui.global::<HeatMapPanel>();
-    panel.set_title(format!("Heat Map · {slide_name}").into());
+    panel.set_title(tr!("Heat Map · {}", isolate(slide_name)).into());
     let name = shown
         .path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     panel.set_summary(
-        format!(
-            "{name} · {} × {} px · {}",
-            shown.map.width, shown.map.height, shown.map.scaling
+        // Translators: the heat map's file name, its size in pixels and
+        // how its values are shown.
+        tr!(
+            "{name} · {width} × {height} px · {scaling}",
+            name = isolate(&name),
+            width = shown.map.width,
+            height = shown.map.height,
+            scaling = scaling_text(&shown.map.scaling)
         )
         .into(),
     );
     let mut placements = Vec::new();
     if shown.map.geometry.is_some() {
-        placements.push(("from-file", "As the file says"));
+        placements.push(("from-file", tr!("As the file says")));
     }
-    placements.push(("fit-slide", "Fit the slide"));
+    placements.push(("fit-slide", tr!("Fit the slide")));
     if has_bounds {
-        placements.push(("fit-bounds", "Fit the scanned region"));
+        placements.push(("fit-bounds", tr!("Fit the scanned region")));
     }
-    placements.push(("downsample", "Downsample"));
-    placements.push(("micrometres", "µm per pixel"));
+    placements.push(("downsample", tr!("Heat map placement" => "Downsample")));
+    placements.push(("micrometres", tr!("µm per pixel")));
     panel.set_placements(choices(&placements));
     panel.set_placement(shown.placement.id().into());
     panel.set_scale_label(
         match shown.placement {
-            Placement::Downsample(_) => "Level-0 pixels per map pixel",
-            Placement::Micrometres(_) => "Micrometres per map pixel",
-            _ => "",
+            Placement::Downsample(_) => tr!("Level-0 pixels per map pixel"),
+            Placement::Micrometres(_) => tr!("Micrometres per map pixel"),
+            _ => String::new(),
         }
         .into(),
     );
@@ -705,14 +859,14 @@ fn fill_panel(ui: &AppWindow, slide_name: &str, has_bounds: bool, shown: &Shown)
             describe_rect(rect, shown.placement == Placement::FitSlide),
             true,
         ),
-        Err(problem) => (problem.clone(), false),
+        Err(problem) => (placement_problem_text(problem), false),
     };
     panel.set_placement_note(note.into());
     panel.set_placement_ok(ok);
     panel.set_scalar(shown.map.is_scalar());
-    let maps: Vec<(&str, &str)> = ColorMap::ALL
+    let maps: Vec<(&str, String)> = ColorMap::ALL
         .iter()
-        .map(|map| (map.id(), map.label()))
+        .map(|map| (map.id(), color_map_label(*map)))
         .collect();
     panel.set_color_maps(choices(&maps));
     panel.set_color_map(shown.color_map.id().into());
@@ -843,6 +997,87 @@ mod tests {
         });
     }
 
+    /// A change of language writes the scale again in the new language's
+    /// notation, from its number. Text written in one language is never
+    /// read in another ("4.032" is four thousand and thirty-two in German),
+    /// so a placement chosen after the change keeps the number, and the
+    /// number saved stays the same.
+    #[test]
+    fn the_scale_keeps_its_number_when_the_language_changes() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            /// Back to English when the test ends, also when it fails.
+            struct English<'a>(&'a AppWindow);
+            impl Drop for English<'_> {
+                fn drop(&mut self) {
+                    crate::i18n::switch_to(self.0, i18n::source());
+                }
+            }
+            let setup = crate::test_support::HostWithSlide::new();
+            let _english = English(&setup.ui);
+            let (host, file_id) = (&setup.host, setup.file_id);
+            let map = HeatMap {
+                width: 4,
+                height: 3,
+                values: HeatValues::Scalar(vec![0.5; 12]),
+                scaling: "values 0–1".to_string(),
+                geometry: None,
+            };
+            let settings = Saved {
+                path: PathBuf::from("/maps/attention.png"),
+                // 0.252 µm/px × 16.
+                placement: "micrometres".to_string(),
+                scale: Some(4.032),
+                color_map: "viridis".to_string(),
+                threshold: 0.0,
+                opacity: 0.5,
+                smooth: false,
+                visible: true,
+            };
+            host.heatmap_read(file_id, settings, Ok(map), true);
+            let panel = setup.ui.global::<HeatMapPanel>();
+            // The placement, and the scale that would be saved.
+            let shown = || {
+                SHOWN.with(|all| {
+                    let all = all.borrow();
+                    (all[&file_id].placement, all[&file_id].saved().scale)
+                })
+            };
+            assert_eq!(panel.get_scale_text(), "4.032");
+
+            let german = i18n::by_tag("de").unwrap();
+            crate::i18n::switch_to(&setup.ui, german);
+            assert_eq!(panel.get_scale_text(), "4,032");
+            // The chip already chosen, then another placement and back.
+            host.heatmap_placement_chosen("micrometres");
+            assert_eq!(shown(), (Placement::Micrometres(4.032), Some(4.032)));
+            host.heatmap_placement_chosen("fit-slide");
+            assert_eq!(shown(), (Placement::FitSlide, None));
+            host.heatmap_placement_chosen("micrometres");
+            assert_eq!(shown(), (Placement::Micrometres(4.032), Some(4.032)));
+            assert_eq!(panel.get_scale_text(), "4,032");
+
+            // Typed in German, then read in English.
+            host.heatmap_placement_chosen("downsample");
+            host.heatmap_scale_edited("2,125");
+            assert_eq!(shown(), (Placement::Downsample(2.125), Some(2.125)));
+            crate::i18n::switch_to(&setup.ui, i18n::source());
+            assert_eq!(panel.get_scale_text(), "2.125");
+            host.heatmap_placement_chosen("downsample");
+            assert_eq!(shown(), (Placement::Downsample(2.125), Some(2.125)));
+            host.heatmap_placement_chosen("micrometres");
+            assert_eq!(shown(), (Placement::Micrometres(2.125), Some(2.125)));
+
+            // Text that is not a number stays as it was typed; a placement
+            // chosen then takes the last number the field held.
+            host.heatmap_scale_edited("-");
+            crate::i18n::switch_to(&setup.ui, german);
+            assert_eq!(panel.get_scale_text(), "-");
+            host.heatmap_placement_chosen("downsample");
+            assert_eq!(shown(), (Placement::Downsample(2.125), Some(2.125)));
+            assert_eq!(panel.get_scale_text(), "2,125");
+        });
+    }
+
     #[test]
     fn settings_round_trip_through_the_store() {
         let dir = tempfile::tempdir().unwrap();
@@ -868,5 +1103,138 @@ mod tests {
         assert_eq!(placement_from("micrometres", None), Placement::FitSlide);
         assert_eq!(parse_scale(" 0,5 "), Some(0.5));
         assert_eq!(parse_scale("-2"), None);
+    }
+
+    /// The panel translates every reason eov_common gives for a map it
+    /// cannot place (they are matched by their English text).
+    #[test]
+    fn every_placement_problem_is_translatable() {
+        let place = |placement, mpp, file| {
+            heatmap::placement_rect(4, 3, placement, (400, 300), None, mpp, file)
+                .expect_err("cannot be placed")
+        };
+        let problems = [
+            place(Placement::FromFile, None, None),
+            place(Placement::FitBounds, None, None),
+            place(Placement::Downsample(-1.0), None, None),
+            place(Placement::Micrometres(0.0), None, None),
+            place(Placement::Micrometres(1.0), None, None),
+            heatmap::placement_rect(4, 3, Placement::FitSlide, (0, 0), None, None, None)
+                .expect_err("covers nothing"),
+            SLIDE_CLOSED.to_string(),
+            TYPE_A_NUMBER.to_string(),
+        ];
+        for problem in problems {
+            assert!(known_placement_problem(&problem).is_some(), "{problem}");
+        }
+    }
+
+    /// A single-strip little-endian TIFF of 32-bit float samples, one row.
+    fn float_tiff(values: &[f32]) -> Vec<u8> {
+        let width = values.len() as u32;
+        // (tag, type: 3 SHORT or 4 LONG, value), in the order of the tags.
+        let data_offset = 8 + 2 + 10 * 12 + 4;
+        let entries: [(u16, u16, u32); 10] = [
+            (256, 4, width),
+            (257, 4, 1),
+            (258, 3, 32),
+            (259, 3, 1),
+            (262, 3, 1),
+            (273, 4, data_offset),
+            (277, 3, 1),
+            (278, 4, 1),
+            (279, 4, width * 4),
+            // SampleFormat: IEEE floating point.
+            (339, 3, 3),
+        ];
+        let mut bytes = b"II*\0".to_vec();
+        bytes.extend(8u32.to_le_bytes());
+        bytes.extend((entries.len() as u16).to_le_bytes());
+        for (tag, kind, value) in entries {
+            bytes.extend(tag.to_le_bytes());
+            bytes.extend(kind.to_le_bytes());
+            bytes.extend(1u32.to_le_bytes());
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(0u32.to_le_bytes());
+        assert_eq!(bytes.len(), data_offset as usize);
+        bytes.extend(values.iter().flat_map(|value| value.to_le_bytes()));
+        bytes
+    }
+
+    fn png(color: image::ColorType, width: u32, data: &[u8]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::write_buffer_with_format(
+            &mut std::io::Cursor::new(&mut bytes),
+            data,
+            width,
+            1,
+            color,
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+        bytes
+    }
+
+    /// The panel translates every description eov_common gives of how a
+    /// map's values are shown (they are matched by their English text).
+    #[test]
+    fn every_scaling_is_translatable() {
+        let files = [
+            png(image::ColorType::L8, 2, &[0, 255]),
+            png(image::ColorType::L16, 2, &[0, 0, 255, 255]),
+            png(image::ColorType::Rgb8, 1, &[51, 51, 51]),
+            png(image::ColorType::Rgba8, 1, &[255, 0, 0, 128]),
+            float_tiff(&[0.25, 0.75]),
+            float_tiff(&[-1.0, 3.0]),
+            float_tiff(&[5.0, 5.0]),
+            float_tiff(&[f32::NAN, f32::NAN]),
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for file in files {
+            let map = heatmap::decode_bytes(&file).unwrap();
+            assert!(known_scaling(&map.scaling).is_some(), "{}", map.scaling);
+            seen.insert(map.scaling);
+        }
+        assert_eq!(seen.len(), 8, "each kind of map is described: {seen:?}");
+        // In English, the descriptions are eov_common's.
+        assert_eq!(
+            scaling_text("values -1 to 3.5 shown as 0–1"),
+            "values -1 to 3.5 shown as 0–1"
+        );
+        assert_eq!(scaling_text("something new"), "something new");
+    }
+
+    /// The numbers of a description are written with the decimal
+    /// separator of the interface's language.
+    #[test]
+    fn scaling_numbers_follow_the_interface_s_language() {
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 3] = [
+            (None, "values 0–1", &["Werte 0–1"]),
+            (
+                None,
+                "values {min} to {max} shown as 0–1",
+                &["Werte {min} bis {max}, als 0–1 gezeigt"],
+            ),
+            (None, "every value is {}", &["jeder Wert ist {}"]),
+        ];
+        i18n::set_catalog(
+            german,
+            Some(i18n::Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        assert_eq!(scaling_text("values 0–1"), "Werte 0–1");
+        assert_eq!(
+            scaling_text("values -0.5 to 2.25 shown as 0–1"),
+            "Werte -0,5 bis 2,25, als 0–1 gezeigt"
+        );
+        assert_eq!(scaling_text("every value is 1.5"), "jeder Wert ist 1,5");
     }
 }

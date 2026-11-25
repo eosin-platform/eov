@@ -5,6 +5,8 @@
 //! distribution-appimage`, ...), and `cargo install eov` gets the default,
 //! `distribution-cargo`.
 
+use eov_plugin_api::i18n::tr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Distribution {
     MacosBundle,
@@ -16,15 +18,20 @@ pub enum Distribution {
 }
 
 impl Distribution {
-    /// A human-readable name.
-    pub fn display_name(self) -> &'static str {
+    /// A human-readable name, in the language of the interface (the
+    /// window's update plan shows it).
+    pub fn display_name(self) -> String {
         match self {
-            Self::MacosBundle => "macOS app bundle",
-            Self::Cargo => "cargo install",
-            Self::Flatpak => "Flatpak",
-            Self::AppImage => "AppImage",
-            Self::WindowsPortable => "Windows portable folder",
-            Self::Unknown => "unknown packaging",
+            // Translators: how eov was installed.
+            Self::MacosBundle => tr!("macOS app bundle"),
+            // Translators: how eov was installed: with the command "cargo install" (keep it as it is).
+            Self::Cargo => tr!("cargo install"),
+            Self::Flatpak => "Flatpak".to_string(),
+            Self::AppImage => "AppImage".to_string(),
+            // Translators: how eov was installed.
+            Self::WindowsPortable => tr!("Windows portable folder"),
+            // Translators: how eov was installed.
+            Self::Unknown => tr!("unknown packaging"),
         }
     }
 }

@@ -19,6 +19,7 @@ pub mod usage;
 
 use abi_stable::std_types::RStr;
 use eov_plugin_api::abi::{FfiError, FfiErrorKind, PluginBox};
+use eov_plugin_api::i18n::tr;
 use eov_plugin_api::protocol::{HostEvent, PluginInit, event_names};
 use filters::SharedFilterChain;
 use host_api::HostApi;
@@ -39,18 +40,154 @@ pub enum PluginStatus {
     /// Turned off by the user (or safe mode).
     Disabled,
     /// Could not be loaded or started.
-    Failed(String),
-    /// Stopped after misbehaving (a panic).
+    Failed(FailReason),
+    /// Stopped after misbehaving (a panic): what the plugin or its SDK said.
     Quarantined(String),
 }
 
 impl PluginStatus {
+    /// The status as the Plugins panel shows it, in the language of the
+    /// interface (made when it is shown, so it follows a change of
+    /// language).
     pub fn label(&self) -> String {
+        match self {
+            PluginStatus::Active => tr!("Plugin status" => "Active"),
+            PluginStatus::Disabled => tr!("Plugin status" => "Disabled"),
+            PluginStatus::Failed(reason) => tr!("Failed: {}", reason.localized()),
+            PluginStatus::Quarantined(reason) => tr!("Stopped: {}", reason),
+        }
+    }
+
+    /// The status in English, for the audit log.
+    pub fn audit_text(&self) -> String {
         match self {
             PluginStatus::Active => "Active".to_string(),
             PluginStatus::Disabled => "Disabled".to_string(),
             PluginStatus::Failed(reason) => format!("Failed: {reason}"),
             PluginStatus::Quarantined(reason) => format!("Stopped: {reason}"),
+        }
+    }
+}
+
+/// Why a plugin could not be loaded or started, kept as data: `Display`
+/// says it in English (the audit log, the session log), without the marks
+/// that keep text in order in right-to-left languages;
+/// [`FailReason::localized`] says it in the interface's language when the
+/// Plugins panel or a message shows it. Texts from outside eov (the file
+/// system, the library loader, the plugin) stay as they are in both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailReason {
+    /// The package could not be unpacked: why (what reading it gave),
+    /// worded when it is shown.
+    Unpack(crate::plugins::discovery::package_cache::Reason),
+    /// The administrator policy does not let this plugin load: it only
+    /// permits official plugins, or it cannot be used (`invalid`, why) and
+    /// is applied as restrictively as possible. `source` is the policy file,
+    /// `contact` the policy's message for users.
+    NotAllowed {
+        source: Option<PathBuf>,
+        invalid: Option<crate::update::policy::PolicyError>,
+        contact: Option<String>,
+    },
+    /// The manifest asks for a plugin API this eov does not provide.
+    Api { required: String, provided: String },
+    /// No version of the package runs with this eov (`None`: the inventory
+    /// did not say why).
+    Incompatible(Option<crate::update::compat::Incompatibility>),
+    /// The library could not be loaded, or the plugin's `create` failed.
+    Load(LoadError),
+}
+
+impl std::fmt::Display for FailReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FailReason::Unpack(reason) => {
+                write!(f, "could not unpack the package: {reason}")
+            }
+            FailReason::NotAllowed {
+                source,
+                invalid,
+                contact,
+            } => {
+                let policy = match source {
+                    Some(path) => format!("the administrator policy {}", path.display()),
+                    None => "the administrator policy".to_string(),
+                };
+                match invalid {
+                    Some(error) => write!(
+                        f,
+                        "{policy}: {error}. eov applies the most restrictive settings until it is fixed."
+                    )?,
+                    None => write!(
+                        f,
+                        "Loading this plugin is not allowed: {policy} only permits official eov plugins."
+                    )?,
+                }
+                match contact {
+                    Some(contact) => write!(f, "\n{contact}"),
+                    None => Ok(()),
+                }
+            }
+            FailReason::Api { required, provided } => write!(
+                f,
+                "requires plugin API {required}, this eov provides {provided}"
+            ),
+            FailReason::Incompatible(Some(reason)) => write!(f, "{reason}"),
+            FailReason::Incompatible(None) => f.write_str("not compatible with this eov"),
+            FailReason::Load(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl FailReason {
+    /// The reason in the interface's language.
+    pub fn localized(&self) -> String {
+        use eov_plugin_api::i18n::isolate;
+        match self {
+            FailReason::Unpack(reason) => {
+                tr!("could not unpack the package: {}", reason.shown())
+            }
+            FailReason::NotAllowed {
+                source,
+                invalid,
+                contact,
+            } => {
+                // The administrator policy's own texts
+                // (`Policy::ensure_third_party_allowed`).
+                let policy = isolate(
+                    source
+                        .clone()
+                        .or_else(crate::update::policy::policy_path)
+                        .unwrap_or_default()
+                        .display(),
+                );
+                let text = match invalid {
+                    Some(error) => {
+                        // Translators: {policy} is the policy file, {error} why it cannot be used.
+                        tr!(
+                            "the administrator policy {policy}: {error}. eov applies the most restrictive settings until it is fixed.",
+                            policy = policy,
+                            error = error.localized()
+                        )
+                    }
+                    None => crate::update::policy::third_party_refusal(
+                        crate::update::policy::ThirdPartyUse::LoadPlugin,
+                        &policy,
+                    ),
+                };
+                match contact {
+                    Some(contact) => format!("{text}\n{contact}"),
+                    None => text,
+                }
+            }
+            FailReason::Api { required, provided } => tr!(
+                "requires plugin API {required}, this eov provides {provided}",
+                required = isolate(required),
+                provided = isolate(provided),
+            ),
+            FailReason::Incompatible(Some(reason)) => reason.localized(),
+            FailReason::Incompatible(None) => tr!("not compatible with this eov"),
+            FailReason::Load(error) => error.localized(),
         }
     }
 }
@@ -181,7 +318,9 @@ impl PluginRuntime {
         });
     }
 
-    /// Starts a plugin from a loaded module.
+    /// Starts a plugin from a loaded module. Why it did not start is
+    /// returned in English (for logs and the command line); the plugin's
+    /// slot keeps it as data.
     pub fn start(
         &mut self,
         info: PluginInfo,
@@ -193,7 +332,7 @@ impl PluginRuntime {
             Ok(module) => module,
             Err(error) => {
                 let reason = error.to_string();
-                self.add_inactive(info, PluginStatus::Failed(reason.clone()));
+                self.add_inactive(info, PluginStatus::Failed(FailReason::Load(error)));
                 return Err(reason);
             }
         };
@@ -217,6 +356,7 @@ impl PluginRuntime {
             legacy_config_dir: crate::paths::legacy_config_dir()
                 .map(|dir| dir.to_string_lossy().into_owned()),
             headless: self.headless,
+            language: Some(eov_plugin_api::i18n::current().tag.to_string()),
         };
         let host = HostApi::new(Arc::clone(&ctx), Arc::clone(&self.shared)).into_ffi();
         let started = Instant::now();
@@ -270,7 +410,7 @@ impl PluginRuntime {
                 tracing::error!("Plugin '{}' failed to start: {reason}", info.id);
                 self.insert_slot(PluginSlot {
                     info,
-                    status: PluginStatus::Failed(reason.clone()),
+                    status: PluginStatus::Failed(FailReason::Load(error)),
                     api_version: Some(module.api_version().to_string()),
                     ctx: None,
                     instance: None,
@@ -793,14 +933,170 @@ mod tests {
         let (dir, mut rt) = runtime();
         start(&mut rt, dir.path(), "zeta").unwrap();
         start(&mut rt, dir.path(), "alpha").unwrap();
-        assert!(start(&mut rt, dir.path(), "broken").is_err());
+        assert_eq!(
+            start(&mut rt, dir.path(), "broken").unwrap_err(),
+            "the plugin failed to start: cannot start"
+        );
         let ids: Vec<_> = rt.slots().iter().map(|s| s.id().to_string()).collect();
         assert_eq!(ids, ["alpha", "broken", "zeta"]);
-        assert!(matches!(
+        assert_eq!(
             rt.slot("broken").unwrap().status,
-            PluginStatus::Failed(_)
-        ));
+            PluginStatus::Failed(FailReason::Load(LoadError::Create("cannot start".into())))
+        );
         assert!(dir.path().join("alpha/data").is_dir());
+    }
+
+    /// Why a plugin failed is kept as data: the Plugins panel says all of it
+    /// in the language of the moment (also after the language changed), the
+    /// audit log in English, without isolation marks, as eov wrote it
+    /// before it was translated.
+    #[test]
+    fn failure_reasons_are_worded_when_shown() {
+        use crate::update::compat::{Incompatibility, RequirementError};
+        use eov_plugin_api::i18n::{self, Catalog};
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let api = PluginStatus::Failed(FailReason::Api {
+            required: ">=2.0".into(),
+            provided: "1.1.0".into(),
+        });
+        let english = "Failed: requires plugin API >=2.0, this eov provides 1.1.0";
+        assert_eq!(api.label(), english);
+        assert_eq!(api.audit_text(), english);
+
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 2] = [
+            (None, "Failed: {}", &["Fehlgeschlagen: {}"]),
+            (
+                None,
+                "requires plugin API {required}, this eov provides {provided}",
+                &["benötigt die Plugin-API {required}, dieses eov bietet {provided}"],
+            ),
+        ];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        assert_eq!(
+            api.label(),
+            "Fehlgeschlagen: benötigt die Plugin-API >=2.0, dieses eov bietet 1.1.0"
+        );
+        assert_eq!(api.audit_text(), english);
+
+        // Right to left: the panel keeps the versions in order, the audit
+        // log has no marks.
+        i18n::set_catalog(i18n::by_tag("ar").unwrap(), None);
+        assert!(
+            api.label().contains("\u{2068}>=2.0\u{2069}"),
+            "{}",
+            api.label()
+        );
+        let failures = [
+            api,
+            PluginStatus::Failed(FailReason::Incompatible(Some(Incompatibility::Eov {
+                required: ">=0.4.1".into(),
+                bounded: Some(">=0.4.1, <0.5.0".into()),
+                version: "1.0.0".into(),
+            }))),
+            PluginStatus::Failed(FailReason::Incompatible(Some(Incompatibility::InvalidApi(
+                RequirementError::NoLowerBound("*".into()),
+            )))),
+            PluginStatus::Failed(FailReason::Load(LoadError::Incompatible(
+                loader::Incompatible::Api {
+                    plugin: "0.4.9".into(),
+                    host: "1.1.0".into(),
+                },
+            ))),
+            PluginStatus::Failed(FailReason::Load(LoadError::BadPath(
+                loader::BadPath::OutsidePackage("libx.so".into()),
+            ))),
+            PluginStatus::Failed(FailReason::NotAllowed {
+                source: Some(PathBuf::from("/etc/eov/policy.toml")),
+                invalid: None,
+                contact: Some("Ask the lab's IT.".into()),
+            }),
+        ];
+        let audit: Vec<String> = failures.iter().map(PluginStatus::audit_text).collect();
+        assert_eq!(
+            audit,
+            [
+                english,
+                "Failed: requires eov >=0.4.1 (bounded to >=0.4.1, <0.5.0); this is eov 1.0.0",
+                "Failed: invalid plugin API requirement: '*' has no lower bound; declare a \
+                 range such as \">=1.0.0, <2.0.0\"",
+                "Failed: incompatible plugin: built for plugin API 0.4.9, this eov provides \
+                 1.1.0",
+                "Failed: invalid library path: libx.so resolves outside the package",
+                "Failed: Loading this plugin is not allowed: the administrator policy \
+                 /etc/eov/policy.toml only permits official eov plugins.\nAsk the lab's IT.",
+            ]
+        );
+        for status in &failures {
+            assert!(status.label().contains('\u{2068}'), "{}", status.label());
+        }
+    }
+
+    /// Why a package could not be unpacked is worded when it is shown, like
+    /// the other reasons: a reason found while the interface was in English
+    /// is in German once the interface is, and stays English, without marks,
+    /// for the audit log.
+    #[test]
+    fn unpack_reasons_follow_a_change_of_language() {
+        use crate::plugins::discovery::package_cache::{PackageError, validate_archive_path};
+        use eov_plugin_api::i18n::{self, Catalog};
+        use std::path::Path;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let error =
+            validate_archive_path(Path::new("/plugins/x.eop"), Path::new("../escape")).unwrap_err();
+        let status = PluginStatus::Failed(FailReason::Unpack(error.reason()));
+        let english = "Failed: could not unpack the package: plugin package '/plugins/x.eop' \
+                       contains an unsafe path '../escape'";
+        assert_eq!(status.label(), english);
+
+        let _english = English;
+        let german = i18n::by_tag("de").unwrap();
+        let messages: [(Option<&str>, &str, &[&str]); 3] = [
+            (None, "Failed: {}", &["Fehlgeschlagen: {}"]),
+            (
+                None,
+                "could not unpack the package: {}",
+                &["das Paket konnte nicht entpackt werden: {}"],
+            ),
+            (
+                None,
+                "plugin package '{package}' contains an unsafe path '{path}'",
+                &["Plugin-Paket „{package}“ enthält einen unsicheren Pfad „{path}“"],
+            ),
+        ];
+        i18n::set_catalog(
+            german,
+            Some(Catalog::from_messages(german, "", messages).unwrap()),
+        );
+        assert_eq!(
+            status.label(),
+            "Fehlgeschlagen: das Paket konnte nicht entpackt werden: Plugin-Paket \
+             „/plugins/x.eop“ enthält einen unsicheren Pfad „../escape“"
+        );
+        assert_eq!(status.audit_text(), english);
+        i18n::set_catalog(i18n::by_tag("ar").unwrap(), None);
+        assert!(status.label().contains("\u{2068}../escape\u{2069}"));
+        assert_eq!(status.audit_text(), english);
+        // What the system said is the same in both.
+        let io = PackageError::from(std::io::Error::other("gone"));
+        assert_eq!(
+            FailReason::Unpack(io.reason()).to_string(),
+            "could not unpack the package: IO error: gone"
+        );
     }
 
     #[test]
@@ -867,7 +1163,7 @@ mod tests {
         start(&mut rt, dir.path(), "echo_usage").unwrap();
         assert_eq!(
             rt.usage_summary("echo_usage").as_deref(),
-            Some("Nothing measured yet")
+            Some("No usage recorded yet")
         );
         for _ in 0..3 {
             rt.deliver(

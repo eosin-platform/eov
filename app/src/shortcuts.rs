@@ -8,9 +8,13 @@
 //!   (no key).
 //! - The table is what the Keyboard Shortcuts panel (F1) lists and what
 //!   plugin hotkeys may not take.
+//! - What the panel says is translated; action ids and keys are not: they
+//!   are what users write in `[shortcuts]`.
 
+use eov_plugin_api::i18n::{self, tr};
 use eov_plugin_api::protocol::{Hotkey, key_name};
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
 /// What a shortcut does.
@@ -99,6 +103,23 @@ impl Magnification {
             Self::X40 => 40.0,
         }
     }
+
+    /// As the panel writes it, with the language's decimal separator
+    /// ("1.25×", "40×").
+    fn label(self) -> String {
+        let decimals = match self {
+            Self::X1_25 => 2,
+            Self::X2_5 => 1,
+            _ => 0,
+        };
+        format!("{}×", i18n::format_decimal(self.value(), decimals))
+    }
+}
+
+/// "Zoom to 40×", for the magnification presets.
+fn zoom_to(magnification: Magnification) -> String {
+    // Translators: {} is a magnification, such as 1.25× or 40×.
+    tr!("Zoom to {}", i18n::isolate(magnification.label()))
 }
 
 /// Sections of the Keyboard Shortcuts panel, in order.
@@ -112,13 +133,14 @@ pub(crate) enum Group {
 }
 
 impl Group {
-    pub fn label(self) -> &'static str {
+    /// The section's heading, in the language of the interface.
+    pub fn label(self) -> String {
         match self {
-            Self::Slides => "Slides and tabs",
-            Self::Navigation => "Navigation",
-            Self::Tools => "Tools",
-            Self::Edit => "Editing",
-            Self::Window => "Window",
+            Self::Slides => tr!("Shortcut group" => "Slides and tabs"),
+            Self::Navigation => tr!("Shortcut group" => "Navigation"),
+            Self::Tools => tr!("Shortcut group" => "Tools"),
+            Self::Edit => tr!("Shortcut group" => "Editing"),
+            Self::Window => tr!("Shortcut group" => "Window"),
         }
     }
 }
@@ -128,17 +150,25 @@ pub(crate) struct ActionInfo {
     pub action: Action,
     /// Its name in `[shortcuts]`.
     pub id: &'static str,
-    pub label: &'static str,
+    /// What it does, in the language of the interface (see [`Self::label`]).
+    label: fn() -> String,
     pub group: Group,
     /// Whether holding the key repeats it.
     pub repeats: bool,
     defaults: &'static [&'static str],
 }
 
+impl ActionInfo {
+    /// What the action does, in the language of the interface.
+    pub fn label(&self) -> String {
+        (self.label)()
+    }
+}
+
 const fn info(
     action: Action,
     id: &'static str,
-    label: &'static str,
+    label: fn() -> String,
     group: Group,
     repeats: bool,
     defaults: &'static [&'static str],
@@ -157,68 +187,69 @@ use Action as A;
 use Group as G;
 use Magnification as M;
 
-/// Every action, in the panel's order.
+/// Every action, in the panel's order. (A comment on the line above a
+/// `tr!` is extracted for translators: comments for programmers go at the
+/// end of a line.)
 #[rustfmt::skip]
 pub(crate) const ACTIONS: &[ActionInfo] = &[
-    info(A::OpenFile, "open-file", "Open a slide", G::Slides, false, &["Ctrl+O"]),
-    info(A::CloseTab, "close-tab", "Close the tab", G::Slides, false, &["Ctrl+W"]),
-    info(A::NextTab, "next-tab", "Next tab in the pane", G::Slides, true, &["Ctrl+Tab"]),
-    info(A::PreviousTab, "previous-tab", "Previous tab in the pane", G::Slides, true, &["Ctrl+Shift+Tab"]),
-    info(A::NextSlide, "next-slide", "Next slide of the folder", G::Slides, false, &["PageDown"]),
-    info(A::PreviousSlide, "previous-slide", "Previous slide of the folder", G::Slides, false, &["PageUp"]),
-    info(A::SlideInfo, "slide-info", "Slide information", G::Slides, false, &["I"]),
-    // No default key: plugins may use the free ones; users can bind one.
-    info(A::Channels, "channels", "Channels of the slide", G::Slides, false, &[]),
-    info(A::NextFocalPlane, "next-focal-plane", "Next focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowUp"]),
-    info(A::PreviousFocalPlane, "previous-focal-plane", "Previous focal plane of a Z-stack", G::Navigation, true, &["Ctrl+ArrowDown"]),
-    info(A::NextTimePoint, "next-time-point", "Next time point of a time series", G::Navigation, true, &["Ctrl+ArrowRight"]),
-    info(A::PreviousTimePoint, "previous-time-point", "Previous time point of a time series", G::Navigation, true, &["Ctrl+ArrowLeft"]),
-    // No default keys: users can bind them.
-    info(A::ColorManagement, "color-management", "Convert the slide's colours to sRGB, or show them as scanned", G::Slides, false, &[]),
-    info(A::PixelView, "pixel-view", "Show the slide's pixels as squares above 100%", G::Navigation, false, &[]),
-    info(A::CopyView, "copy-view", "Copy the view as an image", G::Slides, false, &["Ctrl+C"]),
-    info(A::ExportView, "export-view", "Export the view", G::Slides, false, &["Ctrl+E"]),
-    info(A::Fit, "fit", "Fit the slide to the pane", G::Navigation, false, &["F"]),
-    info(A::FitTissue, "fit-tissue", "Fit the tissue to the pane", G::Navigation, false, &["Shift+F"]),
-    info(A::ZoomIn, "zoom-in", "Zoom in", G::Navigation, true, &["+", "="]),
-    info(A::ZoomOut, "zoom-out", "Zoom out", G::Navigation, true, &["-"]),
-    info(A::PanLeft, "pan-left", "Pan left (with Shift: further)", G::Navigation, true, &["ArrowLeft"]),
-    info(A::PanRight, "pan-right", "Pan right (with Shift: further)", G::Navigation, true, &["ArrowRight"]),
-    info(A::PanUp, "pan-up", "Pan up (with Shift: further)", G::Navigation, true, &["ArrowUp"]),
-    info(A::PanDown, "pan-down", "Pan down (with Shift: further)", G::Navigation, true, &["ArrowDown"]),
-    info(A::Magnify(Some(M::X1_25)), "zoom-1.25x", "Zoom to 1.25×", G::Navigation, false, &["1"]),
-    info(A::Magnify(Some(M::X2_5)), "zoom-2.5x", "Zoom to 2.5×", G::Navigation, false, &["2"]),
-    info(A::Magnify(Some(M::X5)), "zoom-5x", "Zoom to 5×", G::Navigation, false, &["3"]),
-    info(A::Magnify(Some(M::X10)), "zoom-10x", "Zoom to 10×", G::Navigation, false, &["4"]),
-    info(A::Magnify(Some(M::X20)), "zoom-20x", "Zoom to 20×", G::Navigation, false, &["5"]),
-    info(A::Magnify(Some(M::X40)), "zoom-40x", "Zoom to 40×", G::Navigation, false, &["6"]),
-    info(A::Magnify(None), "zoom-1-to-1", "Zoom to one screen pixel per slide pixel", G::Navigation, false, &["0"]),
-    info(A::RotateLeft, "rotate-left", "Rotate the view 90° to the left", G::Navigation, false, &["["]),
-    info(A::RotateRight, "rotate-right", "Rotate the view 90° to the right", G::Navigation, false, &["]"]),
-    // Shift+[ and Shift+] on US layouts: the keys give the braces.
-    info(A::RotateLeftFine, "rotate-left-fine", "Rotate the view 5° to the left", G::Navigation, true, &["{"]),
-    info(A::RotateRightFine, "rotate-right-fine", "Rotate the view 5° to the right", G::Navigation, true, &["}"]),
-    info(A::ResetRotation, "reset-rotation", "Reset the rotation (upright again)", G::Navigation, false, &["\\"]),
-    info(A::Flip, "flip", "Mirror the view left to right", G::Navigation, false, &["Shift+H"]),
-    info(A::LinkSlides, "link-slides", "Link the panes' slides (move together)", G::Navigation, false, &["Ctrl+L"]),
-    info(A::AdjustAlignment, "adjust-alignment", "Adjust the alignment of linked slides", G::Navigation, false, &[]),
-    info(A::AlignLandmarks, "align-landmarks", "Align linked slides from their landmarks", G::Navigation, false, &[]),
-    info(A::ResetAlignment, "reset-alignment", "Align linked slides as they are shown", G::Navigation, false, &[]),
-    info(A::HistoryBack, "back", "Back to the previous view", G::Navigation, false, &["Alt+ArrowLeft"]),
-    info(A::HistoryForward, "forward", "Forward to the next view", G::Navigation, false, &["Alt+ArrowRight"]),
-    info(A::BookmarkAdd, "bookmark-add", "Bookmark the view", G::Navigation, false, &["Ctrl+B"]),
-    info(A::Bookmarks, "bookmarks", "Bookmarks of the slide", G::Navigation, false, &["Ctrl+Shift+B"]),
-    info(A::ToolNavigate, "tool-navigate", "Navigate", G::Tools, false, &["N"]),
-    info(A::ToolRoi, "tool-roi", "Region of interest", G::Tools, false, &["R"]),
-    info(A::ToolMeasure, "tool-measure", "Measure", G::Tools, false, &["D"]),
-    info(A::Measurements, "measurements", "The slide's measurements", G::Tools, false, &["Ctrl+Shift+M"]),
-    info(A::Quantify, "quantify", "Quantify a stain in the region of interest", G::Tools, false, &[]),
-    info(A::Undo, "undo", "Undo", G::Edit, true, &["Ctrl+Z"]),
-    info(A::Redo, "redo", "Redo", G::Edit, true, &["Ctrl+Shift+Z", "Ctrl+Y"]),
-    info(A::ToggleMinimap, "minimap", "Show or hide the minimap", G::Window, false, &["M"]),
-    info(A::FullScreen, "full-screen", "Full screen", G::Window, false, &["F11"]),
-    info(A::Shortcuts, "shortcuts", "Keyboard shortcuts", G::Window, false, &["F1", "?"]),
-    info(A::Quit, "quit", "Quit eov", G::Window, false, &["Ctrl+Shift+W"]),
+    info(A::OpenFile, "open-file", || tr!("Open a slide"), G::Slides, false, &["Ctrl+O"]),
+    info(A::CloseTab, "close-tab", || tr!("Close the tab"), G::Slides, false, &["Ctrl+W"]),
+    info(A::NextTab, "next-tab", || tr!("Next tab in the pane"), G::Slides, true, &["Ctrl+Tab"]),
+    info(A::PreviousTab, "previous-tab", || tr!("Previous tab in the pane"), G::Slides, true, &["Ctrl+Shift+Tab"]),
+    info(A::NextSlide, "next-slide", || tr!("Next slide of the folder"), G::Slides, false, &["PageDown"]),
+    info(A::PreviousSlide, "previous-slide", || tr!("Previous slide of the folder"), G::Slides, false, &["PageUp"]),
+    info(A::SlideInfo, "slide-info", || tr!("Slide information"), G::Slides, false, &["I"]),
+    info(A::Channels, "channels", || tr!("Channels of the slide"), G::Slides, false, &[]), // No default key: plugins may use the free ones; users can bind one.
+    info(A::NextFocalPlane, "next-focal-plane", || tr!("Next focal plane of a Z-stack"), G::Navigation, true, &["Ctrl+ArrowUp"]),
+    info(A::PreviousFocalPlane, "previous-focal-plane", || tr!("Previous focal plane of a Z-stack"), G::Navigation, true, &["Ctrl+ArrowDown"]),
+    info(A::NextTimePoint, "next-time-point", || tr!("Next time point of a time series"), G::Navigation, true, &["Ctrl+ArrowRight"]),
+    info(A::PreviousTimePoint, "previous-time-point", || tr!("Previous time point of a time series"), G::Navigation, true, &["Ctrl+ArrowLeft"]),
+    info(A::ColorManagement, "color-management", || tr!("Convert the slide's colours to sRGB, or show them as scanned"), G::Slides, false, &[]), // No default keys (here and below): users can bind them.
+    info(A::PixelView, "pixel-view", || tr!("Show the slide's pixels as squares above 100%"), G::Navigation, false, &[]),
+    info(A::CopyView, "copy-view", || tr!("Copy the view as an image"), G::Slides, false, &["Ctrl+C"]),
+    info(A::ExportView, "export-view", || tr!("Export the view"), G::Slides, false, &["Ctrl+E"]),
+    info(A::Fit, "fit", || tr!("Fit the slide to the pane"), G::Navigation, false, &["F"]),
+    info(A::FitTissue, "fit-tissue", || tr!("Fit the tissue to the pane"), G::Navigation, false, &["Shift+F"]),
+    info(A::ZoomIn, "zoom-in", || tr!("Zoom in"), G::Navigation, true, &["+", "="]),
+    info(A::ZoomOut, "zoom-out", || tr!("Zoom out"), G::Navigation, true, &["-"]),
+    info(A::PanLeft, "pan-left", || tr!("Pan left (with Shift: further)"), G::Navigation, true, &["ArrowLeft"]),
+    info(A::PanRight, "pan-right", || tr!("Pan right (with Shift: further)"), G::Navigation, true, &["ArrowRight"]),
+    info(A::PanUp, "pan-up", || tr!("Pan up (with Shift: further)"), G::Navigation, true, &["ArrowUp"]),
+    info(A::PanDown, "pan-down", || tr!("Pan down (with Shift: further)"), G::Navigation, true, &["ArrowDown"]),
+    info(A::Magnify(Some(M::X1_25)), "zoom-1.25x", || zoom_to(M::X1_25), G::Navigation, false, &["1"]),
+    info(A::Magnify(Some(M::X2_5)), "zoom-2.5x", || zoom_to(M::X2_5), G::Navigation, false, &["2"]),
+    info(A::Magnify(Some(M::X5)), "zoom-5x", || zoom_to(M::X5), G::Navigation, false, &["3"]),
+    info(A::Magnify(Some(M::X10)), "zoom-10x", || zoom_to(M::X10), G::Navigation, false, &["4"]),
+    info(A::Magnify(Some(M::X20)), "zoom-20x", || zoom_to(M::X20), G::Navigation, false, &["5"]),
+    info(A::Magnify(Some(M::X40)), "zoom-40x", || zoom_to(M::X40), G::Navigation, false, &["6"]),
+    info(A::Magnify(None), "zoom-1-to-1", || tr!("Zoom to one screen pixel per slide pixel"), G::Navigation, false, &["0"]),
+    info(A::RotateLeft, "rotate-left", || tr!("Rotate the view 90° to the left"), G::Navigation, false, &["["]),
+    info(A::RotateRight, "rotate-right", || tr!("Rotate the view 90° to the right"), G::Navigation, false, &["]"]),
+    info(A::RotateLeftFine, "rotate-left-fine", || tr!("Rotate the view 5° to the left"), G::Navigation, true, &["{"]), // Shift+[ and Shift+] on US layouts: the keys give the braces.
+    info(A::RotateRightFine, "rotate-right-fine", || tr!("Rotate the view 5° to the right"), G::Navigation, true, &["}"]),
+    info(A::ResetRotation, "reset-rotation", || tr!("Reset the rotation (upright again)"), G::Navigation, false, &["\\"]),
+    info(A::Flip, "flip", || tr!("Mirror the view left to right"), G::Navigation, false, &["Shift+H"]),
+    info(A::LinkSlides, "link-slides", || tr!("Link the panes' slides (move together)"), G::Navigation, false, &["Ctrl+L"]),
+    info(A::AdjustAlignment, "adjust-alignment", || tr!("Adjust the alignment of linked slides"), G::Navigation, false, &[]),
+    info(A::AlignLandmarks, "align-landmarks", || tr!("Align linked slides from their landmarks"), G::Navigation, false, &[]),
+    info(A::ResetAlignment, "reset-alignment", || tr!("Align linked slides as they are shown"), G::Navigation, false, &[]),
+    info(A::HistoryBack, "back", || tr!("Back to the previous view"), G::Navigation, false, &["Alt+ArrowLeft"]),
+    info(A::HistoryForward, "forward", || tr!("Forward to the next view"), G::Navigation, false, &["Alt+ArrowRight"]),
+    info(A::BookmarkAdd, "bookmark-add", || tr!("Bookmark the view"), G::Navigation, false, &["Ctrl+B"]),
+    info(A::Bookmarks, "bookmarks", || tr!("Bookmarks of the slide"), G::Navigation, false, &["Ctrl+Shift+B"]),
+    // Translators: the name of the tool that moves the view (in the Keyboard Shortcuts panel).
+    info(A::ToolNavigate, "tool-navigate", || tr!("Navigate"), G::Tools, false, &["N"]),
+    info(A::ToolRoi, "tool-roi", || tr!("Region of interest"), G::Tools, false, &["R"]),
+    // Translators: the name of the tool that measures distances and areas (in the Keyboard Shortcuts panel).
+    info(A::ToolMeasure, "tool-measure", || tr!("Measure"), G::Tools, false, &["D"]),
+    info(A::Measurements, "measurements", || tr!("The slide's measurements"), G::Tools, false, &["Ctrl+Shift+M"]),
+    info(A::Quantify, "quantify", || tr!("Quantify a stain in the region of interest"), G::Tools, false, &[]),
+    info(A::Undo, "undo", || tr!("Undo"), G::Edit, true, &["Ctrl+Z"]),
+    info(A::Redo, "redo", || tr!("Redo"), G::Edit, true, &["Ctrl+Shift+Z", "Ctrl+Y"]),
+    info(A::ToggleMinimap, "minimap", || tr!("Show or hide the minimap"), G::Window, false, &["M"]),
+    info(A::FullScreen, "full-screen", || tr!("Full screen"), G::Window, false, &["F11"]),
+    info(A::Shortcuts, "shortcuts", || tr!("Keyboard shortcuts"), G::Window, false, &["F1", "?"]),
+    info(A::Quit, "quit", || tr!("Quit eov"), G::Window, false, &["Ctrl+Shift+W"]),
 ];
 
 pub(crate) fn action_info(action: Action) -> &'static ActionInfo {
@@ -286,12 +317,22 @@ fn canonical_key(name: &str) -> Option<String> {
     }
 }
 
+/// Why a key written in `[shortcuts]` is not one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum KeyError {
+    Empty,
+    /// The key, as written.
+    UnknownKey(String),
+    /// The modifier, in lower case.
+    UnknownModifier(String),
+}
+
 impl Chord {
     /// Parses `"Ctrl+Shift+B"`, `"Alt+Left"`, `"F2"`, `"+"`, `"Ctrl++"`.
-    pub fn parse(text: &str) -> Result<Chord, String> {
+    pub fn parse(text: &str) -> Result<Chord, KeyError> {
         let text = text.trim();
         if text.is_empty() {
-            return Err("an empty key".to_string());
+            return Err(KeyError::Empty);
         }
         // The key is the last part; "+" itself is written "+" or "Ctrl++".
         let (modifiers, key) = if text == "+" {
@@ -305,7 +346,7 @@ impl Chord {
             }
         };
         let mut chord = Chord {
-            key: canonical_key(key.trim()).ok_or_else(|| format!("unknown key '{key}'"))?,
+            key: canonical_key(key.trim()).ok_or_else(|| KeyError::UnknownKey(key.to_string()))?,
             primary: false,
             shift: false,
             alt: false,
@@ -319,7 +360,7 @@ impl Chord {
                 "ctrl" | "control" | "cmd" | "command" | "primary" | "⌘" => chord.primary = true,
                 "shift" | "⇧" => chord.shift = true,
                 "alt" | "option" | "opt" | "⌥" => chord.alt = true,
-                other => return Err(format!("unknown modifier '{other}'")),
+                other => return Err(KeyError::UnknownModifier(other.to_string())),
             }
         }
         Ok(chord)
@@ -367,6 +408,100 @@ impl Chord {
     }
 }
 
+/// Something in `config.toml`'s `[shortcuts]` that eov could not use. The
+/// log records it as it is; the window shows [`Problem::message`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Problem {
+    /// `shortcuts` in this file is not a table.
+    NotATable {
+        file: PathBuf,
+    },
+    /// An action's value is neither a key nor a list of keys.
+    NotKeys {
+        action: String,
+    },
+    NoSuchAction {
+        action: String,
+    },
+    BadKey {
+        action: String,
+        key: String,
+        error: KeyError,
+    },
+    /// A key the viewport and dialogs keep ([`is_controller_key`]).
+    KeptKey {
+        action: String,
+        key: String,
+    },
+    /// The same key for two actions: the second keeps it.
+    SameKey {
+        key: String,
+        first: &'static str,
+        second: &'static str,
+    },
+}
+
+impl Problem {
+    /// What the window says about it, in the language of the interface.
+    /// What users wrote (action ids, keys) is quoted as written.
+    pub fn message(&self) -> String {
+        use i18n::isolate;
+        match self {
+            Self::NotATable { file } => {
+                // Translators: "shortcuts" is the name of a table in config.toml: keep it as it is.
+                tr!("shortcuts in {} is not a table", isolate(file.display()))
+            }
+            // Translators: [shortcuts] is a table of config.toml and "Ctrl+B" a key as written there: keep both as they are.
+            Self::NotKeys { action } => tr!(
+                "[shortcuts] {}: expected a key such as \"Ctrl+B\" or a list of keys",
+                isolate(action)
+            ),
+            Self::NoSuchAction { action } => {
+                // Translators: [shortcuts] is a table of config.toml: keep it as it is. {} is an action's name there.
+                tr!("[shortcuts] {}: there is no such action", isolate(action))
+            }
+            Self::BadKey { action, key, error } => {
+                let (action, key) = (isolate(action), isolate(key));
+                match error {
+                    // Translators: [shortcuts] is a table of config.toml: keep it as it is. {action} is an action's name there, {key} what was given as its key.
+                    KeyError::Empty => tr!(
+                        "[shortcuts] {action}: {key}: an empty key",
+                        action = action,
+                        key = key
+                    ),
+                    // Translators: [shortcuts] is a table of config.toml: keep it as it is. {key} is a key as written there ("Ctrl+Banana"), {name} the part that is not a key ("Banana").
+                    KeyError::UnknownKey(name) => tr!(
+                        "[shortcuts] {action}: {key}: unknown key '{name}'",
+                        action = action,
+                        key = key,
+                        name = isolate(name)
+                    ),
+                    // Translators: [shortcuts] is a table of config.toml: keep it as it is. {key} is a key as written there ("Hyper+X"), {name} the part that is not a modifier key ("hyper").
+                    KeyError::UnknownModifier(name) => tr!(
+                        "[shortcuts] {action}: {key}: unknown modifier '{name}'",
+                        action = action,
+                        key = key,
+                        name = isolate(name)
+                    ),
+                }
+            }
+            // Translators: [shortcuts] is a table of config.toml: keep it as it is. {key} is a key such as Escape or Enter, which eov keeps for itself.
+            Self::KeptKey { action, key } => tr!(
+                "[shortcuts] {action}: {key} is kept for the viewport and dialogs",
+                action = isolate(action),
+                key = isolate(key)
+            ),
+            // Translators: [shortcuts] is a table of config.toml: keep it as it is. {first} and {second} are names of actions there.
+            Self::SameKey { key, first, second } => tr!(
+                "[shortcuts] {key} is set for both {first} and {second}; {second} keeps it",
+                key = isolate(key),
+                first = isolate(first),
+                second = isolate(second)
+            ),
+        }
+    }
+}
+
 /// Each action's keys, with the user's changes applied.
 #[derive(Clone, Debug)]
 pub(crate) struct Table {
@@ -393,7 +528,7 @@ impl Default for Table {
 impl Table {
     /// The defaults with `[shortcuts]` entries (action id → keys) applied.
     /// Returns what could not be applied, for the user.
-    pub fn with_overrides(overrides: &[(String, Vec<String>)]) -> (Table, Vec<String>) {
+    pub fn with_overrides(overrides: &[(String, Vec<String>)]) -> (Table, Vec<Problem>) {
         let mut table = Table::default();
         let mut problems = Vec::new();
         // The user's keys, by action; they win over default keys of other
@@ -401,17 +536,22 @@ impl Table {
         let mut chosen: BTreeMap<usize, Vec<Chord>> = BTreeMap::new();
         for (id, keys) in overrides {
             let Some(index) = ACTIONS.iter().position(|info| info.id == id) else {
-                problems.push(format!("[shortcuts] {id}: there is no such action"));
+                problems.push(Problem::NoSuchAction { action: id.clone() });
                 continue;
             };
             let mut chords = Vec::new();
             for key in keys {
                 match Chord::parse(key) {
-                    Ok(chord) if is_controller_key(&chord) => problems.push(format!(
-                        "[shortcuts] {id}: {key} is kept for the viewport and dialogs"
-                    )),
+                    Ok(chord) if is_controller_key(&chord) => problems.push(Problem::KeptKey {
+                        action: id.clone(),
+                        key: key.clone(),
+                    }),
                     Ok(chord) => chords.push(chord),
-                    Err(error) => problems.push(format!("[shortcuts] {id}: {key}: {error}")),
+                    Err(error) => problems.push(Problem::BadKey {
+                        action: id.clone(),
+                        key: key.clone(),
+                        error,
+                    }),
                 }
             }
             chosen.insert(index, chords);
@@ -420,13 +560,11 @@ impl Table {
             for chord in chords {
                 for (other, other_chords) in &chosen {
                     if other > index && other_chords.contains(chord) {
-                        problems.push(format!(
-                            "[shortcuts] {} is set for both {} and {}; {} keeps it",
-                            chord.label(),
-                            ACTIONS[*index].id,
-                            ACTIONS[*other].id,
-                            ACTIONS[*other].id,
-                        ));
+                        problems.push(Problem::SameKey {
+                            key: chord.label(),
+                            first: ACTIONS[*index].id,
+                            second: ACTIONS[*other].id,
+                        });
                     }
                 }
             }
@@ -479,11 +617,15 @@ impl Table {
 
     /// Every key of `action`, for the panel ("Ctrl+Shift+Z or Ctrl+Y").
     pub fn labels(&self, action: Action) -> String {
-        self.chords(action)
-            .iter()
-            .map(Chord::label)
-            .collect::<Vec<_>>()
-            .join(" or ")
+        let labels: Vec<String> = self.chords(action).iter().map(Chord::label).collect();
+        match labels.split_first() {
+            None => String::new(),
+            Some((only, [])) => only.clone(),
+            Some((first, rest)) => rest.iter().fold(i18n::isolate(first), |list, next| {
+                // Translators: keys that do the same, in the Keyboard Shortcuts panel ("Ctrl+Shift+Z or Ctrl+Y"; with three keys, the first {} is "A or B").
+                tr!("{} or {}", list, i18n::isolate(next))
+            }),
+        }
     }
 }
 
@@ -499,7 +641,7 @@ fn is_controller_key(chord: &Chord) -> bool {
 
 static CURRENT: RwLock<Option<Arc<Table>>> = RwLock::new(None);
 /// What [`install_from_config`] could not use, until the window reports it.
-static PROBLEMS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PROBLEMS: Mutex<Vec<Problem>> = Mutex::new(Vec::new());
 
 /// The table in use.
 pub(crate) fn current() -> Arc<Table> {
@@ -520,7 +662,7 @@ pub(crate) fn install_from_config() {
     let (table, more) = Table::with_overrides(&overrides);
     problems.extend(more);
     for problem in &problems {
-        tracing::warn!("{problem}");
+        tracing::warn!("A [shortcuts] entry of config.toml was not used: {problem:?}");
     }
     if let Ok(mut slot) = CURRENT.write() {
         *slot = Some(Arc::new(table));
@@ -530,12 +672,16 @@ pub(crate) fn install_from_config() {
     }
 }
 
-/// The problems of the last [`install_from_config`], once.
+/// The problems of the last [`install_from_config`], once, as the window
+/// shows them ([`Problem::message`]).
 pub(crate) fn take_problems() -> Vec<String> {
     PROBLEMS
         .lock()
         .map(|mut problems| std::mem::take(&mut *problems))
         .unwrap_or_default()
+        .iter()
+        .map(Problem::message)
+        .collect()
 }
 
 /// Whether a plugin hotkey would collide with eov's own keys.
@@ -695,5 +841,66 @@ mod tests {
         assert!(!is_taken_by_host("7", false, false, false));
         assert!(!is_taken_by_host("q", false, false, false));
         assert!(!is_taken_by_host("ArrowUp", false, false, true));
+    }
+
+    /// The panel's texts and the problems read in English as they did
+    /// before they were made translatable (tests run in English).
+    #[test]
+    fn texts_read_as_before_in_english() {
+        let label = |action| action_info(action).label();
+        assert_eq!(
+            label(Action::Magnify(Some(Magnification::X1_25))),
+            "Zoom to 1.25×"
+        );
+        assert_eq!(
+            label(Action::Magnify(Some(Magnification::X2_5))),
+            "Zoom to 2.5×"
+        );
+        assert_eq!(
+            label(Action::Magnify(Some(Magnification::X40))),
+            "Zoom to 40×"
+        );
+        assert_eq!(label(Action::Quit), "Quit eov");
+        assert_eq!(Group::Slides.label(), "Slides and tabs");
+        let overrides = vec![
+            (
+                "fit".to_string(),
+                vec![
+                    "Escape".to_string(),
+                    "Ctrl+Banana".to_string(),
+                    "Hyper+X".to_string(),
+                    "".to_string(),
+                ],
+            ),
+            ("nope".to_string(), vec![]),
+            ("bookmarks".to_string(), vec!["Ctrl+K".to_string()]),
+            ("minimap".to_string(), vec!["Ctrl+K".to_string()]),
+        ];
+        let (table, problems) = Table::with_overrides(&overrides);
+        let messages: Vec<String> = problems.iter().map(Problem::message).collect();
+        let key = Chord::parse("Ctrl+K").unwrap().label();
+        assert_eq!(
+            messages,
+            vec![
+                "[shortcuts] fit: Escape is kept for the viewport and dialogs".to_string(),
+                "[shortcuts] fit: Ctrl+Banana: unknown key 'Banana'".to_string(),
+                "[shortcuts] fit: Hyper+X: unknown modifier 'hyper'".to_string(),
+                "[shortcuts] fit: : an empty key".to_string(),
+                "[shortcuts] nope: there is no such action".to_string(),
+                format!(
+                    "[shortcuts] {key} is set for both bookmarks and minimap; minimap keeps it"
+                ),
+            ]
+        );
+        assert_eq!(
+            Problem::NotKeys {
+                action: "fit".into()
+            }
+            .message(),
+            "[shortcuts] fit: expected a key such as \"Ctrl+B\" or a list of keys"
+        );
+        if !cfg!(target_os = "macos") {
+            assert_eq!(table.labels(Action::Redo), "Ctrl+Shift+Z or Ctrl+Y");
+        }
     }
 }

@@ -1085,8 +1085,21 @@ DEEP LINKS:
 SINGLE INSTANCE:
   While eov runs, `eov FILES` hands the files to it, which opens them as
   tabs, and exits. Options that configure the viewer itself (--cpu,
-  --debug, --window-x, ...) start a separate eov, as do --new-instance and
-  single_instance = false in config.toml.
+  --debug, --window-x, --language, ...) start a separate eov, as do
+  --new-instance and single_instance = false in config.toml.
+
+LANGUAGES:
+  The window is available in 31 languages: en, ar, cs, da, de, el, es, fa,
+  fi, fr, he, hi, hu, id, it, ja, ko, nb, nl, pl, pt-BR, ro, ru, sl, sv, th,
+  tr, uk, vi, zh-Hans, zh-Hant. It follows the language chosen in its
+  settings (the globe in the toolbar; language = \"de\" in config.toml),
+  else the system's. --language overrides both for one run:
+
+    eov --language ja slide.svs
+    eov --language pt-BR
+    eov --language en
+
+  Command-line output and --help stay in English.
 
 SCRIPTING:
   Scripts drive the running eov through the same local endpoint: see
@@ -1230,6 +1243,12 @@ struct Cli {
     /// eov crash at startup (also enabled by EOV_SAFE_MODE=1).
     #[arg(long, action = ArgAction::SetTrue, global = true)]
     safe_mode: bool,
+
+    /// Show the interface in this language for this run only, e.g. ja,
+    /// pt-BR, zh-Hant or en (see LANGUAGES). The language chosen in the
+    /// window's settings, else the system's, applies otherwise.
+    #[arg(long, value_name = "LANGUAGE", global = true)]
+    language: Option<String>,
 }
 
 enum CommandAction {
@@ -1301,6 +1320,9 @@ pub(crate) struct LaunchOptions {
     /// or load any plugin (and should say so in the window).
     #[allow(dead_code)] // honoured by main() once the plugin host checks it
     pub(crate) safe_mode: bool,
+    /// `--language`, as given (checked when the language is chosen, see
+    /// [`crate::i18n::resolve`]).
+    pub(crate) language: Option<String>,
     command: CommandAction,
 }
 
@@ -1388,6 +1410,7 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
         || cli.window_x.is_some()
         || cli.window_y.is_some()
         || cli.viewport_lock
+        || cli.language.is_some()
         || safe_mode;
 
     let command = match cli.command {
@@ -1498,6 +1521,7 @@ fn launch_options(cli: Cli) -> Result<LaunchOptions> {
         },
         plugin_dir,
         safe_mode,
+        language: cli.language,
         command,
     })
 }
@@ -2399,6 +2423,46 @@ mod tests {
     fn parse(arguments: &[&str]) -> Result<LaunchOptions> {
         let cli = Cli::try_parse_from(std::iter::once("eov").chain(arguments.iter().copied()))?;
         launch_options(cli)
+    }
+
+    #[test]
+    fn language_is_a_global_option_that_starts_a_separate_eov() {
+        let options = parse(&["--language", "ja", "a.svs"]).unwrap();
+        assert_eq!(options.language.as_deref(), Some("ja"));
+        // Like --debug: a running eov keeps its own language, so this
+        // launch does not hand its files over.
+        assert!(!options.may_forward());
+        assert!(parse(&["a.svs"]).unwrap().may_forward());
+        // With subcommands too (their own output stays English).
+        let options = parse(&["recent", "list", "--language", "de"]).unwrap();
+        assert_eq!(options.language.as_deref(), Some("de"));
+        // The value is checked when the language is chosen, not by clap,
+        // so an unknown one is reported in the window instead of refusing to
+        // start.
+        assert_eq!(
+            parse(&["--language", "xx"]).unwrap().language.as_deref(),
+            Some("xx")
+        );
+    }
+
+    #[test]
+    fn the_help_lists_every_language() {
+        let tags: Vec<&str> = eov_plugin_api::i18n::LANGUAGES
+            .iter()
+            .map(|language| language.tag)
+            .collect();
+        let listed = AFTER_HELP
+            .split("LANGUAGES:")
+            .nth(1)
+            .and_then(|rest| rest.split(". It follows").next())
+            .unwrap()
+            .split("31 languages:")
+            .nth(1)
+            .unwrap()
+            .split(',')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        assert_eq!(listed, tags);
     }
 
     /// clap checks a command's definition only when it is parsed, so check
