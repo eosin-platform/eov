@@ -12,6 +12,43 @@
   <project_license>MIT OR Apache-2.0 OR GPL-3.0-only</project_license>
   <name>eov</name>
   <summary>Fast desktop viewer for whole-slide images</summary>
+  <summary xml:lang="ar">عارض سريع لصور الشرائح الكاملة على سطح المكتب</summary>
+  <summary xml:lang="cs">Rychlý desktopový prohlížeč obrazů celých preparátů</summary>
+  <summary xml:lang="da">Hurtigt skrivebordsprogram til visning af digitale præparater</summary>
+  <summary xml:lang="de">Schneller Desktop-Viewer für Whole-Slide-Images</summary>
+  <summary xml:lang="el">Γρήγορο πρόγραμμα προβολής εικόνων ολόκληρου πλακιδίου για υπολογιστή</summary>
+  <summary xml:lang="es">Visor de escritorio rápido para imágenes de preparación completa</summary>
+  <summary xml:lang="fa">نمایشگر رومیزی سریع برای تصاویر تمام‌لام</summary>
+  <summary xml:lang="fi">Nopea työpöytäsovellus kokolasikuvien katseluun</summary>
+  <summary xml:lang="fr">Visionneuse de bureau rapide pour les images de lames entières</summary>
+  <summary xml:lang="he">מציג שולחני מהיר לתמונות שקופית שלמה</summary>
+  <summary xml:lang="hi">संपूर्ण-स्लाइड छवियों के लिए तेज़ डेस्कटॉप व्यूअर</summary>
+  <summary xml:lang="hu">Teljes metszetképek gyors asztali nézegetője</summary>
+  <summary xml:lang="id">Penampil desktop cepat untuk citra preparat utuh</summary>
+  <summary xml:lang="it">Visualizzatore desktop veloce di immagini di vetrini interi</summary>
+  <summary xml:lang="ja">ホールスライドイメージ用の高速デスクトップビューアー</summary>
+  <summary xml:lang="ko">전체 슬라이드 이미지를 위한 빠른 데스크톱 뷰어</summary>
+  <summary xml:lang="nb">Raskt skrivebordsprogram for visning av digitale preparater</summary>
+  <summary xml:lang="nn">Raskt skrivebordsprogram for visning av digitale preparater</summary>
+  <summary xml:lang="no">Raskt skrivebordsprogram for visning av digitale preparater</summary>
+  <summary xml:lang="nl">Snelle desktopviewer voor whole-slide images</summary>
+  <summary xml:lang="pl">Szybka przeglądarka obrazów całych preparatów na komputery</summary>
+  <summary xml:lang="pt-BR">Visualizador rápido de imagens de lâmina inteira para desktop</summary>
+  <summary xml:lang="ro">Vizualizator desktop rapid pentru imagini de lamă întreagă</summary>
+  <summary xml:lang="ru">Быстрая настольная программа просмотра изображений целых препаратов</summary>
+  <summary xml:lang="sl">Hiter namizni pregledovalnik slik celotnih preparatov</summary>
+  <summary xml:lang="sv">Snabbt skrivbordsprogram för visning av digitala preparat</summary>
+  <summary xml:lang="th">โปรแกรมดูภาพสไลด์ทั้งแผ่นที่รวดเร็วสำหรับเดสก์ท็อป</summary>
+  <summary xml:lang="tr">Tüm preparat görüntüleri için hızlı masaüstü görüntüleyici</summary>
+  <summary xml:lang="uk">Швидкий настільний переглядач зображень цілих препаратів</summary>
+  <summary xml:lang="vi">Trình xem ảnh toàn bộ tiêu bản nhanh trên máy tính</summary>
+  <summary xml:lang="zh-CN">快速的全切片图像桌面查看器</summary>
+  <summary xml:lang="zh-SG">快速的全切片图像桌面查看器</summary>
+  <summary xml:lang="zh-MY">快速的全切片图像桌面查看器</summary>
+  <summary xml:lang="zh">快速的全切片图像桌面查看器</summary>
+  <summary xml:lang="zh-TW">快速的全玻片影像桌面檢視器</summary>
+  <summary xml:lang="zh-HK">快速的全玻片影像桌面檢視器</summary>
+  <summary xml:lang="zh-MO">快速的全玻片影像桌面檢視器</summary>
   <developer id="io.eosin">
     <name>Eosin Platform</name>
   </developer>
@@ -20,6 +57,43 @@
     <p>
       eov is a desktop viewer for whole-slide images built in Rust. It fills a niche in the WSI ecosystem: a small, high-performance workbench for quickly viewing WSI files on your local machine.
     </p>
+    <p xml:lang="ar">يُعدّ eov عارضًا لصور الشرائح الكاملة على سطح المكتب، وهو مبنيّ بلغة Rust. يسدّ فراغًا في منظومة WSI: فهو أداة عمل صغيرة عالية الأداء لعرض ملفات WSI بسرعة على جهازك المحلي.</p>
+    <p xml:lang="cs">eov je desktopový prohlížeč obrazů celých preparátů napsaný v jazyce Rust. Zaplňuje mezeru v ekosystému WSI: je to malý, vysoce výkonný pracovní nástroj pro rychlé prohlížení souborů WSI přímo na vašem počítači.</p>
+    <p xml:lang="da">eov er et skrivebordsprogram til visning af digitale præparater (WSI), skrevet i Rust. Det udfylder en niche i WSI-økosystemet: et lille, højtydende arbejdsredskab til hurtig visning af WSI-filer på din egen computer.</p>
+    <p xml:lang="de">eov ist ein in Rust entwickelter Desktop-Viewer für Whole-Slide-Images. Er füllt eine Nische im WSI-Ökosystem: ein schlankes, leistungsstarkes Werkzeug, um WSI-Dateien schnell auf Ihrem lokalen Rechner anzusehen.</p>
+    <p xml:lang="el">Το eov είναι ένα πρόγραμμα προβολής εικόνων ολόκληρου πλακιδίου για υπολογιστή, γραμμένο σε Rust. Καλύπτει ένα κενό στο οικοσύστημα των WSI: ένα μικρό περιβάλλον εργασίας υψηλών επιδόσεων για γρήγορη προβολή αρχείων WSI τοπικά, στον υπολογιστή σας.</p>
+    <p xml:lang="es">eov es un visor de escritorio para imágenes de preparación completa desarrollado en Rust. Ocupa un nicho en el ecosistema WSI: un entorno de trabajo ligero y de alto rendimiento para ver rápidamente archivos WSI en su equipo local.</p>
+    <p xml:lang="fa">برنامهٔ eov نمایشگری رومیزی برای تصاویر تمام‌لام است که با زبان Rust ساخته شده است. این برنامه جای خالی‌ای را در اکوسیستم WSI پر می‌کند: ابزاری سبک و با کارایی بالا برای مشاهدهٔ سریع فایل‌های WSI روی رایانهٔ خودتان.</p>
+    <p xml:lang="fi">eov on Rust-kielellä toteutettu työpöytäsovellus kokolasikuvien katseluun. Se täyttää aukon WSI-ekosysteemissä: pieni ja suorituskykyinen työväline WSI-tiedostojen nopeaan katseluun omalla tietokoneellasi.</p>
+    <p xml:lang="fr">eov est une visionneuse de bureau pour les images de lames entières, écrite en Rust. Elle occupe une niche dans l'écosystème WSI : un outil léger et performant pour consulter rapidement des fichiers WSI sur votre machine locale.</p>
+    <p xml:lang="he">היישום eov הוא מציג שולחני לתמונות שקופית שלמה, שנכתב בשפת Rust. הוא ממלא נישה בעולם הכלים ל-WSI: סביבת עבודה קטנה ובעלת ביצועים גבוהים לצפייה מהירה בקובצי WSI במחשב המקומי שלך.</p>
+    <p xml:lang="hi">eov संपूर्ण-स्लाइड छवियों के लिए Rust में बना एक डेस्कटॉप व्यूअर है। WSI इकोसिस्टम में यह एक ख़ास ज़रूरत पूरी करता है: आपकी स्थानीय मशीन पर WSI फ़ाइलें जल्दी देखने के लिए एक छोटा, उच्च-प्रदर्शन वाला वर्कबेंच।</p>
+    <p xml:lang="hu">Az eov Rust nyelven írt asztali nézegető teljes metszetképekhez. Hiánypótló eszköz a WSI-ökoszisztémában: kis méretű, nagy teljesítményű munkakörnyezet WSI-fájlok gyors megtekintéséhez a saját számítógépén.</p>
+    <p xml:lang="id">eov adalah penampil desktop berbasis Rust untuk citra preparat utuh. Aplikasi ini mengisi celah dalam ekosistem WSI: alat kerja yang ringkas dan berkinerja tinggi untuk melihat berkas WSI dengan cepat di komputer lokal Anda.</p>
+    <p xml:lang="it">eov è un visualizzatore desktop di immagini di vetrini interi scritto in Rust. Colma una lacuna nell'ecosistema WSI: uno strumento di lavoro compatto e ad alte prestazioni per visualizzare rapidamente i file WSI sul tuo computer locale.</p>
+    <p xml:lang="ja">eov は Rust で開発された、ホールスライドイメージ用のデスクトップビューアーです。WSI のエコシステムの隙間を埋める存在として、ローカルマシン上の WSI ファイルをすばやく表示するための、軽量で高性能なワークベンチを提供します。</p>
+    <p xml:lang="ko">eov는 Rust로 만든 전체 슬라이드 이미지용 데스크톱 뷰어입니다. WSI 생태계의 틈새를 메우는 작은 고성능 작업 도구로, 로컬 컴퓨터에서 WSI 파일을 빠르게 볼 수 있습니다.</p>
+    <p xml:lang="nb">eov er et skrivebordsprogram for visning av digitale preparater (WSI), skrevet i Rust. Det fyller en nisje i WSI-økosystemet: en liten, høytytende arbeidsbenk for rask visning av WSI-filer på din lokale maskin.</p>
+    <p xml:lang="nn">eov er et skrivebordsprogram for visning av digitale preparater (WSI), skrevet i Rust. Det fyller en nisje i WSI-økosystemet: en liten, høytytende arbeidsbenk for rask visning av WSI-filer på din lokale maskin.</p>
+    <p xml:lang="no">eov er et skrivebordsprogram for visning av digitale preparater (WSI), skrevet i Rust. Det fyller en nisje i WSI-økosystemet: en liten, høytytende arbeidsbenk for rask visning av WSI-filer på din lokale maskin.</p>
+    <p xml:lang="nl">eov is een desktopviewer voor whole-slide images, geschreven in Rust. Het programma vult een niche in het WSI-ecosysteem: een kleine, krachtige werkomgeving om WSI-bestanden snel op uw eigen computer te bekijken.</p>
+    <p xml:lang="pl">eov to przeglądarka obrazów całych preparatów na komputery, napisana w języku Rust. Wypełnia niszę w ekosystemie WSI: to niewielkie, wydajne narzędzie do szybkiego przeglądania plików WSI lokalnie.</p>
+    <p xml:lang="pt-BR">O eov é um visualizador de imagens de lâmina inteira para desktop, desenvolvido em Rust. Ele ocupa um nicho no ecossistema de WSI: uma ferramenta de trabalho compacta e de alto desempenho para visualizar rapidamente arquivos WSI no seu computador local.</p>
+    <p xml:lang="ro">eov este un vizualizator desktop pentru imagini de lamă întreagă, scris în Rust. Ocupă o nișă în ecosistemul WSI: un mediu de lucru compact și performant pentru vizualizarea rapidă a fișierelor WSI pe computerul local.</p>
+    <p xml:lang="ru">eov — настольная программа просмотра изображений целых препаратов, написанная на Rust. Она занимает свою нишу в экосистеме WSI: компактный высокопроизводительный инструмент для быстрого просмотра файлов WSI на локальном компьютере.</p>
+    <p xml:lang="sl">eov je namizni pregledovalnik slik celotnih preparatov, napisan v programskem jeziku Rust. Zapolnjuje vrzel v ekosistemu WSI: je majhno in zmogljivo delovno orodje za hiter pregled datotek WSI na vašem računalniku.</p>
+    <p xml:lang="sv">eov är ett skrivbordsprogram för visning av digitala preparat (WSI), skrivet i Rust. Det fyller en nisch i WSI-ekosystemet: ett litet, högpresterande verktyg för att snabbt visa WSI-filer på den egna datorn.</p>
+    <p xml:lang="th">eov เป็นโปรแกรมดูภาพสไลด์ทั้งแผ่นบนเดสก์ท็อปที่พัฒนาด้วย Rust โปรแกรมนี้เติมเต็มช่องว่างในระบบนิเวศของ WSI ในฐานะเครื่องมือทำงานขนาดเล็กที่มีประสิทธิภาพสูงสำหรับเปิดดูไฟล์ WSI บนเครื่องของคุณเองได้อย่างรวดเร็ว</p>
+    <p xml:lang="tr">eov, Rust ile yazılmış, tüm preparat görüntüleri için bir masaüstü görüntüleyicidir. WSI ekosistemindeki bir boşluğu doldurur: WSI dosyalarını yerel bilgisayarınızda hızla görüntülemek için küçük, yüksek performanslı bir çalışma ortamı.</p>
+    <p xml:lang="uk">eov — настільний переглядач зображень цілих препаратів, написаний мовою Rust. Програма заповнює нішу в екосистемі WSI: це невеликий високопродуктивний робочий інструмент для швидкого перегляду файлів WSI на вашому комп’ютері.</p>
+    <p xml:lang="vi">eov là trình xem ảnh toàn bộ tiêu bản trên máy tính, được viết bằng Rust. eov lấp một khoảng trống trong hệ sinh thái WSI: một công cụ làm việc nhỏ gọn, hiệu năng cao để xem nhanh các tệp WSI ngay trên máy tính của bạn.</p>
+    <p xml:lang="zh-CN">eov 是一款使用 Rust 构建的全切片图像桌面查看器。它填补了 WSI 生态系统中的一个空白：一个小巧、高性能的工作台，可在本地计算机上快速查看 WSI 文件。</p>
+    <p xml:lang="zh-SG">eov 是一款使用 Rust 构建的全切片图像桌面查看器。它填补了 WSI 生态系统中的一个空白：一个小巧、高性能的工作台，可在本地计算机上快速查看 WSI 文件。</p>
+    <p xml:lang="zh-MY">eov 是一款使用 Rust 构建的全切片图像桌面查看器。它填补了 WSI 生态系统中的一个空白：一个小巧、高性能的工作台，可在本地计算机上快速查看 WSI 文件。</p>
+    <p xml:lang="zh">eov 是一款使用 Rust 构建的全切片图像桌面查看器。它填补了 WSI 生态系统中的一个空白：一个小巧、高性能的工作台，可在本地计算机上快速查看 WSI 文件。</p>
+    <p xml:lang="zh-TW">eov 是以 Rust 打造的全玻片影像桌面檢視器。它填補了 WSI 生態系中的一塊空缺：一個小巧、高效能的工作台，讓您在本機電腦上快速檢視 WSI 檔案。</p>
+    <p xml:lang="zh-HK">eov 是以 Rust 打造的全玻片影像桌面檢視器。它填補了 WSI 生態系中的一塊空缺：一個小巧、高效能的工作台，讓您在本機電腦上快速檢視 WSI 檔案。</p>
+    <p xml:lang="zh-MO">eov 是以 Rust 打造的全玻片影像桌面檢視器。它填補了 WSI 生態系中的一塊空缺：一個小巧、高效能的工作台，讓您在本機電腦上快速檢視 WSI 檔案。</p>
   </description>
   <categories>
     <category>Science</category>

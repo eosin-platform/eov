@@ -125,14 +125,28 @@ text as eov shows it, where you saw it, and the wording you suggest.
   context.
 - Texts made in Rust: `tr!` from `eov_plugin_api::i18n` with the same
   syntax: `tr!("Opened {}", name)`, `tr!("Menu" => "Close")`,
-  `tr!("One slide" | "{n} slides" % count)`. A `// Translators: …` comment
-  right above goes into the catalog.
+  `tr!("One slide" | "{n} slides" % count)`.
+- A note for translators goes into the catalog from a `// Translators: …`
+  comment right above the text. In Rust that is the whole block of `//`
+  lines directly above the line with `tr!`. In `.slint` files it is only
+  the one `//` line directly above the line that holds `@tr`
+  (`slint-tr-extractor` takes no more): write the note on a single line,
+  just above `@tr` itself, not above the element, and not above `text:`
+  when `@tr` is on the next line.
 - One whole sentence per text, with placeholders; never put translated
   pieces together. Insert file names and paths with `i18n::isolate(…)`
   (`Locale.isolate(…)` in Slint) and decimal numbers with
   `i18n::format_decimal`. A message made of several sentences, each
   translated on its own, is put together with `i18n::join_sentences`, not
   with `join(" ")`: Chinese and Japanese put no space after `。`.
+- A line the window joins from values (`source + " · " + time`) is no
+  translated text, so no translator starts it right to left: isolate each
+  value and wrap the line in `Locale.in-direction(…)`, so that in Arabic,
+  Persian and Hebrew it starts at the right even when its first value is in
+  Latin letters. Not for text that may be English as a whole (a message
+  from a library), whose punctuation would then be misplaced.
+- Small text is sized with `Locale.text-size(…)` (`font-size:
+  Locale.text-size(10px)`): Hindi gets at least 12 px (see TODO.md).
 - A text used both with and without a plural (`tr!("Delete annotation")`
   and `tr!("Delete annotation" | "Delete {n} annotations" % n)`) becomes one
   catalog entry, the plural one, so the text without a count would show a
@@ -145,14 +159,21 @@ text as eov shows it, where you saw it, and the wording you suggest.
 - Fields that take numbers accept Western, Arabic-Indic and Persian digits:
   in Slint, a plain text input read with `Locale.number(…)` and
   `Locale.is-number(…)` (not `input-type: number`, which lets only Western
-  digits through); in Rust, `i18n::parse_decimal`.
+  digits through), or, where the number is a whole one (pixels, counts),
+  with `Locale.whole-number(…)` and `Locale.is-whole-number(…)`, which also
+  read a number written with a thousands separator (`1,024`, `1.024`,
+  `1 024`) as that number; in Rust, `i18n::parse_decimal`.
 
 You do not need to edit any catalog. Run `python3 tools/i18n/i18n.py update`
 to regenerate the templates and merge every catalog (new texts arrive
 untranslated, changed ones as fuzzy); until they are translated eov shows them
-in English. CI (`check --strict`) fails when a template is out of date with
-the sources, and the eov tests fail while an in-tree catalog is incomplete or
-broken, so new texts get translated before a release.
+in English. Run it also after changing only a note for translators, and
+after using a text the catalog already has in another file (eov compiles a
+text into the tables of its Rust code only when one of its references
+names a `.rs` file). CI (`check --strict`) fails when a template is out of
+date with the sources (its texts, its notes for translators, or the files
+its references name), and the eov tests fail while an in-tree catalog is
+incomplete or broken, so new texts get translated before a release.
 
 The Linux desktop files carry the translations of eov's catalogs too: the
 desktop entry (`assets/linux/io.eosin.eov.desktop`, for application menus),
@@ -262,11 +283,14 @@ domain = "my_plugin"        # default: the plugin id
   `.eop` (the template is not needed). Languages without a catalog, and texts
   a catalog lacks, show in English. A catalog's plural rule must be its
   language's (as `i18n::LANGUAGES` lists it); any spelling that gives every
-  number the same form will do, and a catalog without a `Plural-Forms`
-  header takes the language's. With another rule, eov leaves the catalog out
-  of the plugin's surfaces, which then show in English in that language. A
-  text with fewer plural forms than its language has shows in English (in
-  surfaces always, in Rust for the numbers whose form is missing).
+  number the same form will do, and eov reads a catalog without a
+  `Plural-Forms` header with the language's rule. The checks below accept
+  any spelling too, but want the header (`msgfmt --check` refuses a
+  catalog with plural texts without one; `update --plugin` writes it).
+  With another rule, eov leaves the catalog out of the plugin's surfaces,
+  which then show in English in that language. A text with fewer plural
+  forms than its language has shows in English (in surfaces always, in
+  Rust for the numbers whose form is missing).
 - **Tools.** From an eov checkout:
   `python3 tools/i18n/i18n.py update --plugin path/to/plugin` (extract and
   merge), `check --plugin …`, `stats --plugin …`. It extracts the `@tr`
@@ -281,7 +305,13 @@ domain = "my_plugin"        # default: the plugin id
   creating a test harness sets it (`testing::test_init` gives English):
   run tests that switch languages in a test binary of their own, one at a
   time, or use the plugin API's `thread-local-language` feature in tests
-  (see the `testing` module).
+  (see the `testing` module). A harness loads the catalog as eov does,
+  through the `[i18n]` table of `plugin.toml` in `PluginInit::plugin_root`.
+  `test_init`'s root is an empty temporary folder, so a language set on it
+  changes only decimals and isolation, and `tr!` stays English without a
+  word: copy `plugin.toml` and the catalog into the root first, as the
+  example plugin's `texts_follow_the_language_of_the_interface` test does,
+  or set a catalog with `i18n::set_catalog` after creating the harness.
 - **Compatibility.** The translation API arrived with plugin API 1.1. An eov
   built with plugin API 1.0 ignores `[i18n]`, sends no language
   (`PluginInit::language` is `None`, so `tr!` gives English) and no
@@ -292,11 +322,14 @@ domain = "my_plugin"        # default: the plugin id
   its new `shown_reason` (the reason in the interface's language) when it
   is there, else `isolate(reason)`, and register a refused contribution
   again after `LanguageChanged` to get the reason in the new language. In
-  source, 1.1 adds public fields to `PluginInit`, `DisplayAdjustments`,
-  `PluginManifest`, `OverlayObject` and `HostEvent::RegistrationRefused`:
-  code that builds them as struct literals needs `..Default::default()`
-  (or `..testing::test_init(..)`, `..OverlayObject::new(..)`), and code
-  that matches event variants needs `..`. `i18n::LANGUAGES` is a slice
+  source, 1.1 adds public fields to the structs `PluginInit`,
+  `DisplayAdjustments`, `PluginManifest` and `OverlayObject`, and to the
+  event variant `HostEvent::RegistrationRefused`: code that builds the
+  structs as literals needs `..Default::default()` (or
+  `..testing::test_init(..)`, `..OverlayObject::new(..)`), and code that
+  matches event variants needs `..`. Code that builds an event variant
+  (tests, mostly) must name every field, since Rust takes no `..` there:
+  add `shown_reason: None`. `i18n::LANGUAGES` is a slice
   (iterate `i18n::LANGUAGES`, not `&LANGUAGES`) and `Language` is
   `#[non_exhaustive]`: minor releases may add languages and fields, so read
   a `Language`'s fields rather than build or destructure one.
@@ -305,7 +338,8 @@ domain = "my_plugin"        # default: the plugin id
 
 | Check | What it catches |
 |---|---|
-| `python3 tools/i18n/i18n.py check --strict` (CI) | templates out of date with the sources, catalogs not merged, invalid catalogs (`msgfmt --check`), wrong `Language`/`Plural-Forms` headers; it warns about a plugin's Rust files that call `tr!` outside its crate's module tree |
+| `python3 tools/i18n/i18n.py check --strict` (CI) | templates out of date with the sources (texts, notes for translators, the files references name), catalogs not merged, invalid catalogs (`msgfmt --check`), a wrong `Language` header, a missing `Plural-Forms` header or one that is not the language's rule (in any spelling), lost or added placeholders, plural forms without `{n}`, right-to-left translations that would be laid out from left to right, isolates (U+2066–U+2069) left open or closed without opening, embeddings and overrides (U+202A–U+202E) (see below); it warns about a plugin's Rust files that call `tr!` outside its crate's module tree |
+| `python3 -m unittest discover -s tools/i18n -p 'test_*.py'` (CI) | the rules `check` and `import` apply to translations |
 | `cargo test -p eov i18n` | incomplete eov and in-tree plugin catalogs, lost or added placeholders, wrong number of plural forms, plural forms without `{n}`, languages missing from the build, the Slint bundle order, locale negotiation, `--language` and config precedence |
 | `cargo test -p eov-plugin-api i18n` | plural rules of every language (CLDR), catalog loading, fallback to English, formatting |
 | `cargo test -p eov file_types` | the Linux desktop entry, MIME package and AppStream metadata out of date with the catalogs, control characters in their translations |
@@ -324,6 +358,54 @@ things whose direction is physical are not mirrored, nor are layouts:
 Slint 1.19 cannot mirror layouts, so panels keep their left-to-right
 arrangement. Translators: write numbers, units and Latin-script names as
 you would in a scientific text; eov keeps them in order.
+
+Two things are the translation's own job, because only the translation
+knows where they are:
+
+- **A translation must start right to left.** The first letter that has a
+  direction sets the direction of its line (Unicode bidi algorithm, rule
+  P2; each line of a text is laid out on its own), so a line that begins
+  with a Latin word (`TIFF هرمي`) or with a value (`{name} …`, whose value
+  may be Latin) is laid out from left to right, its words in the wrong
+  order. Such a line starts with a right-to-left mark, U+200F: `import`
+  adds it, and `check` refuses a catalog edited by hand without it. It is
+  invisible; leave it in place.
+  A translation without letters of your language that joins values into a
+  sentence (`{plugin}: {status}`, `Cellaris: {}`, `{mean}; {dark}`) starts
+  with it too, or a right-to-left reader meets its parts in reverse order;
+  a single value or measurement (`{} × {} px`, `{}%`, `OME-TIFF`) does not.
+  Desktop-entry keyword lists, which are searched rather than shown, never
+  start with it.
+- **Literal left-to-right fragments are isolated.** A fragment of the
+  translation itself (not a placeholder) that mixes Latin letters or digits
+  with punctuation or symbols is reordered around its neutral characters:
+  `--language` becomes `language--` and `(.eop)` becomes `(eop.)`. Put such
+  fragments between U+2068 (first strong isolate) and U+2069 (pop
+  directional isolate), the isolate eov's code puts around values:
+  command-line options, file extensions, configuration examples, key
+  combinations with punctuation, and a number or placeholder written
+  together with a literal unit or symbol (`{width} × {height} px`, `{d} mm`,
+  `1–{}`, each written between the two). Single Latin words and names need nothing, nor
+  does a placeholder on its own (the code isolates values). Every U+2068
+  needs its U+2069 on the same line (`check` refuses one left open);
+  do not use the older embeddings and overrides (U+202A–U+202E) or a
+  left-to-right mark (U+200E) instead: a mark stops protecting a fragment
+  once the code isolates the value inside it.
+
+Questions for native reviewers of the right-to-left catalogs, where the
+first translations made different choices:
+
+- Percent and degree signs: the Arabic catalog isolates them, so they show
+  `80%` and `90°`; Arabic typesetting also uses `%80`.
+- A name followed by a version (`eov {version}`, `Slint {slint}`): Arabic
+  and Hebrew isolate the pair, so it reads `eov 1.0.0` as typed; Persian
+  leaves it to the right-to-left order, which shows the version first.
+- Coordinates and formulas written with the language's own punctuation
+  (Persian `{x}، {y}`, the CPS and F1/Dice formulas with translated class
+  names) are laid out right to left, not as left-to-right mathematics.
+
+Check how a text will look with `pango-view`, which applies the same
+algorithm (`pango-view --font='Noto Sans 16' -q -o out.png --text "…"`).
 
 ## Layout checks
 

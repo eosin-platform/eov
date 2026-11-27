@@ -153,6 +153,10 @@ export component HudToolbar inherits Rectangle {
     // Colour management (see `HudSettings.color-management`).
     in property <int> color-management: 0;
     in property <string> color-management-tooltip: "";
+    /// Where the pane is, from the toolbar's left edge, and how wide: the
+    /// tooltips and the plugin menus stay inside it.
+    in property <length> area-left: 0px;
+    in property <length> area-width: 100000px;
 
     callback fit-to-view();
     callback zoom-in();
@@ -578,6 +582,15 @@ export component HudToolbar inherits Rectangle {
                     checkable: btn.menu.length == 0 && btn.active;
                     expandable: btn.menu.length > 0;
                     expanded: root.plugin-menu-open && root.plugin-menu-index == idx;
+                    // The host resets the model when a button changes (a
+                    // click toggles it): the button under the pointer goes
+                    // without reporting that it is no longer hovered, and its
+                    // tooltip would stay on screen. Its successor clears it.
+                    init => {
+                        if root.hovered-plugin == idx {
+                            root.hovered-plugin = -1;
+                        }
+                    }
                     changed hovered => {
                         if self.hovered {
                             root.hovered-plugin = idx;
@@ -621,11 +634,12 @@ export component HudToolbar inherits Rectangle {
         }
     }
 
-    // Tooltip rendered outside the clipped bar
+    // Tooltip rendered outside the clipped bar: centred under its button,
+    // but inside the pane (4 px from its edges), where a longer one wraps.
     if active-tooltip != "": Rectangle {
-        x: root.tooltip-center-x - self.width / 2;
+        x: max(root.area-left + 4px, min(root.area-left + root.area-width - 4px - self.width, root.tooltip-center-x - self.width / 2));
         y: root.height + 6px;
-        width: hud-tt-text.preferred-width + 12px;
+        width: min(max(0px, root.area-width - 8px), hud-tt-text.preferred-width + 12px);
         height: hud-tt-text.preferred-height + 6px;
         background: Theme.tooltip-bg;
         border-radius: 4px;
@@ -635,17 +649,22 @@ export component HudToolbar inherits Rectangle {
         hud-tt-text := Text {
             x: 6px;
             y: 3px;
+            width: parent.width - 12px;
             text: root.active-tooltip;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            wrap: word-wrap;
+            horizontal-alignment: Locale.start;
         }
     }
 
+    // A plugin button's menu: as wide as its widest item (180 px at least),
+    // inside the pane.
     if root.plugin-menu-open && root.plugin-menu-index >= 0 && root.plugin-menu-index < root.plugin-buttons.length: Rectangle {
         property <[ContextMenuItem]> items: root.plugin-buttons[root.plugin-menu-index].menu;
-        x: root.plugin-menu-x;
+        x: max(root.area-left + 4px, min(root.area-left + root.area-width - 4px - self.width, root.plugin-menu-x));
         y: root.plugin-menu-y;
-        width: 180px;
+        width: min(max(0px, root.area-width - 8px), max(180px, menu-items.preferred-width));
         height: self.items.length * 30px + max(0, self.items.length - 1) * 2px + 12px;
         background: Theme.hud-panel-bg;
         border-radius: 8px;
@@ -662,9 +681,7 @@ export component HudToolbar inherits Rectangle {
             }
         }
 
-        VerticalLayout {
-            width: parent.width;
-            height: parent.height;
+        menu-items := VerticalLayout {
             padding: 6px;
             spacing: 2px;
 
@@ -685,26 +702,30 @@ export component HudToolbar inherits Rectangle {
                     }
                 }
 
-                Text {
-                    x: 8px;
-                    width: 14px;
-                    y: (parent.height - self.height) / 2;
-                    text: item.icon == "check" ? "✓" : "";
-                    color: Theme.text-strong;
-                    font-size: 12px;
-                    accessible-role: none;
-                }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
 
-                Text {
-                    x: 26px;
-                    y: (parent.height - self.height) / 2;
-                    width: parent.width - 34px;
-                    text: item.label;
-                    color: item.enabled ? Theme.text-strong : Theme.text-disabled;
-                    font-size: 12px;
-                    horizontal-alignment: Locale.start;
-                    overflow: elide;
-                    accessible-role: none;
+                    Text {
+                        width: 14px;
+                        text: item.icon == "check" ? "✓" : "";
+                        color: Theme.text-strong;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+
+                    Text {
+                        text: item.label;
+                        color: item.enabled ? Theme.text-strong : Theme.text-disabled;
+                        font-size: 12px;
+                        horizontal-alignment: Locale.start;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
                 }
 
                 item-touch := TouchArea {

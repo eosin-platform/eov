@@ -73,7 +73,7 @@ msgstr "شمارش تا ده"
 #. Translators: the progress of the background job, e.g. "3 of 10"
 #: src/lib.rs:273
 msgid "{step} of {total}"
-msgstr "{step} از {total}"
+msgstr "‏{step} از {total}"
 
 #: src/lib.rs:616
 msgid "Add marker here"
@@ -83,8 +83,8 @@ msgstr "افزودن نشانه در اینجا"
 #: src/lib.rs:649
 msgid "{n} marker on the open slides"
 msgid_plural "{n} markers on the open slides"
-msgstr[0] "{n} نشانه روی لام‌های باز"
-msgstr[1] "{n} نشانه روی لام‌های باز"
+msgstr[0] "‏{n} نشانه روی لام‌های باز"
+msgstr[1] "‏{n} نشانه روی لام‌های باز"
 
 #: ui/example-sidebar.slint:29
 msgctxt "ExampleSidebar"
@@ -100,8 +100,8 @@ msgstr "بدون لام"
 msgctxt "ExampleSidebar"
 msgid "{n} marker"
 msgid_plural "{n} markers"
-msgstr[0] "{n} نشانه"
-msgstr[1] "{n} نشانه"
+msgstr[0] "‏{n} نشانه"
+msgstr[1] "‏{n} نشانه"
 
 #: ui/example-sidebar.slint:46
 msgctxt "ExampleSidebar"

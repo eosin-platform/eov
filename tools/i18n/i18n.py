@@ -45,6 +45,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -403,10 +404,16 @@ def extract(component: Component) -> bool:
             parts.append(target)
         merged = scratch / "merged.pot"
         if parts:
-            run(["msgcat", "--use-first", "--sort-by-file", "-o", str(merged)] + [str(p) for p in parts])
+            # A text that several parts have (a .slint file and Rust code
+            # with the same context and text) keeps the references and
+            # comments of each: app/build.rs leaves texts without a `.rs`
+            # reference out of the Rust tables. (`--use-first` would keep
+            # only the first part's.)
+            run(["msgcat", "--sort-by-file", "-o", str(merged)] + [str(p) for p in parts])
         else:
             merged.write_text("", encoding="utf-8")
         body = strip_header(merged.read_text(encoding="utf-8")) if merged.exists() else ""
+        body = without_part_markers(body)
         text = header(component, None) + ("\n" + body if body else "")
     component.catalogs.mkdir(parents=True, exist_ok=True)
     old = component.template.read_text(encoding="utf-8") if component.template.exists() else None
@@ -416,27 +423,46 @@ def extract(component: Component) -> bool:
     return True
 
 
-PO_LINE = re.compile(r'^(#|msgctxt |msgid |msgid_plural |msgstr|"|$)')
+# msgcat marks the comments of a text that several parts have, where they
+# differ, with the part each comes from: `#. #-#-#-#-#  rust.pot (eov)  #-#-#-#-#`.
+PART_MARKER = re.compile(r"^#\.? ?#-#-#-#-#  .*  #-#-#-#-#$")
 
 
-#: Lines after which a line starting with `"` continues a string.
-STRING_LINE = re.compile(r'^(msgctxt |msgid |msgid_plural |msgstr|")')
+def without_part_markers(body: str) -> str:
+    """The entries msgcat merged, without the lines that say which part a
+    comment comes from: the comments of the parts follow one another (the
+    .slint files' first). Anything else msgcat had to mark (texts that differ
+    in more than their comments) stops the extraction."""
+    kept = [line for line in body.split("\n") if not PART_MARKER.match(line)]
+    marked = [line for line in kept if "#-#-#-#-#" in line]
+    if marked:
+        sys.exit("msgcat could not merge the extracted texts:\n" + "\n".join(marked))
+    return "\n".join(kept)
+
+
+# A reference line as slint-tr-extractor writes them: `#: file:line …`.
+REFERENCE_LINE = re.compile(r"^#: \S+:\d+( \S+:\d+)*$")
 
 
 def repair_comments(path: Path) -> None:
     """slint-tr-extractor 1.19 writes a translator comment longer than a
-    line without its `#.` prefix (rspolib's writer); put the prefix back.
-    A wrapped comment line may start with `"`: it continues a string only
-    right after a keyword or another string line, else it is a comment."""
-    repaired: list[str] = []
-    for line in path.read_text(encoding="utf-8").split("\n"):
-        previous = repaired[-1] if repaired else ""
-        if line.startswith('"'):
-            valid = bool(STRING_LINE.match(previous))
-        else:
-            valid = bool(PO_LINE.match(line))
-        repaired.append(line if valid else f"#. {line.rstrip()}")
-    path.write_text("\n".join(repaired), encoding="utf-8")
+    line without its `#.` prefix (rspolib's writer), in pieces that may
+    start with anything (`#3498DB`, `"`, `msgid `); put the prefix back.
+
+    Each of its entries is the comment (one line that starts with `#. `, or
+    pieces without a prefix), then the references (always there), then the
+    keywords. So in a block that has references, every line before them
+    belongs to the comment; the header block and everything from the
+    references on stay as they are."""
+    blocks = path.read_text(encoding="utf-8").split("\n\n")
+    for index, block in enumerate(blocks):
+        lines = block.split("\n")
+        start = next((i for i, line in enumerate(lines) if REFERENCE_LINE.match(line.rstrip())), None)
+        if not start or (start == 1 and lines[0].startswith("#. ")):
+            continue
+        lines[:start] = [f"#. {line.rstrip()}" for line in lines[:start]]
+        blocks[index] = "\n".join(lines)
+    path.write_text("\n\n".join(blocks), encoding="utf-8")
 
 
 def strip_header(text: str) -> str:
@@ -511,13 +537,70 @@ def msgfmt_statistics(catalog: Path) -> tuple[int, int, int]:
     return numbers["translated"], numbers["fuzzy"], numbers["untranslated"]
 
 
-def msgids(path: Path) -> set[tuple[str, str, str]]:
-    """(context, msgid, plural) of every live entry."""
+def notes(path: Path) -> dict[tuple[str, str, str], tuple[str, tuple[str, ...]]]:
+    """The note for translators (`#.`, however its lines are wrapped) and
+    the files that use the text (the `#:` references without their line
+    numbers, which move with every edit) of every live entry, by (context,
+    msgid, plural)."""
     return {
-        (entry.msgctxt or "", entry.msgid, entry.msgid_plural or "")
+        (entry.msgctxt or "", entry.msgid, entry.msgid_plural or ""): (
+            " ".join((entry.comment or "").split()),
+            tuple(sorted({file for file, _ in entry.occurrences})),
+        )
         for entry in polib().pofile(str(path), wrapwidth=0)
         if not entry.obsolete
     }
+
+
+def differences(have: dict, want: dict) -> str:
+    """What differs between the notes of two copies of a catalog: their
+    texts, else the notes for translators or the files that use them."""
+    if have.keys() != want.keys():
+        return "texts"
+    if any(have[key][0] != want[key][0] for key in want):
+        return "notes for translators"
+    return "references (where its texts are used)"
+
+
+# The numbers at which two plural rules are compared, as eov compares them:
+# gettext rules tell numbers apart by their last two or three digits and
+# at small numbers.
+PLURAL_SAMPLES = list(range(0, 10_001)) + [
+    100_000, 1_000_000, 1_000_001, 1_000_002, 1_000_005, 1_000_011, 1_000_021, 1_000_100, 10_000_000, 2**32 - 1,
+]
+
+
+def plural_rule(forms: str):
+    """The number of forms and the form function (with gettext's own
+    evaluator) of a `Plural-Forms` value; None when it cannot be read."""
+    import gettext
+
+    fields = {}
+    for part in forms.split(";"):
+        key, equals, value = part.partition("=")
+        if equals:
+            fields[key.strip()] = value.strip()
+    try:
+        count = int(fields["nplurals"])
+        rule = gettext.c2py(fields["plural"])
+    except (KeyError, ValueError, SyntaxError, RecursionError):
+        return None
+    return count, rule
+
+
+def same_plural_rule(forms: str, language: Language) -> bool:
+    """Whether a `Plural-Forms` value is the language's rule, in any
+    spelling: as many forms, and the same form for every number."""
+    if "".join(forms.split()) == "".join(language.plural_forms.split()):
+        return True
+    theirs, ours = plural_rule(forms), plural_rule(language.plural_forms)
+    if theirs is None or ours is None or theirs[0] != ours[0]:
+        return False
+    last = ours[0] - 1
+    try:
+        return all(min(theirs[1](n), last) == min(ours[1](n), last) for n in PLURAL_SAMPLES)
+    except ArithmeticError:
+        return False
 
 
 def selected_languages(tags: list[str] | None) -> list[Language]:
@@ -538,11 +621,14 @@ def check(component: Component, strict: bool, complete: bool, tags: list[str] | 
             extract(copy)
             if not component.template.exists():
                 problems.append(f"{component.template}: missing; run `update`")
-            elif msgids(copy.template) != msgids(component.template):
-                problems.append(
-                    f"{component.template}: out of date with the sources; run `python3 tools/i18n/i18n.py update {component.name}`"
-                )
-    template = msgids(component.template) if component.template.exists() else set()
+            else:
+                fresh, committed = notes(copy.template), notes(component.template)
+                if fresh != committed:
+                    problems.append(
+                        f"{component.template}: its {differences(committed, fresh)} are out of date with the "
+                        f"sources; run `python3 tools/i18n/i18n.py update {component.name}`"
+                    )
+    template = notes(component.template) if component.template.exists() else {}
     for language in selected_languages(tags):
         spellings = component.catalogs_of(language.tag)
         if len(spellings) > 1:
@@ -563,13 +649,32 @@ def check(component: Component, strict: bool, complete: bool, tags: list[str] | 
         metadata = polib().pofile(str(catalog), wrapwidth=0).metadata
         if metadata.get("Language", "").strip() != language.tag:
             problems.append(f"{catalog}: its header lacks Language: {language.tag}")
-        compact = lambda text: "".join(text.split())
-        if compact(metadata.get("Plural-Forms", "")) != compact(language.plural_forms):
-            problems.append(f"{catalog}: Plural-Forms must be '{language.plural_forms}'")
-        if template and msgids(catalog) != template:
-            problems.append(f"{catalog}: not merged with the template; run `update`")
+        forms = metadata.get("Plural-Forms")
+        if forms is None:
+            problems.append(f"{catalog}: its header lacks Plural-Forms: {language.plural_forms}")
+        elif not same_plural_rule(forms, language):
+            problems.append(
+                f"{catalog}: Plural-Forms '{forms}' is not the rule of {language.english_name} "
+                f"('{language.plural_forms}', in any spelling)"
+            )
+        if template:
+            merged = notes(catalog)
+            if merged != template:
+                problems.append(
+                    f"{catalog}: not merged with the template (its {differences(merged, template)} differ); run `update`"
+                )
         if complete and (fuzzy or untranslated):
             problems.append(f"{catalog}: {untranslated} untranslated and {fuzzy} fuzzy messages")
+        # The translations themselves, as `import` checks them.
+        for entry in polib().pofile(str(catalog), wrapwidth=0):
+            if entry.obsolete or "fuzzy" in entry.flags or not entry.translated():
+                continue
+            translation = (
+                [entry.msgstr_plural[i] for i in sorted(entry.msgstr_plural)] if entry.msgid_plural else entry.msgstr
+            )
+            why = validate_translation(entry, translation, language)
+            if why:
+                problems.append(f"{catalog}: {entry.msgid!r}: {why}")
     return problems
 
 
@@ -659,6 +764,123 @@ def export(component_list: list[Component], tag: str, everything: bool) -> list[
     return work
 
 
+# Right-to-left text whose first strong character is a Latin letter is laid
+# out from left to right, its words in the wrong order: the first strong
+# character sets the direction of a paragraph (UAX #9, P2 and P3). A value
+# coming first may be Latin too. A right-to-left mark (U+200F) first makes
+# such a text right to left; `import` puts it there, `check` asks for it.
+RIGHT_TO_LEFT_MARK = "\u200f"
+ISOLATE_STARTS = "\u2066\u2067\u2068"
+ISOLATE_END = "\u2069"
+
+
+# A list of search words (the desktop entry's `Keywords`), which is not
+# shown as text: a mark before its first word would stop that word from
+# matching. At least three words and no placeholders, so that values joined
+# with a semicolon ("{mean}; {dark}") are not taken for one.
+WORD_LIST = re.compile(r"[^;\s{}]+(;[^;{}]+){2,};?")
+
+# Values joined into a sentence ("{plugin}: {status}", "Cellaris: {}",
+# "{mean}; {dark}", "{path} ({source}): {what}"), or a line that ends a
+# sentence after a value when another line follows ("{reason}.\n{hint}").
+# Even without letters of the language such a line has to be laid out right
+# to left, or a right-to-left reader meets its parts in reverse order once
+# eov isolates the values. A single value ("{} × {} px", "{}%",
+# "{hours}:{minutes}") is left alone.
+JOINED_VALUES = re.compile(r"[})\]\w](?:[:;\u060c\u061b]| \u00b7) ")
+SENTENCE_END = re.compile(r"[})\]\w]\.$")
+
+
+def line_starts_left_to_right(line: str, joined: bool) -> bool:
+    """Whether one line, which Slint lays out as a paragraph of its own,
+    would be laid out from left to right: a Latin letter or a placeholder
+    comes before its first right-to-left letter. Isolated runs are skipped,
+    as UAX #9 skips them. A line without right-to-left letters counts only
+    when it joins values (`joined`)."""
+    if not joined and not any(unicodedata.bidirectional(c) in ("R", "AL") for c in line):
+        return False
+    depth = 0
+    index = 0
+    while index < len(line):
+        c = line[index]
+        if c in ISOLATE_STARTS:
+            depth += 1
+        elif c == ISOLATE_END:
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            token = PLACEHOLDER.match(line, index)
+            if token and token.group() not in ("{{", "}}"):
+                return True
+            kind = unicodedata.bidirectional(c)
+            if kind in ("R", "AL"):
+                return False
+            if kind == "L":
+                return True
+        index += 1
+    return False
+
+
+def left_to_right_lines(text: str) -> list[int]:
+    """The lines (0-based) of a translation into a right-to-left language
+    that would be laid out from left to right. Slint splits a text at "\n"
+    and gives each line its own direction (from its first strong letter),
+    so each line is judged on its own. Lists of search words are not laid
+    out and never count."""
+    if WORD_LIST.fullmatch(text.lstrip(RIGHT_TO_LEFT_MARK)):
+        return []
+    lines = text.split("\n")
+    return [
+        index
+        for index, line in enumerate(lines)
+        if line_starts_left_to_right(
+            line,
+            bool(JOINED_VALUES.search(line)) or (index + 1 < len(lines) and bool(SENTENCE_END.search(line))),
+        )
+    ]
+
+
+def starts_left_to_right(text: str) -> bool:
+    """Whether any line of a translation into a right-to-left language
+    would be laid out from left to right (see left_to_right_lines)."""
+    return bool(left_to_right_lines(text))
+
+
+# Explicit embeddings and overrides (LRE, RLE, PDF, LRO, RLO): isolates do
+# their job without leaking into the text around them.
+EMBEDDINGS = "\u202a\u202b\u202c\u202d\u202e"
+
+
+def unbalanced_isolates(text: str) -> bool:
+    """Whether an isolate (U+2066-U+2068) is left open or U+2069 closes
+    one that was never opened, on any line: an isolate ends with its line
+    (each line is a paragraph of its own), and an open one would take the
+    rest of the line, and whatever eov puts after the text, out of its
+    direction."""
+    for line in text.split("\n"):
+        depth = 0
+        for c in line:
+            if c in ISOLATE_STARTS:
+                depth += 1
+            elif c == ISOLATE_END:
+                depth -= 1
+                if depth < 0:
+                    return True
+        if depth != 0:
+            return True
+    return False
+
+
+def right_to_left(text: str) -> str:
+    """`text` with a right-to-left mark at the start of each line that
+    needs one."""
+    marked = set(left_to_right_lines(text))
+    if not marked:
+        return text
+    return "\n".join(
+        RIGHT_TO_LEFT_MARK + line if index in marked else line for index, line in enumerate(text.split("\n"))
+    )
+
+
 def validate_translation(entry, translation, language: Language) -> str | None:
     """Why a translation cannot be used, or None."""
     sources = placeholders(entry.msgid) | placeholders(entry.msgid_plural or "")
@@ -677,8 +899,36 @@ def validate_translation(entry, translation, language: Language) -> str | None:
             return f"unknown placeholders {sorted(found - sources)}"
         if required - found:
             return f"missing placeholders {sorted(required - found)}"
+        if unbalanced_isolates(form):
+            return (
+                "every U+2066, U+2067 or U+2068 (isolate) needs its own U+2069 after it on the same line, "
+                "and the other way round"
+            )
+        if any(c in EMBEDDINGS for c in form):
+            return "uses U+202A-U+202E (embeddings, overrides): isolate the fragment with U+2068 ... U+2069 instead"
+        lines = left_to_right_lines(form) if language.rtl else []
+        if lines == [0]:
+            return (
+                "starts with a Latin letter or a value, so it would be laid out from left to right: "
+                "put U+200F (right-to-left mark) first (`import` does)"
+            )
+        if lines:
+            shown = ", ".join(str(index + 1) for index in lines)
+            return (
+                f"line {shown} starts with a Latin letter or a value, so it would be laid out from left "
+                "to right (each line is laid out on its own): put U+200F (right-to-left mark) at the "
+                "start of that line (`import` does)"
+            )
     if not entry.msgid_plural and "{n}" in sources and "{n}" not in placeholders(forms[0]):
         return "missing placeholder {n}"
+    if entry.msgid_plural and "{n}" in placeholders(entry.msgid_plural):
+        # Every form that a number other than one takes shows the number,
+        # as eov's own check (`check_catalog`) requires: in French the form
+        # of 1 is also the form of 0.
+        for form, numbers in plural_examples(language).items():
+            if form < len(forms) and any(n != 1 for n in numbers) and "{n}" not in placeholders(forms[form]):
+                shown = ", ".join(str(n) for n in numbers[:4])
+                return f"plural form {form} (for {shown}) does not show {{n}}"
     return None
 
 
@@ -722,6 +972,11 @@ def import_translations(component_list: list[Component], tag: str, translations:
                 problems.append(f"{key}: no such text in {catalog} (the catalog changed; export again)")
                 continue
             translation = translations[key]
+            if language.rtl:
+                if isinstance(translation, str):
+                    translation = right_to_left(translation)
+                elif isinstance(translation, list):
+                    translation = [right_to_left(form) if isinstance(form, str) else form for form in translation]
             problem = validate_translation(entry, translation, language)
             if problem:
                 problems.append(f"{key} {entry.msgid!r}: {problem}")
@@ -814,7 +1069,11 @@ def main() -> None:
     with_components(sub.add_parser("extract", help="regenerate the templates"))
     with_components(sub.add_parser("update", help="extract, then merge every catalog with its template"))
     p = with_components(sub.add_parser("check", help="validate catalogs"))
-    p.add_argument("--strict", action="store_true", help="also fail when a template is out of date with the sources")
+    p.add_argument(
+        "--strict",
+        action="store_true",
+        help="also fail when a template is out of date with the sources (its texts, notes for translators or the files that use them)",
+    )
     p.add_argument("--complete", action="store_true", help="also fail on untranslated or fuzzy messages")
     p.add_argument("--language", action="append", help="only this language (repeatable)")
     p = with_components(sub.add_parser("stats", help="translated / fuzzy / untranslated per language"))

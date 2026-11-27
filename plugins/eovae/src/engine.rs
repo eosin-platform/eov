@@ -89,7 +89,7 @@ pub struct EngineInfo {
     /// CPU inference threads (0 on the GPU).
     pub threads: usize,
     /// Why `Auto` did not get CUDA: batch summaries record its English
-    /// form, [`reason_text`] shows it.
+    /// form, the sidebar and notifications show it.
     pub fallback: Option<Message>,
     /// The batch size the model's graph requires, if fixed.
     pub fixed_batch: Option<usize>,
@@ -116,27 +116,11 @@ impl EngineInfo {
 pub const NO_CUDA_SUPPORT: &str =
     "this ONNX Runtime has no CUDA support (use the GPU build; see the README)";
 
-/// [`NO_CUDA_SUPPORT`] in the language being written.
-fn no_cuda_support_text() -> String {
-    tr!("this ONNX Runtime has no CUDA support (use the GPU build; see the README)")
-}
-
 /// Why `Auto` runs on the CPU with an ONNX Runtime built without CUDA.
 pub fn no_cuda_support() -> Message {
-    Message::new(no_cuda_support_text)
-}
-
-/// A reason an engine gives (why it fell back to the CPU, why CUDA is
-/// unavailable) in the language being written, as the sidebar and
-/// notifications show it: [`NO_CUDA_SUPPORT`] is worded again, so that it
-/// follows a change of language; others (eovae's, ONNX Runtime's) as they
-/// were made.
-pub fn reason_text(reason: &Message) -> String {
-    if reason.english == NO_CUDA_SUPPORT {
-        no_cuda_support_text()
-    } else {
-        reason.to_string()
-    }
+    Message::new(|| {
+        tr!("this ONNX Runtime has no CUDA support (use the GPU build; see the README)")
+    })
 }
 
 /// One batch of results.
@@ -388,9 +372,9 @@ mod tests {
     fn shown_reasons_say_what_recorded_ones_say() {
         // Tests run in English: the shown text is the recorded one.
         assert_eq!(no_cuda_support().english, NO_CUDA_SUPPORT);
-        assert_eq!(reason_text(&no_cuda_support()), NO_CUDA_SUPPORT);
+        assert_eq!(no_cuda_support().shown(), NO_CUDA_SUPPORT);
         assert_eq!(
-            reason_text(&Message::plain("libcudart.so: missing")),
+            Message::plain("libcudart.so: missing").shown(),
             "libcudart.so: missing"
         );
         let info = |device, threads| EngineInfo {

@@ -107,7 +107,7 @@ export component QuantifyPanel inherits Rectangle {
                 Text {
                     text: root.region-text;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                 }
@@ -115,7 +115,7 @@ export component QuantifyPanel inherits Rectangle {
                 Text {
                     text: @tr("Stain model");
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: Locale.start;
                 }
 
@@ -135,7 +135,7 @@ export component QuantifyPanel inherits Rectangle {
                 Text {
                     text: @tr("Stain to measure");
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: Locale.start;
                 }
 
@@ -202,7 +202,7 @@ export component QuantifyPanel inherits Rectangle {
                 Text {
                     text: @tr("Thresholds are stain concentrations (optical density along the stain's vector), as the deconvolution view shows them.");
                     color: Theme.text-secondary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                 }
@@ -237,7 +237,7 @@ export component QuantifyPanel inherits Rectangle {
                 if root.note != "": Text {
                     text: root.note;
                     color: Theme.warning;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                     height: self.preferred-height;

@@ -308,7 +308,7 @@ pub fn run_job(
                                 let bytes = rgba.len();
                                 control.fail(
                                     Severity::Read,
-                                    Message::new(|| {
+                                    Message::new(move || {
                                         // Translators: why an analysis failed: the
                                         // host (eov) gave {n} bytes of pixel data,
                                         // the wrong size for a region of {tile} ×
@@ -328,14 +328,15 @@ pub fn run_job(
                     Err(error) => {
                         let failed = failures.fetch_add(1, Ordering::SeqCst) + 1;
                         if failed > max_failures {
+                            let level = spec.grid.level;
                             control.fail(
                                 Severity::Read,
-                                Message::new(|| {
+                                Message::new(move || {
                                     tr!(
                                         "{n} tile could not be read (level {level}); last error: {error}"
                                             | "{n} tiles could not be read (level {level}); last error: {error}"
                                             % failed,
-                                        level = spec.grid.level,
+                                        level = level,
                                         error = &error
                                     )
                                 }),
@@ -433,7 +434,7 @@ pub fn run_job(
         JobOutcome::Cancelled(counts)
     } else if done < total {
         JobOutcome::Failed {
-            error: Message::new(|| {
+            error: Message::new(move || {
                 // Translators: why an analysis failed: it ended before every
                 // tile was done ({done} of the {total} tiles were).
                 tr!(
@@ -477,23 +478,24 @@ fn infer(
         Err(EngineError::Failed(message)) => {
             control.fail(
                 Severity::Inference,
-                Message::new(|| tr!("inference failed: {}", message)),
+                Message::new(move || tr!("inference failed: {}", message)),
             );
             return;
         }
     };
-    if output.recon.len() != tensor_batch * item_len {
+    let (returned, expected) = (output.recon.len(), tensor_batch * item_len);
+    if returned != expected {
         control.fail(
             Severity::Inference,
-            Message::new(|| {
+            Message::new(move || {
                 tr!(
                     // Translators: the model's output has the wrong size; {returned}
                     // and {expected} are bare numbers of values.
                     "the model returned the wrong number of values for a batch of {n} tile: {returned} instead of {expected}"
                         | "the model returned the wrong number of values for a batch of {n} tiles: {returned} instead of {expected}"
                         % tensor_batch,
-                    returned = output.recon.len(),
-                    expected = tensor_batch * item_len
+                    returned = returned,
+                    expected = expected
                 )
             }),
         );

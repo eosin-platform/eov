@@ -275,7 +275,7 @@ cut from (a region)	剪除	add to region = 添加到区域
 DICOM bulk annotations	DICOM 批量标注	IOD 名称 Microscopy Bulk Simple Annotations 保留英文；modality = 模态；study = 检查；series = 序列
 GeoJSON feature	要素	FeatureCollection 保留原文
 archive (eov annotation archive)	存档	
-readout, region readout (Cellaris)	读数、区域读数	
+readout, region readout (Cellaris)	统计、区域统计	由模型预测值计算得出的区域内统计（均值、离散度、密度 r²），不是测量。工具名称和面板标题为“Cellaris 区域统计”“区域统计”；指已计算出的数值时写“统计结果”（无法计算统计结果、统计结果已复制…）；Compute = 计算；readout region = 统计区域。不用“读数”（仪器读数）、“测量”“测定”“测得”或“信号”；只有英文写 measured（实际测得的免疫荧光）或 measurements（预测结果不是测量值）时才用测量类词语
 cell (Cellaris grid cell)	网格单元	Cellaris 中 cell 指一次预测的小方格，不是生物细胞，不得译为“细胞”
 tissue block (Cellaris, 5 µm square)	组织方格	5 µm 见方的组织小格；不是石蜡包埋的组织块（蜡块）。block = 方格
 window (model input image)	窗口	模型每次预测所用的方形图像

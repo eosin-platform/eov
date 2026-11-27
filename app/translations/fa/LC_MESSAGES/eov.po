@@ -73,11 +73,11 @@ msgstr "هم‌ترازی بازنشانی شد: قاب‌های پیوندشد�
 #. screen pixel.
 #: app/src/callbacks.rs:516
 msgid "Above 100%, the slide's pixels show as squares"
-msgstr "در بزرگ‌نمایی بالای 100%، پیکسل‌های لام به‌صورت مربع نمایش داده می‌شوند"
+msgstr "در بزرگ‌نمایی بالای ⁨100%⁩، پیکسل‌های لام به‌صورت مربع نمایش داده می‌شوند"
 
 #: app/src/callbacks.rs:518
 msgid "Above 100%, the slide is smoothed"
-msgstr "در بزرگ‌نمایی بالای 100%، لام هموار نمایش داده می‌شود"
+msgstr "در بزرگ‌نمایی بالای ⁨100%⁩، لام هموار نمایش داده می‌شود"
 
 #: app/src/callbacks.rs:538
 msgid "This slide has no colour profile eov can use"
@@ -119,7 +119,7 @@ msgstr "موتور رندر GPU در دسترس نیست؛ از موتور رن�
 #: app/src/callbacks.rs:2488
 msgid "“{text}” is not an angle: type degrees clockwise, such as {example}"
 msgstr ""
-"«{text}» زاویه نیست: مقدار را بر حسب درجه و در جهت ساعتگرد وارد کنید، مانند "
+"‏«{text}» زاویه نیست: مقدار را بر حسب درجه و در جهت ساعتگرد وارد کنید، مانند "
 "{example}"
 
 #. Translators: how many of the slide's channels are shown, of all its
@@ -131,8 +131,8 @@ msgstr "کانال‌های نمایش‌داده‌شده: {shown} از {total}
 #: app/src/channels.rs:350
 msgid "{n} significant bit"
 msgid_plural "{n} significant bits"
-msgstr[0] "{n} بیت معنی‌دار"
-msgstr[1] "{n} بیت معنی‌دار"
+msgstr[0] "‏{n} بیت معنی‌دار"
+msgstr[1] "‏{n} بیت معنی‌دار"
 
 #: app/src/channels.rs:363 app/src/slide_info.rs:133
 msgid "focal plane {current} of {count}"
@@ -245,141 +245,142 @@ msgstr "لام‌ها"
 msgid "no input paths were given"
 msgstr "هیچ مسیر ورودی داده نشده است"
 
-#. Translators: the size of the dataset's patches is out of range.
-#: app/src/dataset_dialog.rs:157
-msgid "tile size must be between {min} and {max} pixels (got {value})"
-msgstr "اندازهٔ کاشی باید بین {min} و {max} پیکسل باشد (مقدار داده‌شده: {value})"
+#. Translators: the dialog's Patch Size field (the size of the
+#. dataset's patches, in pixels) is out of range.
+#: app/src/dataset_dialog.rs:158
+msgid "patch size must be between {min} and {max} pixels (got {value})"
+msgstr "اندازهٔ پچ باید بین {min} و {max} پیکسل باشد (مقدار داده‌شده: {value})"
 
 #. Translators: the step between the dataset's patches is out of
 #. range.
-#: app/src/dataset_dialog.rs:165
+#: app/src/dataset_dialog.rs:166
 msgid "stride must be between {min} and {max} pixels (got {value})"
 msgstr "گام باید بین {min} و {max} پیکسل باشد (مقدار داده‌شده: {value})"
 
 #. Translators: the number of threads (processor cores) to use is out
 #. of range.
-#: app/src/dataset_dialog.rs:173
+#: app/src/dataset_dialog.rs:174
 msgid "threads must be between {min} and {max} (got {value})"
 msgstr "تعداد رشته‌ها باید بین {min} و {max} باشد (مقدار داده‌شده: {value})"
 
 #. Translators: {} is the number given.
-#: app/src/dataset_dialog.rs:180
+#: app/src/dataset_dialog.rs:181
 msgid "white threshold must be above 0 and at most 1 (got {})"
 msgstr "آستانهٔ سفیدی باید بزرگ‌تر از 0 و حداکثر 1 باشد (مقدار داده‌شده: {})"
 
-#: app/src/dataset_dialog.rs:232
+#: app/src/dataset_dialog.rs:233
 msgid "Extracting dataset patches"
 msgstr "استخراج پچ‌های مجموعه‌داده"
 
-#: app/src/dataset_dialog.rs:271
+#: app/src/dataset_dialog.rs:272
 msgid "Could not start the dataset extraction"
 msgstr "استخراج مجموعه‌داده آغاز نشد"
 
-#: app/src/dataset_dialog.rs:283
+#: app/src/dataset_dialog.rs:284
 msgid "Finding slides…"
 msgstr "در حال یافتن لام‌ها…"
 
-#: app/src/dataset_dialog.rs:284
+#: app/src/dataset_dialog.rs:285
 msgid "Planning…"
 msgstr "در حال برنامه‌ریزی…"
 
 #. Translators: the dataset extraction is computing the identity of
 #. slide {current} of {total}.
-#: app/src/dataset_dialog.rs:288
+#: app/src/dataset_dialog.rs:289
 msgid "Hashing {current}/{total}"
-msgstr "در حال محاسبهٔ هش {current}/{total}"
+msgstr "در حال محاسبهٔ هش ⁨{current}/{total}⁩"
 
 #. Translators: the dataset extraction is at slide {current} of
 #. {total}.
-#: app/src/dataset_dialog.rs:295
+#: app/src/dataset_dialog.rs:296
 msgid "Slide {current}/{total}"
-msgstr "لام {current}/{total}"
+msgstr "لام ⁨{current}/{total}⁩"
 
-#: app/src/dataset_dialog.rs:297
+#: app/src/dataset_dialog.rs:298
 msgid "Finishing…"
 msgstr "در حال اتمام…"
 
 #. Translators: patches written so far (as are "kept", "skipped" and
 #. "failed" below).
-#: app/src/dataset_dialog.rs:302
+#: app/src/dataset_dialog.rs:303
 msgid "{n} written"
 msgid_plural "{n} written"
-msgstr[0] "{n} نوشته‌شده"
-msgstr[1] "{n} نوشته‌شده"
+msgstr[0] "‏{n} نوشته‌شده"
+msgstr[1] "‏{n} نوشته‌شده"
 
 #. Translators: patches already there from an earlier run.
-#: app/src/dataset_dialog.rs:305
+#: app/src/dataset_dialog.rs:306
 msgid "{n} kept"
 msgid_plural "{n} kept"
-msgstr[0] "{n} حفظ‌شده"
-msgstr[1] "{n} حفظ‌شده"
+msgstr[0] "‏{n} حفظ‌شده"
+msgstr[1] "‏{n} حفظ‌شده"
 
-#: app/src/dataset_dialog.rs:308
+#: app/src/dataset_dialog.rs:309
 msgid "{n} skipped"
 msgid_plural "{n} skipped"
-msgstr[0] "{n} ردشده"
-msgstr[1] "{n} ردشده"
+msgstr[0] "‏{n} ردشده"
+msgstr[1] "‏{n} ردشده"
 
-#: app/src/dataset_dialog.rs:311
+#: app/src/dataset_dialog.rs:312
 msgid "{n} failed"
 msgid_plural "{n} failed"
-msgstr[0] "{n} ناموفق"
-msgstr[1] "{n} ناموفق"
+msgstr[0] "‏{n} ناموفق"
+msgstr[1] "‏{n} ناموفق"
 
 #. Translators: the time the extraction still needs ("4m 05s left").
-#: app/src/dataset_dialog.rs:315
+#: app/src/dataset_dialog.rs:316
 msgid "{} left"
-msgstr "{} باقی‌مانده"
+msgstr "‏{} باقی‌مانده"
 
 #. Translators: hours and minutes ("1h 02m").
-#: app/src/dataset_dialog.rs:338
+#: app/src/dataset_dialog.rs:339
 msgid "{hours}h {minutes}m"
-msgstr "{hours} ساعت {minutes} دقیقه"
+msgstr "‏{hours} ساعت {minutes} دقیقه"
 
 #. Translators: minutes and seconds ("4m 05s").
-#: app/src/dataset_dialog.rs:345
+#: app/src/dataset_dialog.rs:346
 msgid "{minutes}m {seconds}s"
-msgstr "{minutes} دقیقه {seconds} ثانیه"
+msgstr "‏{minutes} دقیقه {seconds} ثانیه"
 
 #. Translators: seconds ("12s").
-#: app/src/dataset_dialog.rs:351
+#: app/src/dataset_dialog.rs:352
 msgid "{seconds}s"
-msgstr "{seconds} ثانیه"
+msgstr "‏{seconds} ثانیه"
 
-#: app/src/dataset_dialog.rs:367
+#: app/src/dataset_dialog.rs:368
 msgid "Dataset extraction cancelled"
 msgstr "استخراج مجموعه‌داده لغو شد"
 
-#: app/src/dataset_dialog.rs:369
+#: app/src/dataset_dialog.rs:370
 msgid "{n} patch was written to {folder}; run it again to resume."
 msgid_plural "{n} patches were written to {folder}; run it again to resume."
-msgstr[0] "{n} پچ در {folder} نوشته شد؛ برای ادامه، آن را دوباره اجرا کنید."
-msgstr[1] "{n} پچ در {folder} نوشته شد؛ برای ادامه، آن را دوباره اجرا کنید."
+msgstr[0] "‏{n} پچ در {folder} نوشته شد؛ برای ادامه، آن را دوباره اجرا کنید."
+msgstr[1] "‏{n} پچ در {folder} نوشته شد؛ برای ادامه، آن را دوباره اجرا کنید."
 
-#: app/src/dataset_dialog.rs:384
+#: app/src/dataset_dialog.rs:385
 msgid "Dataset extraction finished"
 msgstr "استخراج مجموعه‌داده به پایان رسید"
 
-#: app/src/dataset_dialog.rs:391
+#: app/src/dataset_dialog.rs:392
 msgid "Dataset extraction failed"
 msgstr "استخراج مجموعه‌داده ناموفق بود"
 
-#: app/src/dataset_dialog.rs:402
+#: app/src/dataset_dialog.rs:403
 msgid "{n} patch written to {folder}."
 msgid_plural "{n} patches written to {folder}."
-msgstr[0] "{n} پچ در {folder} نوشته شد."
-msgstr[1] "{n} پچ در {folder} نوشته شد."
+msgstr[0] "‏{n} پچ در {folder} نوشته شد."
+msgstr[1] "‏{n} پچ در {folder} نوشته شد."
 
-#: app/src/dataset_dialog.rs:406
+#: app/src/dataset_dialog.rs:407
 msgid "{n} slide processed."
 msgid_plural "{n} slides processed."
-msgstr[0] "{n} لام پردازش شد."
-msgstr[1] "{n} لام پردازش شد."
+msgstr[0] "‏{n} لام پردازش شد."
+msgstr[1] "‏{n} لام پردازش شد."
 
 #. Translators: tissue QC flagged every patch the filters skipped
 #. (pen marks, possible folds or possible blur: flags for review, not
 #. certainties).
-#: app/src/dataset_dialog.rs:417
+#: app/src/dataset_dialog.rs:418
 msgid ""
 "{n} patch skipped by the filters: tissue QC flagged it (pen marks, possible "
 "folds or blur)."
@@ -387,67 +388,67 @@ msgid_plural ""
 "{n} patches skipped by the filters: tissue QC flagged them (pen marks, "
 "possible folds or blur)."
 msgstr[0] ""
-"{n} پچ توسط فیلترها رد شد: کنترل کیفیت بافت آن را علامت‌گذاری کرده بود (اثر "
-"ماژیک، چین‌خوردگی یا تاری احتمالی)."
+"‏{n} پچ توسط فیلترها رد شد: کنترل کیفیت بافت آن را علامت‌گذاری کرده بود (اثر "
+"ماژیک، چین‌خوردگی احتمالی یا تاری احتمالی)."
 msgstr[1] ""
-"{n} پچ توسط فیلترها رد شد: کنترل کیفیت بافت آن‌ها را علامت‌گذاری کرده بود (اثر "
-"ماژیک، چین‌خوردگی یا تاری احتمالی)."
+"‏{n} پچ توسط فیلترها رد شد: کنترل کیفیت بافت آن‌ها را علامت‌گذاری کرده بود (اثر "
+"ماژیک، چین‌خوردگی احتمالی یا تاری احتمالی)."
 
-#: app/src/dataset_dialog.rs:423
+#: app/src/dataset_dialog.rs:424
 msgid "{n} patch skipped by the filters."
 msgid_plural "{n} patches skipped by the filters."
-msgstr[0] "{n} پچ توسط فیلترها رد شد."
-msgstr[1] "{n} پچ توسط فیلترها رد شد."
+msgstr[0] "‏{n} پچ توسط فیلترها رد شد."
+msgstr[1] "‏{n} پچ توسط فیلترها رد شد."
 
 #. Translators: follows the sentence about the patches skipped
 #. by the filters (always more than one here): how many of them
 #. tissue QC flagged (flags for review, not certainties).
-#: app/src/dataset_dialog.rs:430
+#: app/src/dataset_dialog.rs:431
 msgid "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
 msgid_plural ""
 "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
 msgstr[0] ""
-"{n} مورد از آن‌ها توسط کنترل کیفیت بافت علامت‌گذاری شده بود (اثر ماژیک، "
-"چین‌خوردگی یا تاری احتمالی)."
+"‏{n} مورد از آن‌ها توسط کنترل کیفیت بافت علامت‌گذاری شده بود (اثر ماژیک، "
+"چین‌خوردگی احتمالی یا تاری احتمالی)."
 msgstr[1] ""
-"{n} مورد از آن‌ها توسط کنترل کیفیت بافت علامت‌گذاری شده بود (اثر ماژیک، "
-"چین‌خوردگی یا تاری احتمالی)."
+"‏{n} مورد از آن‌ها توسط کنترل کیفیت بافت علامت‌گذاری شده بود (اثر ماژیک، "
+"چین‌خوردگی احتمالی یا تاری احتمالی)."
 
-#: app/src/dataset_dialog.rs:437
+#: app/src/dataset_dialog.rs:438
 msgid "{n} patch was already there from an earlier run."
 msgid_plural "{n} patches were already there from an earlier run."
-msgstr[0] "{n} پچ از اجرای قبلی موجود بود."
-msgstr[1] "{n} پچ از اجرای قبلی موجود بود."
+msgstr[0] "‏{n} پچ از اجرای قبلی موجود بود."
+msgstr[1] "‏{n} پچ از اجرای قبلی موجود بود."
 
-#: app/src/dataset_dialog.rs:442
+#: app/src/dataset_dialog.rs:443
 msgid "{n} patch could not be read."
 msgid_plural "{n} patches could not be read."
-msgstr[0] "{n} پچ خوانده نشد."
-msgstr[1] "{n} پچ خوانده نشد."
+msgstr[0] "‏{n} پچ خوانده نشد."
+msgstr[1] "‏{n} پچ خوانده نشد."
 
 #. Translators: every slide that was skipped failed. slides.csv is
 #. the name of a file in the dataset; keep it as it is.
-#: app/src/dataset_dialog.rs:449
+#: app/src/dataset_dialog.rs:450
 msgid "{n} slide failed (see slides.csv)."
 msgid_plural "{n} slides failed (see slides.csv)."
-msgstr[0] "{n} لام ناموفق بود (slides.csv را ببینید)."
-msgstr[1] "{n} لام ناموفق بود (slides.csv را ببینید)."
+msgstr[0] "‏{n} لام ناموفق بود (slides.csv را ببینید)."
+msgstr[1] "‏{n} لام ناموفق بود (slides.csv را ببینید)."
 
 #. Translators: slides.csv is the name of a file in the dataset;
 #. keep it as it is.
-#: app/src/dataset_dialog.rs:454
+#: app/src/dataset_dialog.rs:455
 msgid "{n} slide was skipped (see slides.csv)."
 msgid_plural "{n} slides were skipped (see slides.csv)."
-msgstr[0] "{n} لام رد شد (slides.csv را ببینید)."
-msgstr[1] "{n} لام رد شد (slides.csv را ببینید)."
+msgstr[0] "‏{n} لام رد شد (slides.csv را ببینید)."
+msgstr[1] "‏{n} لام رد شد (slides.csv را ببینید)."
 
 #. Translators: follows the sentence about the slides that were
 #. skipped (always more than one here): how many of them failed.
-#: app/src/dataset_dialog.rs:461
+#: app/src/dataset_dialog.rs:462
 msgid "{n} of them failed."
 msgid_plural "{n} of them failed."
-msgstr[0] "{n} مورد از آن‌ها ناموفق بود."
-msgstr[1] "{n} مورد از آن‌ها ناموفق بود."
+msgstr[0] "‏{n} مورد از آن‌ها ناموفق بود."
+msgstr[1] "‏{n} مورد از آن‌ها ناموفق بود."
 
 #. Translators: {program} is a program that opens folders; {status}
 #. is how it ended, as the system says it ("exit status: 1").
@@ -461,15 +462,15 @@ msgstr "هیچ برنامه‌ای برای باز کردن پوشه‌ها یا
 
 #: app/src/desktop.rs:213
 msgid "{} no longer exists"
-msgstr "{} دیگر وجود ندارد"
+msgstr "‏{} دیگر وجود ندارد"
 
 #: app/src/desktop.rs:215
 msgid "{} is not an absolute path"
-msgstr "{} مسیر مطلق نیست"
+msgstr "‏{} مسیر مطلق نیست"
 
 #: app/src/desktop.rs:218
 msgid "{} has no parent folder"
-msgstr "{} پوشهٔ والد ندارد"
+msgstr "‏{} پوشهٔ والد ندارد"
 
 #: app/src/desktop.rs:372
 msgid "Could not show {} in the file manager"
@@ -545,9 +546,9 @@ msgid_plural ""
 "{n} tiles of {total} could not be read; their areas were filled from a lower-"
 "resolution level."
 msgstr[0] ""
-"{n} از {total} کاشی خوانده نشد؛ ناحیهٔ آن از سطحی با وضوح کمتر پر شد."
+"‏{n} از {total} کاشی خوانده نشد؛ ناحیهٔ آن از سطحی با وضوح کمتر پر شد."
 msgstr[1] ""
-"{n} از {total} کاشی خوانده نشد؛ نواحی آن‌ها از سطحی با وضوح کمتر پر شد."
+"‏{n} از {total} کاشی خوانده نشد؛ نواحی آن‌ها از سطحی با وضوح کمتر پر شد."
 
 #. Translators: {n} tiles of the slide could not be read for an
 #. export (the form follows {n}); {total} is the number of tiles
@@ -556,8 +557,8 @@ msgstr[1] ""
 msgid "{n} tile of {total} could not be read and is left as background."
 msgid_plural ""
 "{n} tiles of {total} could not be read and are left as background."
-msgstr[0] "{n} از {total} کاشی خوانده نشد و به‌صورت پس‌زمینه باقی ماند."
-msgstr[1] "{n} از {total} کاشی خوانده نشد و به‌صورت پس‌زمینه باقی ماند."
+msgstr[0] "‏{n} از {total} کاشی خوانده نشد و به‌صورت پس‌زمینه باقی ماند."
+msgstr[1] "‏{n} از {total} کاشی خوانده نشد و به‌صورت پس‌زمینه باقی ماند."
 
 #: app/src/export_dialog.rs:1167
 msgid "Open a slide to export an image"
@@ -590,15 +591,15 @@ msgstr "در حال صدور {}"
 
 #: app/src/export_dialog.rs:1470
 msgid "{width} × {height} px, saved to {path}"
-msgstr "ابعاد {width} × {height} px، ذخیره‌شده در {path}"
+msgstr "ابعاد ⁨{width} × {height} px⁩، ذخیره‌شده در {path}"
 
 #: app/src/export_dialog.rs:1477
 msgid "Exported {}"
-msgstr "{} صادر شد"
+msgstr "‏{} صادر شد"
 
-#: app/src/export_dialog.rs:1485 app/src/save_copy.rs:614
+#: app/src/export_dialog.rs:1485 app/src/save_copy.rs:618
 msgid "{} is incomplete"
-msgstr "{} ناقص است"
+msgstr "‏{} ناقص است"
 
 #: app/src/export_dialog.rs:1491
 msgid "Export cancelled"
@@ -647,8 +648,8 @@ msgstr "کپی تصویر در کلیپ‌بورد ممکن نشد"
 #: app/src/file_ops.rs:214
 msgid "{name} (DICOM series, {n} file)"
 msgid_plural "{name} (DICOM series, {n} files)"
-msgstr[0] "{name} (سری DICOM، {n} فایل)"
-msgstr[1] "{name} (سری DICOM، {n} فایل)"
+msgstr[0] "‏{name} (سری DICOM، {n} فایل)"
+msgstr[1] "‏{name} (سری DICOM، {n} فایل)"
 
 #: app/src/file_ops.rs:232
 msgid "Loading metadata…"
@@ -678,8 +679,8 @@ msgstr "نامعلوم"
 #: app/src/file_ops.rs:259
 msgid "{width} × {height} px, {n} level"
 msgid_plural "{width} × {height} px, {n} levels"
-msgstr[0] "ابعاد {width} × {height} px، {n} سطح"
-msgstr[1] "ابعاد {width} × {height} px، {n} سطح"
+msgstr[0] "ابعاد ⁨{width} × {height} px⁩، {n} سطح"
+msgstr[1] "ابعاد ⁨{width} × {height} px⁩، {n} سطح"
 
 #: app/src/file_ops.rs:263
 msgid "Vendor: {}"
@@ -711,45 +712,45 @@ msgstr "نمایش {} دقیقاً به شکل درخواست‌شده ممکن 
 
 #: app/src/file_ops.rs:1018
 msgid "Could not open {name}: {error}"
-msgstr "{name} باز نشد: {error}"
+msgstr "‏{name} باز نشد: {error}"
 
 #: app/src/file_ops.rs:1025 app/src/launch.rs:957
 msgid "Could not open {}"
-msgstr "{} باز نشد"
+msgstr "‏{} باز نشد"
 
 #: app/src/file_ops.rs:1084
 msgid "Opened {name} ({n} level)"
 msgid_plural "Opened {name} ({n} levels)"
-msgstr[0] "{name} باز شد ({n} سطح)"
-msgstr[1] "{name} باز شد ({n} سطح)"
+msgstr[0] "‏{name} باز شد ({n} سطح)"
+msgstr[1] "‏{name} باز شد ({n} سطح)"
 
 #: app/src/file_ops.rs:1121
 msgid "{n} focal plane"
 msgid_plural "{n} focal planes"
-msgstr[0] "{n} صفحهٔ کانونی"
-msgstr[1] "{n} صفحهٔ کانونی"
+msgstr[0] "‏{n} صفحهٔ کانونی"
+msgstr[1] "‏{n} صفحهٔ کانونی"
 
 #. Translators: after the colon, the keys that step through the
 #. focal planes.
 #: app/src/file_ops.rs:1126
 msgid "{n} focal plane: {keys}"
 msgid_plural "{n} focal planes: {keys}"
-msgstr[0] "{n} صفحهٔ کانونی: {keys}"
-msgstr[1] "{n} صفحهٔ کانونی: {keys}"
+msgstr[0] "‏{n} صفحهٔ کانونی: {keys}"
+msgstr[1] "‏{n} صفحهٔ کانونی: {keys}"
 
 #: app/src/file_ops.rs:1135
 msgid "{n} time point"
 msgid_plural "{n} time points"
-msgstr[0] "{n} نقطهٔ زمانی"
-msgstr[1] "{n} نقطهٔ زمانی"
+msgstr[0] "‏{n} نقطهٔ زمانی"
+msgstr[1] "‏{n} نقطهٔ زمانی"
 
 #. Translators: after the colon, the keys that step through the
 #. time points.
 #: app/src/file_ops.rs:1140
 msgid "{n} time point: {keys}"
 msgid_plural "{n} time points: {keys}"
-msgstr[0] "{n} نقطهٔ زمانی: {keys}"
-msgstr[1] "{n} نقطهٔ زمانی: {keys}"
+msgstr[0] "‏{n} نقطهٔ زمانی: {keys}"
+msgstr[1] "‏{n} نقطهٔ زمانی: {keys}"
 
 #. Translators: the name of a file type, as file managers show it (in
 #. the Type column, for example). Aperio, a maker of slide scanners,
@@ -830,20 +831,20 @@ msgid "BigTIFF image"
 msgstr "تصویر BigTIFF"
 
 #. Translators: the kind of program, under its name in application menus.
-#: app/src/file_types/mod.rs:455
+#: app/src/file_types/mod.rs:463
 msgctxt "Desktop entry"
 msgid "Whole-slide image viewer"
 msgstr "نمایشگر تصاویر تمام‌لام"
 
 #. Translators: a tooltip in application menus.
-#: app/src/file_types/mod.rs:457
+#: app/src/file_types/mod.rs:465
 msgctxt "Desktop entry"
 msgid "View whole-slide images with OpenSlide-powered tile rendering"
 msgstr "مشاهدهٔ تصاویر تمام‌لام با رندر کاشی‌ها به کمک OpenSlide"
 
 #. Translators: search words for application menus, separated by
 #. semicolons; keep the English ones and add your language's.
-#: app/src/file_types/mod.rs:460
+#: app/src/file_types/mod.rs:468
 msgctxt "Desktop entry"
 msgid "whole-slide;wsi;pathology;microscopy;openslide;microbiology"
 msgstr ""
@@ -852,14 +853,14 @@ msgstr ""
 
 #. Translators: eov's one-line summary in software centres (GNOME
 #. Software, KDE Discover, Flathub), next to its name. No full stop.
-#: app/src/file_types/mod.rs:472
+#: app/src/file_types/mod.rs:480
 msgctxt "AppStream"
 msgid "Fast desktop viewer for whole-slide images"
 msgstr "نمایشگر رومیزی سریع برای تصاویر تمام‌لام"
 
 #. Translators: the description of eov in software centres (GNOME
 #. Software, KDE Discover, Flathub). eov, Rust and WSI stay as they are.
-#: app/src/file_types/mod.rs:475
+#: app/src/file_types/mod.rs:483
 msgctxt "AppStream"
 msgid ""
 "eov is a desktop viewer for whole-slide images built in Rust. It fills a "
@@ -959,7 +960,7 @@ msgstr "پاک کردن اندازه‌گیری‌ها"
 #. Translators: a measurement's tooltip, e.g. "Distance: 1.2 mm".
 #: app/src/host_ui/annotations.rs:71
 msgid "{mode}: {value}"
-msgstr "{mode}: {value}"
+msgstr "‏{mode}: {value}"
 
 #: app/src/host_ui/annotations.rs:135 app/src/host_ui/measurements_panel.rs:137
 #: app/src/shortcuts.rs:242
@@ -1041,8 +1042,8 @@ msgstr "به‌روزرسانی eov به نسخهٔ {}؟"
 #: app/src/host_ui/app_update.rs:163
 msgid "Update a plugin?"
 msgid_plural "Update {n} plugins?"
-msgstr[0] "{n} افزونه به‌روزرسانی شود؟"
-msgstr[1] "{n} افزونه به‌روزرسانی شود؟"
+msgstr[0] "‏{n} افزونه به‌روزرسانی شود؟"
+msgstr[1] "‏{n} افزونه به‌روزرسانی شود؟"
 
 #: app/src/host_ui/app_update.rs:169
 msgid ""
@@ -1088,13 +1089,13 @@ msgstr "به‌روزرسانی eov ممکن نشد"
 #. happened to it ("updated", "failed", …) and why.
 #: app/src/host_ui/app_update.rs:233
 msgid "{plugin}: {status} ({message})"
-msgstr "{plugin}: {status} ({message})"
+msgstr "‏{plugin}: {status} ({message})"
 
 #. Translators: one plugin of an update: its id and what
 #. happened to it ("updated", "failed", …).
 #: app/src/host_ui/app_update.rs:241
 msgid "{plugin}: {status}"
-msgstr "{plugin}: {status}"
+msgstr "‏{plugin}: {status}"
 
 #: app/src/host_ui/app_update.rs:262
 msgid "eov restarts to finish the update"
@@ -1119,7 +1120,7 @@ msgstr ""
 
 #. Translators: a percentage ("12.5 %").
 #: app/src/host_ui/bookmarks.rs:63 app/src/host_ui/qc.rs:65
-#: app/src/plugin_runtime/usage.rs:246 app/src/quantify_panel.rs:301
+#: app/src/plugin_runtime/usage.rs:251 app/src/quantify_panel.rs:301
 msgid "{} %"
 msgstr "{}%"
 
@@ -1177,7 +1178,7 @@ msgstr[1] ""
 #. and the slide's file name.
 #: app/src/host_ui/bookmarks.rs:166
 msgid "{scale} at {x}, {y} of {file}"
-msgstr "{scale} در {x}، {y} از {file}"
+msgstr "‏{scale} در {x}، {y} از {file}"
 
 #: app/src/host_ui/bookmarks.rs:208
 msgid "Bookmarked “{}”"
@@ -1294,15 +1295,15 @@ msgstr "یک عدد مثبت وارد کنید."
 
 #: app/src/host_ui/heatmaps.rs:728
 msgid "8-bit values, 0–255 shown as 0–1"
-msgstr "مقادیر 8 بیتی، 0–255 به‌صورت 0–1 نمایش داده می‌شود"
+msgstr "مقادیر 8 بیتی، ⁨0–255⁩ به‌صورت ⁨0–1⁩ نمایش داده می‌شود"
 
 #: app/src/host_ui/heatmaps.rs:729
 msgid "16-bit values, 0–65535 shown as 0–1"
-msgstr "مقادیر 16 بیتی، 0–65535 به‌صورت 0–1 نمایش داده می‌شود"
+msgstr "مقادیر 16 بیتی، ⁨0–65535⁩ به‌صورت ⁨0–1⁩ نمایش داده می‌شود"
 
 #: app/src/host_ui/heatmaps.rs:730
 msgid "grey pixels, 0–255 shown as 0–1"
-msgstr "پیکسل‌های خاکستری، 0–255 به‌صورت 0–1 نمایش داده می‌شود"
+msgstr "پیکسل‌های خاکستری، ⁨0–255⁩ به‌صورت ⁨0–1⁩ نمایش داده می‌شود"
 
 #: app/src/host_ui/heatmaps.rs:731
 msgid "colour image, drawn as it is"
@@ -1312,7 +1313,7 @@ msgstr "تصویر رنگی، بدون تغییر رسم می‌شود"
 #. between 0 and 1 and are shown as they are.
 #: app/src/host_ui/heatmaps.rs:734
 msgid "values 0–1"
-msgstr "مقادیر 0–1"
+msgstr "مقادیر ⁨0–1⁩"
 
 #. Translators: how a heat map's values are shown: it holds no
 #. number at all (every pixel is empty).
@@ -1322,7 +1323,7 @@ msgstr "بدون مقدار متناهی"
 
 #: app/src/host_ui/heatmaps.rs:745
 msgid "values {min} to {max} shown as 0–1"
-msgstr "مقادیر {min} تا {max} به‌صورت 0–1 نمایش داده می‌شود"
+msgstr "مقادیر {min} تا {max} به‌صورت ⁨0–1⁩ نمایش داده می‌شود"
 
 #: app/src/host_ui/heatmaps.rs:751
 msgid "every value is {}"
@@ -1337,13 +1338,13 @@ msgstr "خاکستری"
 msgid ""
 "Covers {width} × {height} level-0 pixels from ({x}, {y}) (the whole slide)."
 msgstr ""
-"ناحیه‌ای به ابعاد {width} × {height} پیکسل سطح 0 را از ({x}، {y}) می‌پوشاند "
+"ناحیه‌ای به ابعاد ⁨{width} × {height}⁩ پیکسل سطح 0 را از ({x}، {y}) می‌پوشاند "
 "(کل لام)."
 
 #: app/src/host_ui/heatmaps.rs:807
 msgid "Covers {width} × {height} level-0 pixels from ({x}, {y})."
 msgstr ""
-"ناحیه‌ای به ابعاد {width} × {height} پیکسل سطح 0 را از ({x}، {y}) می‌پوشاند."
+"ناحیه‌ای به ابعاد ⁨{width} × {height}⁩ پیکسل سطح 0 را از ({x}، {y}) می‌پوشاند."
 
 #: app/src/host_ui/heatmaps.rs:818
 msgid "Heat Map · {}"
@@ -1353,7 +1354,7 @@ msgstr "نقشهٔ حرارتی · {}"
 #. how its values are shown.
 #: app/src/host_ui/heatmaps.rs:828
 msgid "{name} · {width} × {height} px · {scaling}"
-msgstr "{name} · {width} × {height} px · {scaling}"
+msgstr "‏{name} · ⁨{width} × {height} px⁩ · {scaling}"
 
 #: app/src/host_ui/heatmaps.rs:838
 msgid "As the file says"
@@ -1425,37 +1426,37 @@ msgid "No tissue was found; showing the whole slide"
 msgstr "بافتی یافت نشد؛ کل لام نمایش داده می‌شود"
 
 #. Translators: a key a plugin uses while it is held down.
-#: app/src/host_ui/key_help.rs:66
+#: app/src/host_ui/key_help.rs:69
 msgid "{} (hold)"
-msgstr "{} (نگه دارید)"
+msgstr "‏{} (نگه دارید)"
 
 #. Translators: a heading of the Keyboard Shortcuts panel: the
 #. keys of the plugin named {}.
-#: app/src/host_ui/key_help.rs:76
+#: app/src/host_ui/key_help.rs:80
 msgid "{} (plugin)"
-msgstr "{} (افزونه)"
+msgstr "‏{} (افزونه)"
 
 #. Translators: [shortcuts], the grey names, the keys and the
 #. examples are what users write in config.toml: keep them as
 #. they are.
-#: app/src/host_ui/key_help.rs:89
+#: app/src/host_ui/key_help.rs:93
 msgid ""
 "To change keys, add a [shortcuts] table to {} with the grey names: bookmark-"
 "add = \"Ctrl+D\", zoom-in = [\"+\", \"=\"], or [] for no key. \"Ctrl\" means "
 "⌘ on macOS. Changes apply when eov starts; plugins cannot take eov's keys."
 msgstr ""
 "برای تغییر کلیدها، جدول [shortcuts] را با نام‌های خاکستری به {} بیفزایید: "
-"bookmark-add = \"Ctrl+D\"، zoom-in = [\"+\", \"=\"]، یا [] برای اینکه کلیدی "
-"نداشته باشد. در macOS، «Ctrl» به معنای ⌘ است. تغییرات هنگام راه‌اندازی eov "
+"⁨bookmark-add = \"Ctrl+D\"⁩، ⁨zoom-in = [\"+\", \"=\"]⁩، یا [] برای اینکه کلیدی "
+"نداشته باشد. در ⁨macOS⁩، «⁨Ctrl⁩» به معنای ⌘ است. تغییرات هنگام راه‌اندازی eov "
 "اعمال می‌شوند؛ افزونه‌ها نمی‌توانند کلیدهای eov را بگیرند."
 
 #. Translators: {} names what was copied.
-#: app/src/host_ui/key_help.rs:108 app/src/host_ui/measurements_panel.rs:231
+#: app/src/host_ui/key_help.rs:112 app/src/host_ui/measurements_panel.rs:231
 #: app/src/host_ui/menus.rs:538 app/src/slide_info.rs:326
 msgid "Copied {}"
-msgstr "{} کپی شد"
+msgstr "‏{} کپی شد"
 
-#: app/src/host_ui/key_help.rs:120
+#: app/src/host_ui/key_help.rs:124
 msgid "Some keyboard shortcuts in config.toml were not used"
 msgstr "برخی از میان‌برهای صفحه‌کلید در config.toml به کار نرفتند"
 
@@ -1503,8 +1504,8 @@ msgstr "ناحیهٔ مورد نظر: {}"
 #: app/src/host_ui/measurements_panel.rs:316
 msgid "Copied {n} row as CSV"
 msgid_plural "Copied {n} rows as CSV"
-msgstr[0] "{n} ردیف به‌صورت CSV کپی شد"
-msgstr[1] "{n} ردیف به‌صورت CSV کپی شد"
+msgstr[0] "‏{n} ردیف به‌صورت CSV کپی شد"
+msgstr[1] "‏{n} ردیف به‌صورت CSV کپی شد"
 
 #: app/src/host_ui/menus.rs:128
 msgid "Copy Image"
@@ -1520,11 +1521,11 @@ msgstr "کانال‌ها…"
 
 #: app/src/host_ui/menus.rs:146
 msgid "Rotate Right 90°"
-msgstr "چرخاندن 90° به راست"
+msgstr "چرخاندن ⁨90°⁩ به راست"
 
 #: app/src/host_ui/menus.rs:150
 msgid "Rotate Left 90°"
-msgstr "چرخاندن 90° به چپ"
+msgstr "چرخاندن ⁨90°⁩ به چپ"
 
 #: app/src/host_ui/menus.rs:154
 msgid "Flip Horizontally"
@@ -1696,8 +1697,8 @@ msgstr "فیلتر {} پس از خطاهای مکرر خاموش شد"
 #: app/src/host_ui/models.rs:32
 msgid "{n} byte"
 msgid_plural "{n} bytes"
-msgstr[0] "{n} بایت"
-msgstr[1] "{n} بایت"
+msgstr[0] "‏{n} بایت"
+msgstr[1] "‏{n} بایت"
 
 #: app/src/host_ui/models.rs:98
 msgid "Cannot download {}"
@@ -1711,7 +1712,7 @@ msgid ""
 "The files are checked against their SHA-256 and kept in eov's model store "
 "({store}), where every plugin finds them."
 msgstr ""
-"{name} از eov می‌خواهد {model} ({size}) را از {hosts} بارگیری کند:\n"
+"‏{name} از eov می‌خواهد {model} ({size}) را از {hosts} بارگیری کند:\n"
 "{urls}\n"
 "\n"
 "فایل‌ها با SHA-256 خود بررسی و در مخزن مدل‌های eov ({store}) نگهداری می‌شوند، "
@@ -1725,7 +1726,7 @@ msgid ""
 "The files are checked against their SHA-256 and kept in eov's model store "
 "({store}), where every plugin finds them."
 msgstr ""
-"{name} از eov می‌خواهد {model} را از {hosts} بارگیری کند:\n"
+"‏{name} از eov می‌خواهد {model} را از {hosts} بارگیری کند:\n"
 "{urls}\n"
 "\n"
 "فایل‌ها با SHA-256 خود بررسی و در مخزن مدل‌های eov ({store}) نگهداری می‌شوند، "
@@ -1733,7 +1734,7 @@ msgstr ""
 
 #: app/src/host_ui/models.rs:143
 msgid "Download {}?"
-msgstr "{} بارگیری شود؟"
+msgstr "‏{} بارگیری شود؟"
 
 #: app/src/host_ui/models.rs:145
 msgctxt "Button"
@@ -1748,11 +1749,11 @@ msgstr "در حال بارگیری {}"
 #. "12.3 MiB of 80.0 MiB".
 #: app/src/host_ui/models.rs:238
 msgid "{done} of {total}"
-msgstr "{done} از {total}"
+msgstr "‏{done} از {total}"
 
 #: app/src/host_ui/models.rs:266
 msgid "Downloaded {}"
-msgstr "{} بارگیری شد"
+msgstr "‏{} بارگیری شد"
 
 #: app/src/host_ui/models.rs:268
 msgid "Verified against its SHA-256 and kept in {}."
@@ -1763,9 +1764,9 @@ msgid "Could not download {}"
 msgstr "بارگیری {} ممکن نشد"
 
 #. Translators: a toast with the name of the plugin that sent it.
-#: app/src/host_ui/notices.rs:127
+#: app/src/host_ui/notices.rs:142
 msgid "{source}: {message}"
-msgstr "{source}: {message}"
+msgstr "‏{source}: {message}"
 
 #. Translators: a plugin installed from eov's official catalog.
 #: app/src/host_ui/panel.rs:20
@@ -1805,8 +1806,8 @@ msgstr "همهٔ افزونه‌ها به‌روز هستند."
 #: app/src/host_ui/panel.rs:53
 msgid "An update is available."
 msgid_plural "{n} updates are available."
-msgstr[0] "{n} به‌روزرسانی در دسترس است."
-msgstr[1] "{n} به‌روزرسانی در دسترس است."
+msgstr[0] "‏{n} به‌روزرسانی در دسترس است."
+msgstr[1] "‏{n} به‌روزرسانی در دسترس است."
 
 #: app/src/host_ui/panel.rs:55
 msgid "The check failed (see Messages)."
@@ -1876,7 +1877,7 @@ msgstr "در حال به‌روزرسانی {}"
 
 #: app/src/host_ui/panel.rs:357
 msgid "{name} {version} is installed"
-msgstr "{name} {version} نصب شد"
+msgstr "‏{name} {version} نصب شد"
 
 #: app/src/host_ui/panel.rs:361
 msgid "Restart eov to use it."
@@ -1896,7 +1897,7 @@ msgstr "حذف افزونه ممکن نیست"
 
 #: app/src/host_ui/panel.rs:416
 msgid "Remove {}?"
-msgstr "{} حذف شود؟"
+msgstr "‏{} حذف شود؟"
 
 #: app/src/host_ui/panel.rs:418
 msgid ""
@@ -1917,7 +1918,7 @@ msgstr "حذف"
 
 #: app/src/host_ui/panel.rs:440
 msgid "Removed {}"
-msgstr "{} حذف شد"
+msgstr "‏{} حذف شد"
 
 #: app/src/host_ui/panel.rs:446
 msgid "Could not remove {}"
@@ -1925,11 +1926,11 @@ msgstr "حذف {} ممکن نشد"
 
 #: app/src/host_ui/panel.rs:481
 msgid "{} will be enabled when eov restarts"
-msgstr "{} پس از راه‌اندازی دوبارهٔ eov فعال می‌شود"
+msgstr "‏{} پس از راه‌اندازی دوبارهٔ eov فعال می‌شود"
 
 #: app/src/host_ui/panel.rs:487
 msgid "{} was disabled"
-msgstr "{} غیرفعال شد"
+msgstr "‏{} غیرفعال شد"
 
 #: app/src/host_ui/panel.rs:493 app/src/host_ui/panel.rs:503
 msgid "Could not save plugin settings"
@@ -1942,15 +1943,15 @@ msgstr "پوشهٔ افزونه‌ها باز نشد"
 #. Translators: the area of tissue a check looked at.
 #: app/src/host_ui/qc.rs:68
 msgid "{} mm² of tissue"
-msgstr "{} mm² بافت"
+msgstr "‏⁨{} mm²⁩ بافت"
 
 #. Translators: how much tissue a check looked at when the slide has
 #. no pixel size: squares of the check's grid that hold tissue.
 #: app/src/host_ui/qc.rs:72
 msgid "{n} grid square with tissue"
 msgid_plural "{n} grid squares with tissue"
-msgstr[0] "{n} خانهٔ شبکه با بافت"
-msgstr[1] "{n} خانهٔ شبکه با بافت"
+msgstr[0] "‏{n} خانهٔ شبکه با بافت"
+msgstr[1] "‏{n} خانهٔ شبکه با بافت"
 
 #: app/src/host_ui/qc.rs:78
 msgid ""
@@ -2025,7 +2026,7 @@ msgstr "این ناحیه نمی‌تواند هدف رنگ‌آمیزی باش�
 #. taken from a slide's region of interest.
 #: app/src/host_ui/stain_targets.rs:107
 msgid "{} (region)"
-msgstr "{} (ناحیه)"
+msgstr "‏{} (ناحیه)"
 
 #: app/src/host_ui/stain_targets.rs:112 app/src/host_ui/stain_targets.rs:125
 msgid "Could not fit the region's stains"
@@ -2122,209 +2123,215 @@ msgid ""
 "Unknown language '{value}' given with --language: it is not one of eov's "
 "languages ({languages}). The interface is in {current}."
 msgstr ""
-"زبان نامعلوم «{value}» با --language داده شده است: این زبان جزو زبان‌های eov "
+"زبان نامعلوم «{value}» با ⁨--language⁩ داده شده است: این زبان جزو زبان‌های eov "
 "({languages}) نیست. رابط کاربری به زبان {current} است."
 
-#: app/src/i18n.rs:238
+#: app/src/i18n.rs:242
 msgctxt "Language name"
 msgid "English"
 msgstr "انگلیسی"
 
-#: app/src/i18n.rs:239
+#: app/src/i18n.rs:243
 msgctxt "Language name"
 msgid "Arabic"
 msgstr "عربی"
 
-#: app/src/i18n.rs:240
+#: app/src/i18n.rs:244
 msgctxt "Language name"
 msgid "Czech"
 msgstr "چکی"
 
-#: app/src/i18n.rs:241
+#: app/src/i18n.rs:245
 msgctxt "Language name"
 msgid "Danish"
 msgstr "دانمارکی"
 
-#: app/src/i18n.rs:242
+#: app/src/i18n.rs:246
 msgctxt "Language name"
 msgid "German"
 msgstr "آلمانی"
 
-#: app/src/i18n.rs:243
+#: app/src/i18n.rs:247
 msgctxt "Language name"
 msgid "Greek"
 msgstr "یونانی"
 
-#: app/src/i18n.rs:244
+#: app/src/i18n.rs:248
 msgctxt "Language name"
 msgid "Spanish"
 msgstr "اسپانیایی"
 
-#: app/src/i18n.rs:245
+#: app/src/i18n.rs:249
 msgctxt "Language name"
 msgid "Persian"
 msgstr "فارسی"
 
-#: app/src/i18n.rs:246
+#: app/src/i18n.rs:250
 msgctxt "Language name"
 msgid "Finnish"
 msgstr "فنلاندی"
 
-#: app/src/i18n.rs:247
+#: app/src/i18n.rs:251
 msgctxt "Language name"
 msgid "French"
 msgstr "فرانسوی"
 
-#: app/src/i18n.rs:248
+#: app/src/i18n.rs:252
 msgctxt "Language name"
 msgid "Hebrew"
 msgstr "عبری"
 
-#: app/src/i18n.rs:249
+#: app/src/i18n.rs:253
 msgctxt "Language name"
 msgid "Hindi"
 msgstr "هندی"
 
-#: app/src/i18n.rs:250
+#: app/src/i18n.rs:254
 msgctxt "Language name"
 msgid "Hungarian"
 msgstr "مجاری"
 
-#: app/src/i18n.rs:251
+#: app/src/i18n.rs:255
 msgctxt "Language name"
 msgid "Indonesian"
 msgstr "اندونزیایی"
 
-#: app/src/i18n.rs:252
+#: app/src/i18n.rs:256
 msgctxt "Language name"
 msgid "Italian"
 msgstr "ایتالیایی"
 
-#: app/src/i18n.rs:253
+#: app/src/i18n.rs:257
 msgctxt "Language name"
 msgid "Japanese"
 msgstr "ژاپنی"
 
-#: app/src/i18n.rs:254
+#: app/src/i18n.rs:258
 msgctxt "Language name"
 msgid "Korean"
 msgstr "کره‌ای"
 
-#: app/src/i18n.rs:255
+#: app/src/i18n.rs:259
 msgctxt "Language name"
 msgid "Norwegian Bokmål"
 msgstr "نروژی (بوکمل)"
 
-#: app/src/i18n.rs:256
+#: app/src/i18n.rs:260
 msgctxt "Language name"
 msgid "Dutch"
 msgstr "هلندی"
 
-#: app/src/i18n.rs:257
+#: app/src/i18n.rs:261
 msgctxt "Language name"
 msgid "Polish"
 msgstr "لهستانی"
 
-#: app/src/i18n.rs:258
+#: app/src/i18n.rs:262
 msgctxt "Language name"
 msgid "Portuguese (Brazil)"
 msgstr "پرتغالی (برزیل)"
 
-#: app/src/i18n.rs:259
+#: app/src/i18n.rs:263
 msgctxt "Language name"
 msgid "Romanian"
 msgstr "رومانیایی"
 
-#: app/src/i18n.rs:260
+#: app/src/i18n.rs:264
 msgctxt "Language name"
 msgid "Russian"
 msgstr "روسی"
 
-#: app/src/i18n.rs:261
+#: app/src/i18n.rs:265
 msgctxt "Language name"
 msgid "Slovenian"
 msgstr "اسلوونیایی"
 
-#: app/src/i18n.rs:262
+#: app/src/i18n.rs:266
 msgctxt "Language name"
 msgid "Swedish"
 msgstr "سوئدی"
 
-#: app/src/i18n.rs:263
+#: app/src/i18n.rs:267
 msgctxt "Language name"
 msgid "Thai"
 msgstr "تایلندی"
 
-#: app/src/i18n.rs:264
+#: app/src/i18n.rs:268
 msgctxt "Language name"
 msgid "Turkish"
 msgstr "ترکی"
 
-#: app/src/i18n.rs:265
+#: app/src/i18n.rs:269
 msgctxt "Language name"
 msgid "Ukrainian"
 msgstr "اوکراینی"
 
-#: app/src/i18n.rs:266
+#: app/src/i18n.rs:270
 msgctxt "Language name"
 msgid "Vietnamese"
 msgstr "ویتنامی"
 
-#: app/src/i18n.rs:267
+#: app/src/i18n.rs:271
 msgctxt "Language name"
 msgid "Chinese (Simplified)"
 msgstr "چینی (ساده‌شده)"
 
-#: app/src/i18n.rs:268
+#: app/src/i18n.rs:272
 msgctxt "Language name"
 msgid "Chinese (Traditional)"
 msgstr "چینی (سنتی)"
 
-#: app/src/i18n.rs:288
+#: app/src/i18n.rs:292
 msgid "Automatic (System Default)"
 msgstr "خودکار (پیش‌فرض سیستم)"
 
-#: app/src/i18n.rs:292
+#: app/src/i18n.rs:296
 msgid "Currently {native}"
 msgstr "زبان کنونی: {native}"
 
-#: app/src/i18n.rs:295
+#: app/src/i18n.rs:299
 msgid "Currently {native} — {name}"
 msgstr "زبان کنونی: {native} — {name}"
 
-#: app/src/i18n.rs:330
+#: app/src/i18n.rs:334
 msgid ""
 "This run shows {language} because eov was started with --language. Choosing "
 "a language here applies it now and from the next start."
 msgstr ""
-"در این اجرا رابط کاربری به زبان {language} است، زیرا eov با --language اجرا "
+"در این اجرا رابط کاربری به زبان {language} است، زیرا eov با ⁨--language⁩ اجرا "
 "شده است. زبانی که اینجا انتخاب کنید، هم‌اکنون و نیز از اجرای بعدی اعمال می‌شود."
 
-#: app/src/i18n.rs:386
+#: app/src/i18n.rs:390
 msgid "The language could not be saved for the next start: {}"
 msgstr "زبان برای اجرای بعدی ذخیره نشد: {}"
+
+#. Translators: the status bar's text when there is nothing to report.
+#: app/src/i18n.rs:414 app/ui/app-window.slint:90
+msgctxt "AppWindow"
+msgid "Ready"
+msgstr "آماده"
 
 #. Translators: a length in inches ("1.00 in").
 #: app/src/interaction/measure.rs:238 app/src/ui_update.rs:864
 msgid "{} in"
-msgstr "{} اینچ"
+msgstr "‏{} اینچ"
 
 #. Translators: an area in square inches ("1.00 in²").
 #: app/src/interaction/measure.rs:254
 msgid "{} in²"
-msgstr "{} اینچ مربع"
+msgstr "‏{} اینچ مربع"
 
 #: app/src/launch.rs:277
 msgid "{} is not a number"
-msgstr "{} عدد نیست"
+msgstr "‏{} عدد نیست"
 
 #: app/src/launch.rs:278
 msgid "{} is not a finite number"
-msgstr "{} عدد متناهی نیست"
+msgstr "‏{} عدد متناهی نیست"
 
 #: app/src/launch.rs:279
 msgid "{} is negative"
-msgstr "{} منفی است"
+msgstr "‏{} منفی است"
 
 #. Translators: "px" (pixels) and "um" (micrometres) are typed as
 #. they are.
@@ -2334,7 +2341,7 @@ msgstr "واحد نامعلوم {unit} در {text} (از px یا um استفاد
 
 #: app/src/launch.rs:288
 msgid "{text} is out of range (more than 0, at most {max})"
-msgstr "{text} خارج از محدوده است (بیشتر از 0 و حداکثر {max})"
+msgstr "‏{text} خارج از محدوده است (بیشتر از 0 و حداکثر {max})"
 
 #: app/src/launch.rs:292
 msgid "links cannot open devices"
@@ -2358,7 +2365,7 @@ msgstr "پیوند eov نیست"
 #. it as it is.
 #: app/src/launch.rs:304
 msgid "unknown action {} (links look like eov://open?path=…)"
-msgstr "کنش نامعلوم {} (پیوندها به این شکل هستند: eov://open?path=…)"
+msgstr "کنش نامعلوم {} (پیوندها به این شکل هستند: ⁨eov://open?path=…⁩)"
 
 #. Translators: about a link (eov://…) whose text is broken:
 #. "%" must be followed by two hexadecimal digits.
@@ -2392,7 +2399,7 @@ msgstr "فایل محلی نیست"
 #. the slide; keep it as it is.
 #: app/src/launch.rs:327
 msgid "the link names no slide (path=…)"
-msgstr "پیوند هیچ لامی را مشخص نمی‌کند (path=…)"
+msgstr "پیوند هیچ لامی را مشخص نمی‌کند (⁨path=…⁩)"
 
 #: app/src/launch.rs:330
 msgid "the slide's path must be absolute, not {}"
@@ -2428,7 +2435,7 @@ msgstr ""
 #. slide's size.
 #: app/src/launch.rs:872
 msgid "{x}, {y} is outside the slide ({width} × {height} pixels)."
-msgstr "موقعیت {x}، {y} خارج از لام است ({width} × {height} پیکسل)."
+msgstr "موقعیت {x}، {y} خارج از لام است (⁨{width} × {height}⁩ پیکسل)."
 
 #. Translators: a magnification such as "20x" follows "at".
 #: app/src/launch.rs:880
@@ -2444,21 +2451,21 @@ msgstr ""
 #: app/src/launch.rs:964
 msgid "Could not open {n} of the given files"
 msgid_plural "Could not open {n} of the given files"
-msgstr[0] "{n} مورد از فایل‌های داده‌شده باز نشد"
-msgstr[1] "{n} مورد از فایل‌های داده‌شده باز نشد"
+msgstr[0] "‏{n} مورد از فایل‌های داده‌شده باز نشد"
+msgstr[1] "‏{n} مورد از فایل‌های داده‌شده باز نشد"
 
 #. Translators: a line of the list of files (or links)
 #. that could not be opened: the file as it was given,
 #. then why.
 #: app/src/launch.rs:974
 msgid "{file}: {reason}"
-msgstr "{file}: {reason}"
+msgstr "‏{file}: {reason}"
 
-#: app/src/main.rs:399
+#: app/src/main.rs:400
 msgid "GPU renderer unavailable; slides are drawn by the CPU renderer"
 msgstr "موتور رندر GPU در دسترس نیست؛ لام‌ها با موتور رندر CPU رسم می‌شوند"
 
-#: app/src/main.rs:458
+#: app/src/main.rs:459
 msgid "Unknown language"
 msgstr "زبان نامعلوم"
 
@@ -2476,7 +2483,7 @@ msgstr ""
 
 #: app/src/model_store/fetch.rs:76
 msgid "{url} answered HTTP {status}"
-msgstr "{url} با HTTP {status} پاسخ داد"
+msgstr "‏{url} با HTTP {status} پاسخ داد"
 
 #. Translators: HTTPS_PROXY, NO_PROXY and SSL_CERT_FILE are
 #. names of settings: keep them as they are.
@@ -2497,8 +2504,8 @@ msgstr ""
 #: app/src/model_store/fetch.rs:88
 msgid "{file} is larger than expected ({n} byte); it was deleted"
 msgid_plural "{file} is larger than expected ({n} bytes); it was deleted"
-msgstr[0] "{file} بزرگ‌تر از حد انتظار است ({n} بایت)؛ حذف شد"
-msgstr[1] "{file} بزرگ‌تر از حد انتظار است ({n} بایت)؛ حذف شد"
+msgstr[0] "‏{file} بزرگ‌تر از حد انتظار است ({n} بایت)؛ حذف شد"
+msgstr[1] "‏{file} بزرگ‌تر از حد انتظار است ({n} بایت)؛ حذف شد"
 
 #: app/src/model_store/fetch.rs:97
 msgid ""
@@ -2515,7 +2522,7 @@ msgid ""
 "{file} does not match its SHA-256: expected {expected}, got {actual}; it was "
 "deleted"
 msgstr ""
-"{file} با SHA-256 خود مطابقت ندارد: {expected} انتظار می‌رفت، {actual} دریافت "
+"‏{file} با SHA-256 خود مطابقت ندارد: {expected} انتظار می‌رفت، {actual} دریافت "
 "شد؛ حذف شد"
 
 #: app/src/model_store/fetch.rs:114
@@ -2524,17 +2531,17 @@ msgstr "بارگیری لغو شد"
 
 #: app/src/model_store/fetch.rs:191
 msgid "{} redirects without saying where"
-msgstr "{} بدون اعلام مقصد تغییر مسیر می‌دهد"
+msgstr "‏{} بدون اعلام مقصد تغییر مسیر می‌دهد"
 
 #: app/src/model_store/fetch.rs:197
 msgid "{url} redirects to '{location}', which is not a URL: {error}"
-msgstr "{url} به «{location}» تغییر مسیر می‌دهد که URL نیست: {error}"
+msgstr "‏{url} به «{location}» تغییر مسیر می‌دهد که URL نیست: {error}"
 
 #: app/src/model_store/fetch.rs:214
 msgid "{url} redirects more than {n} time"
 msgid_plural "{url} redirects more than {n} times"
-msgstr[0] "{url} بیش از {n} بار تغییر مسیر می‌دهد"
-msgstr[1] "{url} بیش از {n} بار تغییر مسیر می‌دهد"
+msgstr[0] "‏{url} بیش از {n} بار تغییر مسیر می‌دهد"
+msgstr[1] "‏{url} بیش از {n} بار تغییر مسیر می‌دهد"
 
 #: app/src/model_store/fetch.rs:444
 msgid "the connection closed after {size} of {n} byte"
@@ -2561,24 +2568,24 @@ msgid ""
 "{} uses plain HTTP; models are downloaded over HTTPS (or from a server the "
 "administrator's model_url_prefixes names)"
 msgstr ""
-"{} از HTTP ساده استفاده می‌کند؛ مدل‌ها از طریق HTTPS بارگیری می‌شوند (یا از "
+"‏{} از HTTP ساده استفاده می‌کند؛ مدل‌ها از طریق HTTPS بارگیری می‌شوند (یا از "
 "سروری که در model_url_prefixes سرپرست سیستم آمده است)"
 
 #: app/src/model_store/mod.rs:367
 msgid "{url} is not an http(s) URL ({scheme})"
-msgstr "{url} یک URL از نوع http(s) نیست ({scheme})"
+msgstr "‏{url} یک URL از نوع http(s) نیست ({scheme})"
 
 #: app/src/model_store/mod.rs:374
 msgid "{} names no server"
-msgstr "{} هیچ سروری را مشخص نمی‌کند"
+msgstr "‏{} هیچ سروری را مشخص نمی‌کند"
 
 #: app/src/model_store/mod.rs:413 app/src/model_store/mod.rs:482
 msgid "'{text}' is not a URL: {error}"
-msgstr "«{text}» یک URL نیست: {error}"
+msgstr "‏«{text}» یک URL نیست: {error}"
 
 #: app/src/model_store/mod.rs:437
 msgid "{} does not end in a file name; give the file's name"
-msgstr "{} به نام فایل ختم نمی‌شود؛ نام فایل را بدهید"
+msgstr "‏{} به نام فایل ختم نمی‌شود؛ نام فایل را بدهید"
 
 #: app/src/model_store/mod.rs:476
 msgid "a companion file needs a URL or a file name"
@@ -2594,7 +2601,7 @@ msgid ""
 "it first (eov model remove {id})"
 msgstr ""
 "مدل ذخیره‌شدهٔ {model} فایل {file} متفاوتی دارد (SHA-256 {sha256})؛ ابتدا آن "
-"را حذف کنید (eov model remove {id})"
+"را حذف کنید (⁨eov model remove {id}⁩)"
 
 #: app/src/model_store/mod.rs:1108
 msgid "the model's main file went missing from the store"
@@ -2636,7 +2643,7 @@ msgstr "شناسهٔ افزونه «{}» نام فایل نیست"
 
 #: app/src/plugin_runtime/loader.rs:96
 msgid "{} resolves outside the package"
-msgstr "{} به مسیری بیرون از بسته اشاره می‌کند"
+msgstr "‏{} به مسیری بیرون از بسته اشاره می‌کند"
 
 #: app/src/plugin_runtime/loader.rs:138
 msgid "plugin ABI {plugin}, this eov speaks ABI {host}"
@@ -2697,7 +2704,7 @@ msgstr "با این نسخهٔ eov سازگار نیست"
 #. thread, how many events they handled, that time's share
 #. of the time since the plugin started, and the slowest
 #. handler with its event (an id such as view_changed).
-#: app/src/plugin_runtime/usage.rs:143
+#: app/src/plugin_runtime/usage.rs:145
 msgid "UI thread {time} in {count} event ({share}; slowest {slowest}, {event})"
 msgid_plural ""
 "UI thread {time} in {count} events ({share}; slowest {slowest}, {event})"
@@ -2711,51 +2718,51 @@ msgstr[1] ""
 #. Translators: the time a plugin's handlers took on the UI
 #. thread, how many events they handled, and that time's
 #. share of the time since the plugin started.
-#: app/src/plugin_runtime/usage.rs:156
+#: app/src/plugin_runtime/usage.rs:158
 msgid "UI thread {time} in {count} event ({share})"
 msgid_plural "UI thread {time} in {count} events ({share})"
 msgstr[0] "رشتهٔ رابط کاربری: {time} در {count} رویداد ({share})"
 msgstr[1] "رشتهٔ رابط کاربری: {time} در {count} رویداد ({share})"
 
-#: app/src/plugin_runtime/usage.rs:166
+#: app/src/plugin_runtime/usage.rs:168
 msgid "filters {time} over {count} frame"
 msgid_plural "filters {time} over {count} frames"
 msgstr[0] "فیلترها: {time} در {count} فریم"
 msgstr[1] "فیلترها: {time} در {count} فریم"
 
-#: app/src/plugin_runtime/usage.rs:173
+#: app/src/plugin_runtime/usage.rs:176
 msgid "read {} of slide pixels"
-msgstr "{} از پیکسل‌های لام خوانده شد"
+msgstr "‏{} از پیکسل‌های لام خوانده شد"
 
 #. Translators: inserted into "{count} objects in {layers}".
-#: app/src/plugin_runtime/usage.rs:178
+#: app/src/plugin_runtime/usage.rs:183
 msgctxt "Plugin usage"
 msgid "{count} layer"
 msgid_plural "{count} layers"
-msgstr[0] "{count} لایه"
-msgstr[1] "{count} لایه"
+msgstr[0] "‏{count} لایه"
+msgstr[1] "‏{count} لایه"
 
-#: app/src/plugin_runtime/usage.rs:182
+#: app/src/plugin_runtime/usage.rs:187
 msgid "{count} object in {layers}"
 msgid_plural "{count} objects in {layers}"
-msgstr[0] "{count} شیء در {layers}"
-msgstr[1] "{count} شیء در {layers}"
+msgstr[0] "‏{count} شیء در {layers}"
+msgstr[1] "‏{count} شیء در {layers}"
 
 #. Translators: what a plugin's overlays hold, then the
 #. memory of their images.
-#: app/src/plugin_runtime/usage.rs:190
+#: app/src/plugin_runtime/usage.rs:195
 msgid "{objects}, {bytes} of rasters"
-msgstr "{objects}، {bytes} دادهٔ رستری"
+msgstr "‏{objects}، {bytes} دادهٔ رستری"
 
 #. Translators: in the Plugins panel: no resource use of the plugin
 #. (memory, overlays) has been recorded yet.
-#: app/src/plugin_runtime/usage.rs:201
+#: app/src/plugin_runtime/usage.rs:206
 msgid "No usage recorded yet"
 msgstr "هنوز مصرف منابعی ثبت نشده است"
 
 #: app/src/plugins/discovery.rs:45
 msgid "plugin package must have a .eop extension: {}"
-msgstr "بستهٔ افزونه باید پسوند .eop داشته باشد: {}"
+msgstr "بستهٔ افزونه باید پسوند ⁨.eop⁩ داشته باشد: {}"
 
 #: app/src/plugins/package_cache.rs:270
 msgid "plugin package is not a regular file: {}"
@@ -2792,7 +2799,7 @@ msgstr "بستهٔ افزونهٔ «{package}» شامل مدخل بایگانی
 
 #: app/src/plugins/package_cache.rs:768
 msgid "plugin package '{package}' expands to more than {size} GiB"
-msgstr "حجم بستهٔ افزونهٔ «{package}» پس از باز شدن بیش از {size} GiB است"
+msgstr "حجم بستهٔ افزونهٔ «{package}» پس از باز شدن بیش از ⁨{size} GiB⁩ است"
 
 #: app/src/plugins/package_cache.rs:784
 msgid "plugin package '{package}' contains duplicate {manifest} entries"
@@ -3009,7 +3016,7 @@ msgstr "برخی تنظیمات اعمال نشدند"
 #: app/src/processing_text.rs:200
 msgctxt "Stain"
 msgid "{} hidden"
-msgstr "{} پنهان"
+msgstr "‏{} پنهان"
 
 #. Translators: a stain shown at a multiple of its intensity
 #. ("Hematoxylin ×1.20").
@@ -3099,7 +3106,7 @@ msgstr "اعمال نشد: {}."
 #: app/src/processing_text.rs:325
 msgid "{method} fit ({source}; {percent}% tissue; stains {angle}° apart)"
 msgstr ""
-"برازش {method} ({source}؛ {percent}% بافت؛ زاویهٔ بین رنگینه‌ها {angle}°)"
+"برازش {method} ({source}؛ ⁨{percent}%⁩ بافت؛ زاویهٔ بین رنگینه‌ها ⁨{angle}°⁩)"
 
 #. Translators: a stain fit that was not used: the method (Macenko
 #. or Vahadane), why, and the pixels it used. The standard
@@ -3132,13 +3139,13 @@ msgstr "سطح {} لام"
 #. in pixels and the pyramid level.
 #: app/src/processing_text.rs:369
 msgid "{width}×{height} px region, level {level}"
-msgstr "ناحیهٔ {width}×{height} px، سطح {level}"
+msgstr "ناحیهٔ ⁨{width}×{height} px⁩، سطح {level}"
 
 #. Translators: too little of the slide was tissue to fit its
 #. stains: how many pixels, and which share of the slide.
 #: app/src/processing_text.rs:388
 msgid "insufficient tissue ({pixels} px, {percent}%)"
-msgstr "بافت ناکافی ({pixels} px، {percent}%)"
+msgstr "بافت ناکافی (⁨{pixels} px⁩، ⁨{percent}%⁩)"
 
 #. Translators: the fitted stains were too alike to tell apart:
 #. the angle between them, and the fit's condition number.
@@ -3146,13 +3153,13 @@ msgstr "بافت ناکافی ({pixels} px، {percent}%)"
 msgid ""
 "ill-conditioned fit (stain vectors {angle}° apart, condition {condition})"
 msgstr ""
-"برازش بدحالت (زاویهٔ بین بردارهای رنگینه {angle}°، عدد حالت {condition})"
+"برازش بدحالت (زاویهٔ بین بردارهای رنگینه ⁨{angle}°⁩، عدد حالت {condition})"
 
 #. Translators: the fitted stains were too far from those of
 #. hematoxylin and eosin.
 #: app/src/processing_text.rs:408
 msgid "implausible stain vectors ({}° from the reference)"
-msgstr "بردارهای رنگینهٔ نامحتمل ({}° اختلاف با مرجع)"
+msgstr "بردارهای رنگینهٔ نامحتمل (⁨{}°⁩ اختلاف با مرجع)"
 
 #. Translators: a stain fit failed.
 #: app/src/processing_text.rs:412
@@ -3186,21 +3193,21 @@ msgstr "پیکسل‌های بافتی تحلیل‌شده"
 #. Translators: the pixels positive for a stain ("DAB-positive").
 #: app/src/quantify_panel.rs:312
 msgid "{}-positive"
-msgstr "{}-مثبت"
+msgstr "‏{}-مثبت"
 
 #. Translators: weak, moderate and strong staining are the 1+, 2+ and
 #. 3+ intensity classes of an H-score.
 #: app/src/quantify_panel.rs:315
 msgid "Weak (1+)"
-msgstr "ضعیف (1+)"
+msgstr "ضعیف (⁨1+⁩)"
 
 #: app/src/quantify_panel.rs:316
 msgid "Moderate (2+)"
-msgstr "متوسط (2+)"
+msgstr "متوسط (⁨2+⁩)"
 
 #: app/src/quantify_panel.rs:317
 msgid "Strong (3+)"
-msgstr "قوی (3+)"
+msgstr "قوی (⁨3+⁩)"
 
 #. Translators: the H-score of immunohistochemistry, from 0 to 300.
 #: app/src/quantify_panel.rs:319
@@ -3228,16 +3235,16 @@ msgid ""
 "The region of interest, {width} × {height} px, read at level {level} "
 "({level_width} × {level_height} px, {mpp} µm/px)."
 msgstr ""
-"ناحیهٔ مورد نظر، {width} × {height} px، در سطح {level} خوانده شد "
-"({level_width} × {level_height} px، {mpp} µm/px)."
+"ناحیهٔ مورد نظر، ⁨{width} × {height} px⁩، در سطح {level} خوانده شد "
+"(⁨{level_width} × {level_height} px⁩، ⁨{mpp} µm/px⁩)."
 
 #: app/src/quantify_panel.rs:445
 msgid ""
 "The region of interest, {width} × {height} px, read at level {level} "
 "({level_width} × {level_height} px)."
 msgstr ""
-"ناحیهٔ مورد نظر، {width} × {height} px، در سطح {level} خوانده شد "
-"({level_width} × {level_height} px)."
+"ناحیهٔ مورد نظر، ⁨{width} × {height} px⁩، در سطح {level} خوانده شد "
+"(⁨{level_width} × {level_height} px⁩)."
 
 #: app/src/quantify_panel.rs:453
 msgid "Quantify Stain · {}"
@@ -3260,7 +3267,7 @@ msgid ""
 "the region is {width} × {height} pixels at the slide's coarsest level "
 "{level}; quantify a smaller region"
 msgstr ""
-"ناحیه در درشت‌ترین سطح لام ({level}) {width} × {height} پیکسل است؛ ناحیهٔ "
+"ناحیه در درشت‌ترین سطح لام ({level}) ⁨{width} × {height}⁩ پیکسل است؛ ناحیهٔ "
 "کوچک‌تری را کمّی‌سازی کنید"
 
 #: app/src/quantify_panel.rs:739
@@ -3278,8 +3285,8 @@ msgid ""
 "{name}: {stain} in the region of interest ({model} model; thresholds "
 "{weak} / {moderate} / {strong})"
 msgstr ""
-"{name}: {stain} در ناحیهٔ مورد نظر (مدل {model}؛ آستانه‌ها {weak} / "
-"{moderate} / {strong})"
+"‏{name}: {stain} در ناحیهٔ مورد نظر (مدل {model}؛ آستانه‌ها ⁨{weak} / "
+"{moderate} / {strong}⁩)"
 
 #: app/src/render.rs:957
 msgid "The GPU renderer failed; slides are drawn by the CPU renderer"
@@ -3287,18 +3294,18 @@ msgstr "موتور رندر GPU از کار افتاد؛ لام‌ها با مو
 
 #. Translators: the size of the copy, its pyramid levels, the size of
 #. its tiles and its pixel size.
-#: app/src/save_copy.rs:162
+#: app/src/save_copy.rs:164
 msgid "{width} × {height} px in {n} level of {tile}-px tiles at {mpp} µm/px."
 msgid_plural ""
 "{width} × {height} px in {n} levels of {tile}-px tiles at {mpp} µm/px."
 msgstr[0] ""
-"تصویر {width} × {height} px در {n} سطح، با کاشی‌های {tile} px و اندازهٔ پیکسل "
-"{mpp} µm/px."
+"تصویر ⁨{width} × {height} px⁩ در {n} سطح، با کاشی‌های ⁨{tile} px⁩ و اندازهٔ پیکسل "
+"⁨{mpp} µm/px⁩."
 msgstr[1] ""
-"تصویر {width} × {height} px در {n} سطح، با کاشی‌های {tile} px و اندازهٔ پیکسل "
-"{mpp} µm/px."
+"تصویر ⁨{width} × {height} px⁩ در {n} سطح، با کاشی‌های ⁨{tile} px⁩ و اندازهٔ پیکسل "
+"⁨{mpp} µm/px⁩."
 
-#: app/src/save_copy.rs:170
+#: app/src/save_copy.rs:174
 msgid ""
 "{width} × {height} px in {n} level of {tile}-px tiles; the slide records no "
 "pixel size."
@@ -3306,15 +3313,15 @@ msgid_plural ""
 "{width} × {height} px in {n} levels of {tile}-px tiles; the slide records no "
 "pixel size."
 msgstr[0] ""
-"تصویر {width} × {height} px در {n} سطح، با کاشی‌های {tile} px؛ اندازهٔ پیکسل "
+"تصویر ⁨{width} × {height} px⁩ در {n} سطح، با کاشی‌های ⁨{tile} px⁩؛ اندازهٔ پیکسل "
 "در لام ثبت نشده است."
 msgstr[1] ""
-"تصویر {width} × {height} px در {n} سطح، با کاشی‌های {tile} px؛ اندازهٔ پیکسل "
+"تصویر ⁨{width} × {height} px⁩ در {n} سطح، با کاشی‌های ⁨{tile} px⁩؛ اندازهٔ پیکسل "
 "در لام ثبت نشده است."
 
 #. Translators: the slide's {n} channels are copied as one colour
 #. image, the composite the window shows.
-#: app/src/save_copy.rs:184
+#: app/src/save_copy.rs:188
 msgid ""
 "The {n} channel is copied as the colour composite shown, not as a separate "
 "channel."
@@ -3322,137 +3329,137 @@ msgid_plural ""
 "The {n} channels are copied as the colour composite shown, not as separate "
 "channels."
 msgstr[0] ""
-"{n} کانال به‌صورت ترکیب رنگی نمایش‌داده‌شده کپی می‌شود، نه به‌صورت کانالی جداگانه."
+"‏{n} کانال به‌صورت ترکیب رنگی نمایش‌داده‌شده کپی می‌شود، نه به‌صورت کانالی جداگانه."
 msgstr[1] ""
-"{n} کانال به‌صورت ترکیب رنگی نمایش‌داده‌شده کپی می‌شود، نه به‌صورت کانال‌های "
+"‏{n} کانال به‌صورت ترکیب رنگی نمایش‌داده‌شده کپی می‌شود، نه به‌صورت کانال‌های "
 "جداگانه."
 
 #. Translators: shown as a sentence on its own; {} is the path of a
 #. file.
-#: app/src/save_copy.rs:216
+#: app/src/save_copy.rs:220
 msgid "{} already exists."
-msgstr "{} از قبل وجود دارد."
+msgstr "‏{} از قبل وجود دارد."
 
 #. Translators: shown as a sentence on its own: the region of
 #. interest chosen for a copy of the slide is empty.
-#: app/src/save_copy.rs:227
+#: app/src/save_copy.rs:231
 msgid "The region is empty."
 msgstr "ناحیه خالی است."
 
 #. Translators: shown as a sentence on its own: the region of
 #. interest (its position and size in pixels) is outside the
 #. slide (its size in pixels).
-#: app/src/save_copy.rs:237
+#: app/src/save_copy.rs:241
 msgid ""
 "The region {x},{y},{width},{height} is outside the slide ({slide_width} × "
 "{slide_height} pixels)"
 msgstr ""
-"ناحیهٔ {x},{y},{width},{height} خارج از لام است ({slide_width} × "
-"{slide_height} پیکسل)"
+"ناحیهٔ ⁨{x},{y},{width},{height}⁩ خارج از لام است (⁨{slide_width} × "
+"{slide_height}⁩ پیکسل)"
 
 #. Translators: shown as a sentence on its own: the size of the copy
 #. of a slide, and the largest it can be.
-#: app/src/save_copy.rs:249
+#: app/src/save_copy.rs:253
 msgid "The copy would be {width} × {height} pixels; at most {max} per side."
 msgstr ""
-"رونوشت {width} × {height} پیکسل می‌شد؛ حداکثر {max} پیکسل در هر ضلع مجاز است."
+"رونوشت ⁨{width} × {height}⁩ پیکسل می‌شد؛ حداکثر {max} پیکسل در هر ضلع مجاز است."
 
 #. Translators: shown as a sentence on its own: the size of the copy
 #. of a slide, and the smallest it can be.
-#: app/src/save_copy.rs:257
+#: app/src/save_copy.rs:261
 msgid ""
 "The copy would be {width} × {height} pixels; it must be at least {min} × "
 "{min} (choose a larger region or a finer resolution)"
 msgstr ""
-"رونوشت {width} × {height} پیکسل می‌شد؛ باید دست‌کم {min} × {min} باشد (ناحیهٔ "
+"رونوشت ⁨{width} × {height}⁩ پیکسل می‌شد؛ باید دست‌کم ⁨{min} × {min}⁩ باشد (ناحیهٔ "
 "بزرگ‌تر یا وضوح بیشتری انتخاب کنید)"
 
 #. Translators: shown as a sentence on its own; {} is a path the
 #. copy of a slide was to be saved to.
-#: app/src/save_copy.rs:265
+#: app/src/save_copy.rs:269
 msgid "{} is not a file name."
-msgstr "{} نام فایل نیست."
+msgstr "‏{} نام فایل نیست."
 
 #. Translators: shown as a sentence on its own; {} is a path the copy
 #. of a slide was to be saved to.
-#: app/src/save_copy.rs:269
+#: app/src/save_copy.rs:273
 msgid "{} is a folder."
-msgstr "{} یک پوشه است."
+msgstr "‏{} یک پوشه است."
 
 #. Translators: shown as a sentence on its own; {} is the folder
 #. the copy of a slide was to be saved in.
-#: app/src/save_copy.rs:273
+#: app/src/save_copy.rs:277
 msgid "The folder {} does not exist."
 msgstr "پوشهٔ {} وجود ندارد."
 
 #. Translators: shown as a sentence on its own; {} is a path the copy
 #. of a slide was to be saved to.
-#: app/src/save_copy.rs:278
+#: app/src/save_copy.rs:282
 msgid "{} is the slide being copied (or one of its files)"
-msgstr "{} همان لامی است که از آن رونوشت تهیه می‌شود (یا یکی از فایل‌های آن)"
+msgstr "‏{} همان لامی است که از آن رونوشت تهیه می‌شود (یا یکی از فایل‌های آن)"
 
 #. Translators: shown as a sentence on its own; {} is the temporary
 #. file of a copy of a slide.
-#: app/src/save_copy.rs:284
+#: app/src/save_copy.rs:288
 msgid ""
 "{} exists: another conversion is writing this file, or an interrupted one "
 "left it behind (delete it and try again)"
 msgstr ""
-"{} وجود دارد: تبدیل دیگری در حال نوشتن این فایل است، یا تبدیلی که قطع شده آن "
+"‏{} وجود دارد: تبدیل دیگری در حال نوشتن این فایل است، یا تبدیلی که قطع شده آن "
 "را بر جا گذاشته است (آن را حذف کنید و دوباره امتحان کنید)"
 
 #. Translators: the size of the region of interest, then the position
 #. of its top-left corner on the slide.
-#: app/src/save_copy.rs:362
+#: app/src/save_copy.rs:366
 msgid "{width} × {height} px at {x}, {y}"
-msgstr "ناحیهٔ {width} × {height} px در موقعیت {x}، {y}"
+msgstr "ناحیهٔ ⁨{width} × {height} px⁩ در موقعیت {x}، {y}"
 
-#: app/src/save_copy.rs:485
+#: app/src/save_copy.rs:489
 msgid "Saving {}"
 msgstr "در حال ذخیرهٔ {}"
 
-#: app/src/save_copy.rs:497
+#: app/src/save_copy.rs:501
 msgid "{done} of {n} tile"
 msgid_plural "{done} of {n} tiles"
-msgstr[0] "{done} از {n} کاشی"
-msgstr[1] "{done} از {n} کاشی"
+msgstr[0] "‏{done} از {n} کاشی"
+msgstr[1] "‏{done} از {n} کاشی"
 
-#: app/src/save_copy.rs:588 app/src/slide_info.rs:127
+#: app/src/save_copy.rs:592 app/src/slide_info.rs:127
 msgid "{n} level"
 msgid_plural "{n} levels"
-msgstr[0] "{n} سطح"
-msgstr[1] "{n} سطح"
+msgstr[0] "‏{n} سطح"
+msgstr[1] "‏{n} سطح"
 
 #. Translators: about a copy of a slide without its label,
 #. macro and thumbnail images and with no properties but the
 #. pixel size, objective power and stain; text or marks
 #. inside the scanned tissue image are kept.
-#: app/src/save_copy.rs:596
+#: app/src/save_copy.rs:600
 msgid "de-identified"
 msgstr "شناسه‌زدایی‌شده"
 
 #. Translators: facts about the copy ("1024 × 768 px, 3
 #. levels, 12 MB"), then where it was saved.
-#: app/src/save_copy.rs:601
+#: app/src/save_copy.rs:605
 msgid "{facts}, saved to {path}"
 msgstr "مشخصات: {facts}؛ ذخیره‌شده در {path}"
 
-#: app/src/save_copy.rs:607
+#: app/src/save_copy.rs:611
 msgid "Saved {}"
-msgstr "{} ذخیره شد"
+msgstr "‏{} ذخیره شد"
 
-#: app/src/save_copy.rs:623
+#: app/src/save_copy.rs:627
 msgid "Copy cancelled; nothing was saved"
 msgstr "کپی لغو شد؛ چیزی ذخیره نشد"
 
-#: app/src/save_copy.rs:626
+#: app/src/save_copy.rs:630
 msgid "Could not save {}"
 msgstr "ذخیرهٔ {} ممکن نشد"
 
 #. Translators: {n} tiles of the slide could not be read for a copy
 #. of it (the form follows {n}); {total} is the number of tiles of
 #. the copy. The copy shows the slide's background colour there.
-#: app/src/save_copy.rs:644
+#: app/src/save_copy.rs:648
 msgid ""
 "{n} tile of {total} could not be read from the slide and shows its "
 "background colour."
@@ -3460,41 +3467,41 @@ msgid_plural ""
 "{n} tiles of {total} could not be read from the slide and show its "
 "background colour."
 msgstr[0] ""
-"{n} از {total} کاشی از لام خوانده نشد و رنگ پس‌زمینهٔ لام را نشان می‌دهد."
+"‏{n} از {total} کاشی از لام خوانده نشد و رنگ پس‌زمینهٔ لام را نشان می‌دهد."
 msgstr[1] ""
-"{n} از {total} کاشی از لام خوانده نشد و رنگ پس‌زمینهٔ لام را نشان می‌دهد."
+"‏{n} از {total} کاشی از لام خوانده نشد و رنگ پس‌زمینهٔ لام را نشان می‌دهد."
 
 #. Translators: {error} says why the slide's label image was not copied.
-#: app/src/save_copy.rs:664
+#: app/src/save_copy.rs:668
 msgid "the label image was not copied: {error}"
 msgstr "تصویر برچسب کپی نشد: {error}"
 
 #. Translators: {error} says why the slide's macro image (a photo of
 #. the whole glass) was not copied.
-#: app/src/save_copy.rs:667
+#: app/src/save_copy.rs:671
 msgid "the macro image was not copied: {error}"
 msgstr "تصویر ماکرو کپی نشد: {error}"
 
 #. Translators: {error} says why the slide's thumbnail image was not copied.
-#: app/src/save_copy.rs:669
+#: app/src/save_copy.rs:673
 msgid "the thumbnail image was not copied: {error}"
 msgstr "تصویر کوچک کپی نشد: {error}"
 
 #. Translators: an extra image of the slide, by the name the file
 #. gives it ({name}, not translated), was not copied; {error} says why.
-#: app/src/save_copy.rs:673
+#: app/src/save_copy.rs:677
 msgid "the extra image {name} was not copied: {error}"
 msgstr "تصویر اضافی «{name}» کپی نشد: {error}"
 
 #. Translators: {error} says why the slide's colour profile
 #. was not copied.
-#: app/src/save_copy.rs:681
+#: app/src/save_copy.rs:685
 msgid "the ICC profile was not copied: {error}"
 msgstr "نمایهٔ ICC کپی نشد: {error}"
 
 #. Translators: a file type: a TIFF file holding the slide at
 #. several resolutions.
-#: app/src/save_copy.rs:692
+#: app/src/save_copy.rs:696
 msgid "Pyramidal TIFF"
 msgstr "فایل TIFF هرمی"
 
@@ -3590,7 +3597,7 @@ msgstr "تبدیل رنگ‌های لام به sRGB یا نمایش آن‌ها 
 
 #: app/src/shortcuts.rs:208
 msgid "Show the slide's pixels as squares above 100%"
-msgstr "نمایش پیکسل‌های لام به‌صورت مربع در بزرگ‌نمایی بالای 100%"
+msgstr "نمایش پیکسل‌های لام به‌صورت مربع در بزرگ‌نمایی بالای ⁨100%⁩"
 
 #: app/src/shortcuts.rs:209
 msgid "Copy the view as an image"
@@ -3638,19 +3645,19 @@ msgstr "بزرگ‌نمایی تا یک پیکسل صفحه به ازای هر �
 
 #: app/src/shortcuts.rs:226
 msgid "Rotate the view 90° to the left"
-msgstr "چرخاندن نما 90° به چپ"
+msgstr "چرخاندن نما ⁨90°⁩ به چپ"
 
 #: app/src/shortcuts.rs:227
 msgid "Rotate the view 90° to the right"
-msgstr "چرخاندن نما 90° به راست"
+msgstr "چرخاندن نما ⁨90°⁩ به راست"
 
 #: app/src/shortcuts.rs:228
 msgid "Rotate the view 5° to the left"
-msgstr "چرخاندن نما 5° به چپ"
+msgstr "چرخاندن نما ⁨5°⁩ به چپ"
 
 #: app/src/shortcuts.rs:229
 msgid "Rotate the view 5° to the right"
-msgstr "چرخاندن نما 5° به راست"
+msgstr "چرخاندن نما ⁨5°⁩ به راست"
 
 #: app/src/shortcuts.rs:230
 msgid "Reset the rotation (upright again)"
@@ -3782,7 +3789,7 @@ msgstr ""
 #. Translators: keys that do the same, in the Keyboard Shortcuts panel ("Ctrl+Shift+Z or Ctrl+Y"; with three keys, the first {} is "A or B").
 #: app/src/shortcuts.rs:626
 msgid "{} or {}"
-msgstr "{} یا {}"
+msgstr "‏{} یا {}"
 
 #. Translators: the slide's format when its file does not name one.
 #: app/src/slide_info.rs:120
@@ -3795,40 +3802,40 @@ msgstr "لام"
 #: app/src/slide_info.rs:158
 msgid "{names} and {n} more"
 msgid_plural "{names} and {n} more"
-msgstr[0] "{names} و {n} مورد دیگر"
-msgstr[1] "{names} و {n} مورد دیگر"
+msgstr[0] "‏{names} و {n} مورد دیگر"
+msgstr[1] "‏{names} و {n} مورد دیگر"
 
 #. Translators: the number of channels, their sample type
 #. ("uint16"), and their names.
 #: app/src/slide_info.rs:167
 msgid "{n} channel ({sample_type}): {names}"
 msgid_plural "{n} channels ({sample_type}): {names}"
-msgstr[0] "{n} کانال ({sample_type}): {names}"
-msgstr[1] "{n} کانال ({sample_type}): {names}"
+msgstr[0] "‏{n} کانال ({sample_type}): {names}"
+msgstr[1] "‏{n} کانال ({sample_type}): {names}"
 
 #: app/src/slide_info.rs:308
 msgid "Copied {n} property"
 msgid_plural "Copied {n} properties"
-msgstr[0] "{n} ویژگی کپی شد"
-msgstr[1] "{n} ویژگی کپی شد"
+msgstr[0] "‏{n} ویژگی کپی شد"
+msgstr[1] "‏{n} ویژگی کپی شد"
 
 #. Translators: {} is the pixel size with its unit ("0.25 µm/px"),
 #. which the user set.
 #: app/src/slide_info.rs:343
 msgid "{} (set by you)"
-msgstr "{} (تنظیم‌شده توسط شما)"
+msgstr "‏{} (تنظیم‌شده توسط شما)"
 
 #. Translators: {} is the pixel size with its unit ("0.25 × 0.25
 #. µm/px"), as the slide file records it.
 #: app/src/slide_info.rs:347
 msgid "{} (from the file)"
-msgstr "{} (از فایل)"
+msgstr "‏{} (از فایل)"
 
 #. Translators: {} is the pixel size with its unit ("0.25 µm/px");
 #. the slide file records it for one axis only.
 #: app/src/slide_info.rs:353
 msgid "{} (one axis in the file)"
-msgstr "{} (فقط یک محور در فایل)"
+msgstr "‏{} (فقط یک محور در فایل)"
 
 #: app/src/slide_info.rs:355
 msgid "not recorded — measurements are in pixels"
@@ -3840,7 +3847,7 @@ msgstr "اندازهٔ پیکسل را بر حسب µm بر پیکسل وارد 
 
 #: app/src/slide_info.rs:411
 msgid "Pixel size set to {} µm/px"
-msgstr "اندازهٔ پیکسل روی {} µm/px تنظیم شد"
+msgstr "اندازهٔ پیکسل روی ⁨{} µm/px⁩ تنظیم شد"
 
 #: app/src/slide_info.rs:415
 msgid ""
@@ -3869,8 +3876,8 @@ msgstr "نقاط نشانهٔ یک لام باید از هم فاصله داشت
 #: app/src/slide_link.rs:553
 msgid "Aligned {n} slide from landmarks"
 msgid_plural "Aligned {n} slides from landmarks"
-msgstr[0] "{n} لام با نقاط نشانه هم‌تراز شد"
-msgstr[1] "{n} لام با نقاط نشانه هم‌تراز شد"
+msgstr[0] "‏{n} لام با نقاط نشانه هم‌تراز شد"
+msgstr[1] "‏{n} لام با نقاط نشانه هم‌تراز شد"
 
 #: app/src/stain_target.rs:158
 msgid "not a stain target: {}"
@@ -3914,13 +3921,31 @@ msgid_plural "eov shows at most {n} panes side by side"
 msgstr[0] "برنامهٔ eov حداکثر {n} قاب را کنار هم نمایش می‌دهد"
 msgstr[1] "برنامهٔ eov حداکثر {n} قاب را کنار هم نمایش می‌دهد"
 
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:34 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "Dark"
+msgstr "تیره"
+
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:35 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "Light"
+msgstr "روشن"
+
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:36 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "High Contrast"
+msgstr "کنتراست بالا"
+
 #. Translators: the slide's pyramid: how many levels it has, and the
 #. level shown now ("L0" is full resolution).
 #: app/src/ui_update.rs:192
 msgid "{n} level | L{level}"
 msgid_plural "{n} levels | L{level}"
-msgstr[0] "{n} سطح | L{level}"
-msgstr[1] "{n} سطح | L{level}"
+msgstr[0] "‏{n} سطح | ⁨L{level}⁩"
+msgstr[1] "‏{n} سطح | ⁨L{level}⁩"
 
 #: app/src/ui_update.rs:202
 msgctxt "Slide metadata"
@@ -3973,16 +3998,16 @@ msgstr "صفحهٔ اصلی"
 #: app/src/ui_update.rs:627
 msgid "{n} item"
 msgid_plural "{n} items"
-msgstr[0] "{n} مورد"
-msgstr[1] "{n} مورد"
+msgstr[0] "‏{n} مورد"
+msgstr[1] "‏{n} مورد"
 
 #. Translators: entries of the series bar that match its filter,
 #. of all its entries.
 #: app/src/ui_update.rs:632
 msgid "{shown} of {n} item"
 msgid_plural "{shown} of {n} items"
-msgstr[0] "{shown} از {n} مورد"
-msgstr[1] "{shown} از {n} مورد"
+msgstr[0] "‏{shown} از {n} مورد"
+msgstr[1] "‏{shown} از {n} مورد"
 
 #: app/src/ui_update.rs:686 app/src/ui_update.rs:747
 msgid "Open Folder…"
@@ -4008,7 +4033,7 @@ msgstr "فایل اجرایی eov پیدا نمی‌شود"
 #: app/src/update/app.rs:206
 msgid "replace {} in place (the previous AppImage is kept for --rollback)"
 msgstr ""
-"جایگزینی {} در همان محل (فایل AppImage قبلی برای --rollback نگه داشته می‌شود)"
+"جایگزینی {} در همان محل (فایل AppImage قبلی برای ⁨--rollback⁩ نگه داشته می‌شود)"
 
 #. Translators: how eov is updated.
 #: app/src/update/app.rs:211
@@ -4030,7 +4055,7 @@ msgid ""
 "exit and let eov-update-helper replace {} (the previous version is kept for "
 "--rollback)"
 msgstr ""
-"خروج و جایگزینی {} توسط eov-update-helper (نسخهٔ قبلی برای --rollback نگه "
+"خروج و جایگزینی {} توسط eov-update-helper (نسخهٔ قبلی برای ⁨--rollback⁩ نگه "
 "داشته می‌شود)"
 
 #. Translators: {} says why ("eov was installed with cargo from …").
@@ -4103,7 +4128,7 @@ msgid ""
 "not downgraded. Use --release {latest} to install that release."
 msgstr ""
 "این نسخه ({current}) از آخرین نسخهٔ منتشرشده ({latest}) جدیدتر است؛ به نسخهٔ "
-"قدیمی‌تر برگردانده نمی‌شود. برای نصب آن نسخه از --release {latest} استفاده "
+"قدیمی‌تر برگردانده نمی‌شود. برای نصب آن نسخه از ⁨--release {latest}⁩ استفاده "
 "کنید."
 
 #. Translators: "eov update" is a command: keep it as it is.
@@ -4149,8 +4174,8 @@ msgid ""
 "no cargo install root (CARGO_INSTALL_ROOT, install.root, CARGO_HOME or ~/."
 "cargo) records this binary"
 msgstr ""
-"هیچ ریشهٔ نصب cargo (CARGO_INSTALL_ROOT، install.root، CARGO_HOME یا ~/."
-"cargo) این فایل اجرایی را ثبت نکرده است"
+"هیچ ریشهٔ نصب cargo (CARGO_INSTALL_ROOT، install.root، CARGO_HOME یا ⁨~/."
+"cargo⁩) این فایل اجرایی را ثبت نکرده است"
 
 #. Translators: {} says why ("several Homebrew casks claim …").
 #: app/src/update/app.rs:700
@@ -4180,7 +4205,7 @@ msgstr "فایل AppImage پوشه ندارد"
 #. Translators: {path} is the AppImage file.
 #: app/src/update/app.rs:1072
 msgid "{path} runs eov {version} from its next start."
-msgstr "{path} از اجرای بعدی، eov {version} را اجرا می‌کند."
+msgstr "‏{path} از اجرای بعدی، eov {version} را اجرا می‌کند."
 
 #: app/src/update/app.rs:1079
 msgid "the release has no Flatpak bundle for this platform"
@@ -4230,7 +4255,7 @@ msgstr "نگه‌داشتن بستهٔ افزونهٔ آمادهٔ نصب ممک
 #. Translators: a plugin's update: from version {current} to {version}.
 #: app/src/update/app.rs:1420
 msgid "{current} -> {version} after eov exits"
-msgstr "{current} -> {version} پس از خروج eov"
+msgstr "‏⁨{current} -> {version}⁩ پس از خروج eov"
 
 #: app/src/update/app.rs:1430
 msgid "could not keep the staged plugin registry"
@@ -4266,7 +4291,7 @@ msgstr "فهرست کردن نسخهٔ آمادهٔ نصب ممکن نشد"
 msgid ""
 "{} does not look like an eov installation folder (no eov.exe); refusing to "
 "replace it"
-msgstr "{} شبیه پوشهٔ نصب eov نیست (eov.exe ندارد)؛ از جایگزینی آن خودداری شد"
+msgstr "‏{} شبیه پوشهٔ نصب eov نیست (eov.exe ندارد)؛ از جایگزینی آن خودداری شد"
 
 #: app/src/update/app.rs:1580
 msgid "could not list the installation folder"
@@ -4289,13 +4314,13 @@ msgid_plural ""
 "Move eov.exe and its files into a folder of their own (for example C:"
 "\\Tools\\eov) and run the update again."
 msgstr[0] ""
-"{folder} شامل {n} مورد است که جزو eov نیست (برای نمونه: {examples}).\n"
+"‏{folder} شامل {n} مورد است که جزو eov نیست (برای نمونه: {examples}).\n"
 "به‌روزرسانی نسخهٔ قابل‌حمل کل این پوشه را جایگزین می‌کند، بنابراین برای محافظت "
 "از آن فایل‌ها انجام نمی‌شود.\n"
 "فایل eov.exe و فایل‌های آن را به پوشه‌ای جداگانه منتقل کنید (برای نمونه C:"
 "\\Tools\\eov) و به‌روزرسانی را دوباره اجرا کنید."
 msgstr[1] ""
-"{folder} شامل {n} مورد است که جزو eov نیست (برای نمونه: {examples}).\n"
+"‏{folder} شامل {n} مورد است که جزو eov نیست (برای نمونه: {examples}).\n"
 "به‌روزرسانی نسخهٔ قابل‌حمل کل این پوشه را جایگزین می‌کند، بنابراین برای محافظت "
 "از آن فایل‌ها انجام نمی‌شود.\n"
 "فایل eov.exe و فایل‌های آن را به پوشه‌ای جداگانه منتقل کنید (برای نمونه C:"
@@ -4375,12 +4400,12 @@ msgstr "جایگزینی {} ممکن نشد"
 #. Translators: {requirement} is a range of versions such as ">=1.0.0, <2.0.0"; {error} the error of the version library.
 #: app/src/update/compat.rs:83
 msgid "'{requirement}' is not a valid SemVer requirement: {error}"
-msgstr "«{requirement}» یک الزام SemVer معتبر نیست: {error}"
+msgstr "‏«{requirement}» یک الزام SemVer معتبر نیست: {error}"
 
 #. Translators: {} is a range of versions; keep ">=1.0.0, <2.0.0" as it is.
 #: app/src/update/compat.rs:91
 msgid "'{}' has no lower bound; declare a range such as \">=1.0.0, <2.0.0\""
-msgstr "«{}» کران پایین ندارد؛ بازه‌ای مانند \">=1.0.0, <2.0.0\" تعریف کنید"
+msgstr "‏«{}» کران پایین ندارد؛ بازه‌ای مانند ⁨\">=1.0.0, <2.0.0\"⁩ تعریف کنید"
 
 #. Translators: why a plugin does not run; {required} is a range of eov versions such as ">=1.0.0, <2.0.0".
 #: app/src/update/compat.rs:259
@@ -4432,7 +4457,7 @@ msgid ""
 "or, for a system-wide installation:\n"
 "{system}"
 msgstr ""
-"{user}\n"
+"‏{user}\n"
 "یا برای نصب سراسری روی سیستم:\n"
 "{system}"
 
@@ -4511,7 +4536,7 @@ msgstr "اجرای {} ممکن نشد"
 #. Translators: {command} is a command; {status} how it ended ("exit status: 1").
 #: app/src/update/homebrew.rs:367
 msgid "{command} failed with {status}"
-msgstr "{command} با {status} ناموفق بود"
+msgstr "‏{command} با {status} ناموفق بود"
 
 #. Translators: a cask is a Homebrew package. "brew update" is a command: keep it as it is.
 #: app/src/update/homebrew.rs:433
@@ -4747,7 +4772,7 @@ msgstr "چکیدهٔ SHA-256 آرتیفکت [{}] نامعتبر است"
 #. Translators: {} is a key of release.toml, such as platform.linux.
 #: app/src/update/manifest.rs:760
 msgid "{} must be a table"
-msgstr "{} باید یک جدول باشد"
+msgstr "‏{} باید یک جدول باشد"
 
 #: app/src/update/manifest.rs:770
 msgid "unsupported release platform '{}'"
@@ -4763,7 +4788,7 @@ msgstr "مدخل معماری پشتیبانی‌نشده «{}»"
 
 #: app/src/update/network.rs:118
 msgid "{} does not exist (HTTP 404)"
-msgstr "{} وجود ندارد (HTTP 404)"
+msgstr "‏{} وجود ندارد (HTTP 404)"
 
 #: app/src/update/network.rs:120
 msgid "GitHub returned HTTP {status} for {url}"
@@ -4785,8 +4810,8 @@ msgstr ""
 #: app/src/update/network.rs:131
 msgid "{url} is larger than the limit of {n} byte"
 msgid_plural "{url} is larger than the limit of {n} bytes"
-msgstr[0] "{url} از محدودیت {n} بایت بزرگ‌تر است"
-msgstr[1] "{url} از محدودیت {n} بایت بزرگ‌تر است"
+msgstr[0] "‏{url} از محدودیت {n} بایت بزرگ‌تر است"
+msgstr[1] "‏{url} از محدودیت {n} بایت بزرگ‌تر است"
 
 #. Translators: {reason} says why eov does not download from {url}.
 #: app/src/update/network.rs:137
@@ -4835,7 +4860,7 @@ msgstr "درخواست‌های به‌روزرسان باید از HTTPS است
 
 #: app/src/update/network.rs:415
 msgid "{} is not a GitHub release host"
-msgstr "{} میزبان نسخه‌های منتشرشدهٔ GitHub نیست"
+msgstr "‏{} میزبان نسخه‌های منتشرشدهٔ GitHub نیست"
 
 #: app/src/update/platform.rs:34
 msgid "unsupported operating system for eov releases"
@@ -4871,7 +4896,7 @@ msgstr "منبع افزونهٔ نامعتبر «{}»"
 msgid ""
 "'{id}' is not an official plugin in the eov {version} catalog (official "
 "plugins: none)."
-msgstr "«{id}» افزونهٔ رسمی در فهرست eov {version} نیست (افزونه‌های رسمی: هیچ)."
+msgstr "‏«{id}» افزونهٔ رسمی در فهرست eov {version} نیست (افزونه‌های رسمی: هیچ)."
 
 #. Translators: {plugins} are the ids of the official plugins.
 #: app/src/update/plugins.rs:613
@@ -4879,7 +4904,7 @@ msgid ""
 "'{id}' is not an official plugin in the eov {version} catalog (official "
 "plugins: {plugins})."
 msgstr ""
-"«{id}» افزونهٔ رسمی در فهرست eov {version} نیست (افزونه‌های رسمی: {plugins})."
+"‏«{id}» افزونهٔ رسمی در فهرست eov {version} نیست (افزونه‌های رسمی: {plugins})."
 
 #. Translators: {tag} is a release, such as v1.2.0.
 #: app/src/update/plugins.rs:662
@@ -4893,12 +4918,12 @@ msgstr ""
 #. Translators: {repository} is a GitHub repository, {tag} a release, such as v1.2.0.
 #: app/src/update/plugins.rs:689
 msgid "{repository} has no plugin release manifest for {tag}"
-msgstr "{repository} برای {tag} مانیفست انتشار افزونه ندارد"
+msgstr "‏{repository} برای {tag} مانیفست انتشار افزونه ندارد"
 
 #. Translators: {} is a GitHub repository.
 #: app/src/update/plugins.rs:695
 msgid "{} has no plugin release manifest for its latest release"
-msgstr "{} برای آخرین نسخهٔ منتشرشده‌اش مانیفست انتشار افزونه ندارد"
+msgstr "‏{} برای آخرین نسخهٔ منتشرشده‌اش مانیفست انتشار افزونه ندارد"
 
 #: app/src/update/plugins.rs:709
 msgid ""
@@ -4914,12 +4939,12 @@ msgid ""
 "contains and re-run with --id <id>."
 msgstr ""
 "نسخهٔ منتشرشده در {} شناسهٔ افزونه را اعلام نمی‌کند. بررسی کنید شامل کدام "
-"افزونه است و فرمان را با --id <id> دوباره اجرا کنید."
+"افزونه است و فرمان را با ⁨--id <id>⁩ دوباره اجرا کنید."
 
 #. Translators: {repository} is a GitHub repository, {platform} an operating system and processor, such as linux.x86_64.
 #: app/src/update/plugins.rs:731
 msgid "{repository} publishes no {platform} package for this release"
-msgstr "{repository} برای این نسخهٔ منتشرشده بستهٔ {platform} منتشر نمی‌کند"
+msgstr "‏{repository} برای این نسخهٔ منتشرشده بستهٔ {platform} منتشر نمی‌کند"
 
 #. Translators: {tag} and {release} are releases, such as v1.2.0.
 #: app/src/update/plugins.rs:744
@@ -4976,7 +5001,7 @@ msgid ""
 "{file} contains a different plugin ('{other}'); rename or remove it before "
 "installing '{id}'"
 msgstr ""
-"{file} شامل افزونهٔ دیگری («{other}») است؛ پیش از نصب «{id}»، نام آن را تغییر "
+"‏{file} شامل افزونهٔ دیگری («{other}») است؛ پیش از نصب «{id}»، نام آن را تغییر "
 "دهید یا آن را حذف کنید"
 
 #: app/src/update/plugins.rs:1072
@@ -5019,8 +5044,8 @@ msgid ""
 "{}\n"
 "Re-run with --force to proceed."
 msgstr ""
-"{}\n"
-"برای ادامه، فرمان را با --force دوباره اجرا کنید."
+"‏{}\n"
+"برای ادامه، فرمان را با ⁨--force⁩ دوباره اجرا کنید."
 
 #. Translators: {source} is where the package comes from ("github (owner/repository)", "local").
 #: app/src/update/plugins.rs:1423
@@ -5028,7 +5053,7 @@ msgid ""
 "'{id}' is the id of an official eov plugin. This package ({source}) would "
 "replace it."
 msgstr ""
-"«{id}» شناسهٔ یک افزونهٔ رسمی eov است. این بسته ({source}) جایگزین آن می‌شود."
+"‏«{id}» شناسهٔ یک افزونهٔ رسمی eov است. این بسته ({source}) جایگزین آن می‌شود."
 
 #. Translators: {source} is where the package comes from ("github (owner/repository)", "local"). To shadow: to hide the official plugin, which is then not loaded.
 #: app/src/update/plugins.rs:1430
@@ -5036,7 +5061,7 @@ msgid ""
 "'{id}' is the id of an official eov plugin. This package ({source}) would "
 "shadow it."
 msgstr ""
-"«{id}» شناسهٔ یک افزونهٔ رسمی eov است. این بسته ({source}) آن را پنهان می‌کند و "
+"‏«{id}» شناسهٔ یک افزونهٔ رسمی eov است. این بسته ({source}) آن را پنهان می‌کند و "
 "افزونهٔ رسمی دیگر بارگذاری نمی‌شود."
 
 #. Translators: {installed} and {new} are where packages come from ("official", "github (owner/repository)", "local").
@@ -5081,7 +5106,7 @@ msgstr ""
 #: app/src/update/plugins.rs:1944
 msgid "'{query}' matches several plugins ({plugins}); use the plugin ID"
 msgstr ""
-"«{query}» با چند افزونه ({plugins}) مطابقت دارد؛ از شناسهٔ افزونه استفاده کنید"
+"‏«{query}» با چند افزونه ({plugins}) مطابقت دارد؛ از شناسهٔ افزونه استفاده کنید"
 
 #: app/src/update/plugins.rs:1967
 msgid "no installed plugin matches '{}'"
@@ -5107,7 +5132,7 @@ msgid ""
 "update bundle instead (eov update --from <dir>)."
 msgstr ""
 "دسترسی به شبکه توسط سیاست سرپرست سیستم {} غیرفعال شده است. به‌جای آن از یک "
-"بستهٔ به‌روزرسانی آفلاین استفاده کنید (eov update --from <dir>)."
+"بستهٔ به‌روزرسانی آفلاین استفاده کنید (⁨eov update --from <dir>⁩)."
 
 #. Translators: keep the command "eov model import <FILE> --sha256 <SHA-256>" as it is.
 #: app/src/update/policy.rs:314
@@ -5115,8 +5140,8 @@ msgid ""
 "Copy the model to this computer and add it with `eov model import <FILE> --"
 "sha256 <SHA-256>`."
 msgstr ""
-"مدل را به این رایانه کپی کنید و آن را با `eov model import <FILE> --sha256 "
-"<SHA-256>` اضافه کنید."
+"مدل را به این رایانه کپی کنید و آن را با ⁨`eov model import <FILE> --sha256 "
+"<SHA-256>`⁩ اضافه کنید."
 
 #. Translators: {policy} is the policy file; {import} says how to add a model by hand.
 #: app/src/update/policy.rs:322
@@ -5149,7 +5174,7 @@ msgid ""
 "{url} is not on a model server that the administrator policy {policy} allows "
 "({servers})."
 msgstr ""
-"{url} روی سرور مدلی نیست که سیاست سرپرست سیستم {policy} مجاز می‌داند "
+"‏{url} روی سرور مدلی نیست که سیاست سرپرست سیستم {policy} مجاز می‌داند "
 "({servers})."
 
 #. Translators: {policy} is the policy file.
@@ -5318,7 +5343,7 @@ msgstr "امضای مانیفست انتشار {kind} {version} متعلق به 
 #. signature; {} is the name of one of its fields: keep it as it is.
 #: app/src/update/signature.rs:230
 msgid "the signature's trusted comment has no '{}' field"
-msgstr "توضیح مورد اعتماد (trusted comment) امضا فیلد «{}» ندارد"
+msgstr "توضیح مورد اعتماد امضا (trusted comment) فیلد «{}» را ندارد"
 
 #. Translators: "it" is a signature; {signed} and {expected} are kinds of release manifest ("eov" or a plugin).
 #: app/src/update/signature.rs:237
@@ -5431,24 +5456,19 @@ msgid ""
 "{optical}× optical-equivalent zoom; objective power {objective}×; digital "
 "zoom {digital}"
 msgstr ""
-"بزرگ‌نمایی معادل اپتیکی {optical}×؛ قدرت عدسی شیئی {objective}×؛ بزرگ‌نمایی "
+"بزرگ‌نمایی معادل اپتیکی ⁨{optical}×⁩؛ قدرت عدسی شیئی ⁨{objective}×⁩؛ بزرگ‌نمایی "
 "دیجیتال {digital}"
 
 #: app/src/zoom_display.rs:51
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 پیکسل تصویر به ازای هر پیکسل نمایشگر"
 
-#: app/ui/app-window.slint:90
-msgctxt "AppWindow"
-msgid "Ready"
-msgstr "آماده"
-
-#: app/ui/app-window.slint:159 app/ui/app-window.slint:2046
+#: app/ui/app-window.slint:159 app/ui/app-window.slint:2064
 msgctxt "AppWindow"
 msgid "Confirm"
 msgstr "تأیید"
 
-#: app/ui/app-window.slint:160 app/ui/app-window.slint:1982
+#: app/ui/app-window.slint:160 app/ui/app-window.slint:2000
 msgctxt "AppWindow"
 msgid "Cancel"
 msgstr "لغو"
@@ -5519,43 +5539,43 @@ msgid "Open in New Tab"
 msgstr "باز کردن در زبانهٔ جدید"
 
 #. The border's colour, for assistive technology.
-#: app/ui/app-window.slint:1368
+#: app/ui/app-window.slint:1376
 msgctxt "AppWindow"
 msgid "Error"
 msgstr "خطا"
 
 #. The border's colour, for assistive technology.
-#: app/ui/app-window.slint:1368
+#: app/ui/app-window.slint:1376
 msgctxt "AppWindow"
 msgid "Warning"
 msgstr "هشدار"
 
-#: app/ui/app-window.slint:1415 app/ui/app-window.slint:1433
+#: app/ui/app-window.slint:1425 app/ui/app-window.slint:1444
 msgctxt "AppWindow"
 msgid "Bilinear (Low Quality)"
 msgstr "دوخطی (کیفیت پایین)"
 
-#: app/ui/app-window.slint:1448 app/ui/app-window.slint:1466
+#: app/ui/app-window.slint:1460 app/ui/app-window.slint:1479
 msgctxt "AppWindow"
 msgid "Trilinear (Balanced)"
 msgstr "سه‌خطی (متعادل)"
 
-#: app/ui/app-window.slint:1481 app/ui/app-window.slint:1499
+#: app/ui/app-window.slint:1495 app/ui/app-window.slint:1514
 msgctxt "AppWindow"
 msgid "Lanczos-3 (High Quality)"
-msgstr "Lanczos-3 (کیفیت بالا)"
+msgstr "‏Lanczos-3 (کیفیت بالا)"
 
-#: app/ui/app-window.slint:1521 app/ui/app-window.slint:1539
+#: app/ui/app-window.slint:1537 app/ui/app-window.slint:1556
 msgctxt "AppWindow"
 msgid "Show Pixels Above 100%"
-msgstr "نمایش پیکسل‌ها بالای 100%"
+msgstr "نمایش پیکسل‌ها بالای ⁨100%⁩"
 
-#: app/ui/app-window.slint:1920 app/ui/app-window.slint:1950
+#: app/ui/app-window.slint:1938 app/ui/app-window.slint:1968
 msgctxt "AppWindow"
 msgid "Lanczos Filtering (CPU)"
 msgstr "فیلترینگ Lanczos (CPU)"
 
-#: app/ui/app-window.slint:1958
+#: app/ui/app-window.slint:1976
 msgctxt "AppWindow"
 msgid ""
 "Lanczos-3 filtering on the CPU renderer is very slow and will significantly "
@@ -5570,7 +5590,7 @@ msgstr ""
 "\n"
 "آیا مطمئن هستید که می‌خواهید آن را فعال کنید؟"
 
-#: app/ui/app-window.slint:2015 app/ui/app-window.slint:2031
+#: app/ui/app-window.slint:2033 app/ui/app-window.slint:2049
 msgctxt "AppWindow"
 msgid "Use Trilinear"
 msgstr "استفاده از سه‌خطی"
@@ -5716,646 +5736,647 @@ msgstr ""
 "می‌کند. تنظیمات برای این لام حفظ می‌شوند؛ صدورها و افزونه‌ها همین تصویر را "
 "می‌بینند."
 
-#: app/ui/dataset-export-dialog.slint:42 app/ui/dataset-export-dialog.slint:69
+#: app/ui/dataset-export-dialog.slint:107
 msgctxt "DatasetExportDialog"
 msgid "Export Dataset"
 msgstr "صدور مجموعه‌داده"
 
-#: app/ui/dataset-export-dialog.slint:78
+#: app/ui/dataset-export-dialog.slint:153
 msgctxt "DatasetExportDialog"
 msgid "Inputs"
 msgstr "ورودی‌ها"
 
-#: app/ui/dataset-export-dialog.slint:155
+#: app/ui/dataset-export-dialog.slint:230
 msgctxt "DatasetExportDialog"
 msgid "Add slides or folders"
 msgstr "افزودن لام‌ها یا پوشه‌ها"
 
-#: app/ui/dataset-export-dialog.slint:184
+#: app/ui/dataset-export-dialog.slint:259
 msgctxt "DatasetExportDialog"
 msgid "Remove the selected input"
 msgstr "برداشتن ورودی انتخاب‌شده"
 
-#: app/ui/dataset-export-dialog.slint:214
+#: app/ui/dataset-export-dialog.slint:289
 msgctxt "DatasetExportDialog"
 msgid "Output"
 msgstr "خروجی"
 
-#: app/ui/dataset-export-dialog.slint:241
+#: app/ui/dataset-export-dialog.slint:316
 msgctxt "DatasetExportDialog"
 msgid "Output folder: {}"
 msgstr "پوشهٔ خروجی: {}"
 
-#: app/ui/dataset-export-dialog.slint:255
+#: app/ui/dataset-export-dialog.slint:330
 msgctxt "DatasetExportDialog"
 msgid "Change the output folder"
 msgstr "تغییر پوشهٔ خروجی"
 
-#: app/ui/dataset-export-dialog.slint:267
+#: app/ui/dataset-export-dialog.slint:342
 msgctxt "DatasetExportDialog"
 msgid "Change"
 msgstr "تغییر"
 
-#: app/ui/dataset-export-dialog.slint:286
+#: app/ui/dataset-export-dialog.slint:361
 msgctxt "DatasetExportDialog"
 msgid "Patch Size"
 msgstr "اندازهٔ پچ"
 
-#: app/ui/dataset-export-dialog.slint:302
+#: app/ui/dataset-export-dialog.slint:377
 msgctxt "DatasetExportDialog"
 msgid "Patch size"
 msgstr "اندازهٔ پچ"
 
-#: app/ui/dataset-export-dialog.slint:336
+#: app/ui/dataset-export-dialog.slint:413
 msgctxt "DatasetExportDialog"
 msgid "Stride"
 msgstr "گام"
 
-#: app/ui/dataset-export-dialog.slint:382
+#: app/ui/dataset-export-dialog.slint:459
 msgctxt "DatasetExportDialog"
 msgid "Threads"
 msgstr "رشته‌های پردازشی"
 
-#: app/ui/dataset-export-dialog.slint:426
+#: app/ui/dataset-export-dialog.slint:503
 msgctxt "DatasetExportDialog"
 msgid "White Threshold"
 msgstr "آستانهٔ سفیدی"
 
-#: app/ui/dataset-export-dialog.slint:440
+#: app/ui/dataset-export-dialog.slint:517
 msgctxt "DatasetExportDialog"
 msgid "White threshold"
 msgstr "آستانهٔ سفیدی"
 
-#: app/ui/dataset-export-dialog.slint:513
+#: app/ui/dataset-export-dialog.slint:590
 msgctxt "DatasetExportDialog"
 msgid "White threshold (%)"
 msgstr "آستانهٔ سفیدی (%)"
 
-#: app/ui/dataset-export-dialog.slint:551
+#: app/ui/dataset-export-dialog.slint:625
 msgctxt "DatasetExportDialog"
 msgid "Tissue only (skip patches that are mostly background)"
 msgstr "فقط بافت (رد کردن پچ‌هایی که عمدتاً پس‌زمینه هستند)"
 
 #. Translators: leaves out the patches that tissue QC flags (pen marks,
 #. possible folds, possible blur); flags for review, not certainties.
-#: app/ui/dataset-export-dialog.slint:599
+#: app/ui/dataset-export-dialog.slint:636
 msgctxt "DatasetExportDialog"
 msgid "Leave out pen marks, possible folds and blur (tissue QC)"
-msgstr "کنار گذاشتن اثر ماژیک، چین‌خوردگی و تاری احتمالی (کنترل کیفیت بافت)"
+msgstr ""
+"کنار گذاشتن اثر ماژیک، چین‌خوردگی احتمالی و تاری احتمالی (کنترل کیفیت بافت)"
 
-#: app/ui/dataset-export-dialog.slint:648
+#: app/ui/dataset-export-dialog.slint:646
 msgctxt "DatasetExportDialog"
 msgid "De-identify (name slides by ids; write no file names or paths)"
 msgstr "شناسه‌زدایی (نام‌گذاری لام‌ها با شناسه؛ بدون نوشتن نام فایل‌ها یا مسیرها)"
 
-#: app/ui/dataset-export-dialog.slint:717
+#: app/ui/dataset-export-dialog.slint:685
 msgctxt "DatasetExportDialog"
 msgid "Cancel"
 msgstr "لغو"
 
-#: app/ui/dataset-export-dialog.slint:744
+#: app/ui/dataset-export-dialog.slint:712
 msgctxt "DatasetExportDialog"
 msgid "Export"
 msgstr "صدور"
 
-#: app/ui/dataset-export-dialog.slint:745
+#: app/ui/dataset-export-dialog.slint:713
 msgctxt "DatasetExportDialog"
 msgid "Starts the export"
 msgstr "صدور را آغاز می‌کند"
 
-#: app/ui/export-dialog.slint:243
+#: app/ui/export-dialog.slint:249
 msgctxt "SegmentButton"
 msgid "{}: {}"
-msgstr "{}: {}"
+msgstr "‏{}: {}"
 
-#: app/ui/export-dialog.slint:279
+#: app/ui/export-dialog.slint:285
 msgctxt "DpiChip"
 msgid "{} DPI"
 msgstr "{} DPI"
 
-#: app/ui/export-dialog.slint:431
+#: app/ui/export-dialog.slint:454
 msgctxt "ColorField"
 msgid "Colour"
 msgstr "رنگ"
 
-#: app/ui/export-dialog.slint:432
+#: app/ui/export-dialog.slint:455
 msgctxt "ColorField"
 msgid "Opens the colours to choose from"
 msgstr "رنگ‌های قابل انتخاب را باز می‌کند"
 
-#: app/ui/export-dialog.slint:445
+#: app/ui/export-dialog.slint:468
 msgctxt "ColorField"
 msgid "Opacity"
 msgstr "کدری"
 
-#: app/ui/export-dialog.slint:469
+#: app/ui/export-dialog.slint:492
 msgctxt "ColorField"
 msgid "Opacity (%)"
 msgstr "کدری (%)"
 
-#: app/ui/export-dialog.slint:514
+#: app/ui/export-dialog.slint:537
 msgctxt "ColorField"
 msgid "Pick a Colour"
 msgstr "انتخاب رنگ"
 
-#: app/ui/export-dialog.slint:525
+#: app/ui/export-dialog.slint:549
 msgctxt "ColorField"
 msgid "Red"
 msgstr "قرمز"
 
-#: app/ui/export-dialog.slint:537
+#: app/ui/export-dialog.slint:561
 msgctxt "ColorField"
 msgid "Orange"
 msgstr "نارنجی"
 
-#: app/ui/export-dialog.slint:549
+#: app/ui/export-dialog.slint:573
 msgctxt "ColorField"
 msgid "Yellow"
 msgstr "زرد"
 
-#: app/ui/export-dialog.slint:561
+#: app/ui/export-dialog.slint:585
 msgctxt "ColorField"
 msgid "Green"
 msgstr "سبز"
 
-#: app/ui/export-dialog.slint:573
+#: app/ui/export-dialog.slint:597
 msgctxt "ColorField"
 msgid "Turquoise"
 msgstr "فیروزه‌ای"
 
-#: app/ui/export-dialog.slint:585
+#: app/ui/export-dialog.slint:609
 msgctxt "ColorField"
 msgid "Blue"
 msgstr "آبی"
 
-#: app/ui/export-dialog.slint:601
+#: app/ui/export-dialog.slint:625
 msgctxt "ColorField"
 msgid "Purple"
 msgstr "بنفش"
 
-#: app/ui/export-dialog.slint:613
+#: app/ui/export-dialog.slint:637
 msgctxt "ColorField"
 msgid "Pink"
 msgstr "صورتی"
 
-#: app/ui/export-dialog.slint:625
+#: app/ui/export-dialog.slint:649
 msgctxt "ColorField"
 msgid "Dark red"
 msgstr "قرمز تیره"
 
-#: app/ui/export-dialog.slint:637
+#: app/ui/export-dialog.slint:661
 msgctxt "ColorField"
 msgid "Dark green"
 msgstr "سبز تیره"
 
 #. Translators: the swatch #2980B9, a strong medium-dark blue; keep it
 #. distinct from "Blue" (#3498DB) and "Navy" (#2C3E50).
-#: app/ui/export-dialog.slint:650
+#: app/ui/export-dialog.slint:674
 msgctxt "ColorField"
 msgid "Dark blue"
 msgstr "آبی تیره"
 
-#: app/ui/export-dialog.slint:662
+#: app/ui/export-dialog.slint:686
 msgctxt "ColorField"
 msgid "Dark purple"
 msgstr "بنفش تیره"
 
-#: app/ui/export-dialog.slint:678
+#: app/ui/export-dialog.slint:702
 msgctxt "ColorField"
 msgid "White"
 msgstr "سفید"
 
-#: app/ui/export-dialog.slint:690
+#: app/ui/export-dialog.slint:714
 msgctxt "ColorField"
 msgid "Light grey"
 msgstr "خاکستری روشن"
 
-#: app/ui/export-dialog.slint:702
+#: app/ui/export-dialog.slint:726
 msgctxt "ColorField"
 msgid "Grey"
 msgstr "خاکستری"
 
-#: app/ui/export-dialog.slint:714
+#: app/ui/export-dialog.slint:738
 msgctxt "ColorField"
 msgid "Dark grey"
 msgstr "خاکستری تیره"
 
 #. Translators: the swatch #2C3E50, a very dark greyish blue; keep it
 #. distinct from "Dark blue" (#2980B9).
-#: app/ui/export-dialog.slint:727
+#: app/ui/export-dialog.slint:751
 msgctxt "ColorField"
 msgid "Navy"
 msgstr "سرمه‌ای"
 
-#: app/ui/export-dialog.slint:739
+#: app/ui/export-dialog.slint:763
 msgctxt "ColorField"
 msgid "Black"
 msgstr "سیاه"
 
-#: app/ui/export-dialog.slint:756
+#: app/ui/export-dialog.slint:780
 msgctxt "Red, as one letter"
 msgid "R"
 msgstr "R"
 
-#: app/ui/export-dialog.slint:774
+#: app/ui/export-dialog.slint:798
 msgctxt "ColorField"
 msgid "Red (0–255)"
-msgstr "قرمز (0–255)"
+msgstr "قرمز (⁨0–255⁩)"
 
-#: app/ui/export-dialog.slint:797
+#: app/ui/export-dialog.slint:828
 msgctxt "Green, as one letter"
 msgid "G"
 msgstr "G"
 
-#: app/ui/export-dialog.slint:815
+#: app/ui/export-dialog.slint:846
 msgctxt "ColorField"
 msgid "Green (0–255)"
-msgstr "سبز (0–255)"
+msgstr "سبز (⁨0–255⁩)"
 
-#: app/ui/export-dialog.slint:838
+#: app/ui/export-dialog.slint:870
 msgctxt "Blue, as one letter"
 msgid "B"
 msgstr "B"
 
-#: app/ui/export-dialog.slint:856
+#: app/ui/export-dialog.slint:888
 msgctxt "ColorField"
 msgid "Blue (0–255)"
-msgstr "آبی (0–255)"
+msgstr "آبی (⁨0–255⁩)"
 
-#: app/ui/export-dialog.slint:949 app/ui/export-dialog.slint:959
-#: app/ui/export-dialog.slint:981
+#: app/ui/export-dialog.slint:994 app/ui/export-dialog.slint:1005
+#: app/ui/export-dialog.slint:1027
 msgctxt "StrokeStyleSelector"
 msgid "Stroke"
 msgstr "سبک خط"
 
-#: app/ui/export-dialog.slint:958
+#: app/ui/export-dialog.slint:1004
 msgctxt "StrokeStyleSelector"
 msgid "Solid"
 msgstr "پیوسته"
 
-#: app/ui/export-dialog.slint:969
+#: app/ui/export-dialog.slint:1015
 msgctxt "StrokeStyleSelector"
 msgid "Dashed"
 msgstr "خط‌چین"
 
-#: app/ui/export-dialog.slint:980
+#: app/ui/export-dialog.slint:1026
 msgctxt "StrokeStyleSelector"
 msgid "Dotted"
 msgstr "نقطه‌چین"
 
-#: app/ui/export-dialog.slint:990
+#: app/ui/export-dialog.slint:1036
 msgctxt "Dash length, as one letter"
 msgid "L"
 msgstr "ط"
 
-#: app/ui/export-dialog.slint:991
+#: app/ui/export-dialog.slint:1037
 msgctxt "StrokeStyleSelector"
 msgid "Dash length"
 msgstr "طول خط‌ها"
 
-#: app/ui/export-dialog.slint:1002
+#: app/ui/export-dialog.slint:1048
 msgctxt "Gap between dashes, as one letter"
 msgid "G"
 msgstr "ف"
 
-#: app/ui/export-dialog.slint:1003
+#: app/ui/export-dialog.slint:1049
 msgctxt "StrokeStyleSelector"
 msgid "Gap between dashes"
 msgstr "فاصلهٔ بین خط‌ها"
 
-#: app/ui/export-dialog.slint:1014
+#: app/ui/export-dialog.slint:1060
 msgctxt "Spacing of dots, as one letter"
 msgid "S"
 msgstr "ف"
 
-#: app/ui/export-dialog.slint:1015
+#: app/ui/export-dialog.slint:1061
 msgctxt "StrokeStyleSelector"
 msgid "Spacing of the dots"
 msgstr "فاصلهٔ نقطه‌ها"
 
-#: app/ui/export-dialog.slint:1040 app/ui/export-dialog.slint:1050
-#: app/ui/export-dialog.slint:1072
+#: app/ui/export-dialog.slint:1095 app/ui/export-dialog.slint:1106
+#: app/ui/export-dialog.slint:1128
 msgctxt "CapStyleSelector"
 msgid "Caps"
 msgstr "انتهای خط"
 
-#: app/ui/export-dialog.slint:1049
+#: app/ui/export-dialog.slint:1105
 msgctxt "CapStyleSelector"
 msgid "Round"
 msgstr "گرد"
 
-#: app/ui/export-dialog.slint:1060
+#: app/ui/export-dialog.slint:1116
 msgctxt "CapStyleSelector"
 msgid "Square"
 msgstr "مربعی"
 
-#: app/ui/export-dialog.slint:1071
+#: app/ui/export-dialog.slint:1127
 msgctxt "CapStyleSelector"
 msgid "Flat"
 msgstr "صاف"
 
-#: app/ui/export-dialog.slint:1144
+#: app/ui/export-dialog.slint:1200
 msgctxt "ExportDialog"
 msgid "Export Image"
 msgstr "صدور تصویر"
 
-#: app/ui/export-dialog.slint:1187
+#: app/ui/export-dialog.slint:1243
 msgctxt "ExportDialog"
 msgid "Export Preview"
 msgstr "پیش‌نمایش صدور"
 
-#: app/ui/export-dialog.slint:1220
+#: app/ui/export-dialog.slint:1276
 msgctxt "ExportDialog"
 msgid "Export preview"
 msgstr "پیش‌نمایش صدور"
 
-#: app/ui/export-dialog.slint:1229
+#: app/ui/export-dialog.slint:1287
 msgctxt "ExportDialog"
 msgid "Estimated Size: {} MB"
-msgstr "اندازهٔ تخمینی: {} MB"
+msgstr "اندازهٔ تخمینی: ⁨{} MB⁩"
 
-#: app/ui/export-dialog.slint:1235
+#: app/ui/export-dialog.slint:1293
 msgctxt "ExportDialog"
 msgid "{} × {} px"
 msgstr "{} × {} px"
 
-#: app/ui/export-dialog.slint:1241
+#: app/ui/export-dialog.slint:1299
 msgctxt "ExportDialog"
 msgid "Rendering preview…"
 msgstr "در حال رندر پیش‌نمایش…"
 
-#: app/ui/export-dialog.slint:1290 app/ui/export-dialog.slint:1299
+#: app/ui/export-dialog.slint:1348 app/ui/export-dialog.slint:1357
 msgctxt "ExportDialog"
 msgid "Resolution (DPI)"
 msgstr "وضوح (DPI)"
 
-#: app/ui/export-dialog.slint:1364
+#: app/ui/export-dialog.slint:1422
 msgctxt "ExportDialog"
 msgid "Filtering Mode"
 msgstr "حالت فیلترینگ"
 
-#: app/ui/export-dialog.slint:1374
+#: app/ui/export-dialog.slint:1432
 msgctxt "ExportDialog"
 msgid "Bilinear"
 msgstr "دوخطی"
 
-#: app/ui/export-dialog.slint:1375 app/ui/export-dialog.slint:1386
+#: app/ui/export-dialog.slint:1433 app/ui/export-dialog.slint:1444
 msgctxt "ExportDialog"
 msgid "Filtering mode"
 msgstr "حالت فیلترینگ"
 
-#: app/ui/export-dialog.slint:1385
+#: app/ui/export-dialog.slint:1443
 msgctxt "ExportDialog"
 msgid "Trilinear"
 msgstr "سه‌خطی"
 
-#: app/ui/export-dialog.slint:1396
+#: app/ui/export-dialog.slint:1454
 msgctxt "ExportDialog"
 msgid "Lanczos"
 msgstr "Lanczos"
 
-#: app/ui/export-dialog.slint:1410
+#: app/ui/export-dialog.slint:1468
 msgctxt "ExportDialog"
 msgid "Image Adjustments"
 msgstr "تنظیمات تصویر"
 
-#: app/ui/export-dialog.slint:1417
+#: app/ui/export-dialog.slint:1475
 msgctxt "ExportDialog"
 msgid "Convert to sRGB (ICC profile)"
 msgstr "تبدیل به sRGB (نمایهٔ ICC)"
 
-#: app/ui/export-dialog.slint:1426 app/ui/export-dialog.slint:1430
+#: app/ui/export-dialog.slint:1484 app/ui/export-dialog.slint:1488
 msgctxt "ExportDialog"
 msgid "Sharpness"
 msgstr "تیزی"
 
-#: app/ui/export-dialog.slint:1446 app/ui/export-dialog.slint:1450
+#: app/ui/export-dialog.slint:1504 app/ui/export-dialog.slint:1508
 msgctxt "ExportDialog"
 msgid "Gamma"
 msgstr "گاما"
 
-#: app/ui/export-dialog.slint:1467 app/ui/export-dialog.slint:1471
+#: app/ui/export-dialog.slint:1525 app/ui/export-dialog.slint:1529
 msgctxt "ExportDialog"
 msgid "Brightness"
 msgstr "روشنایی"
 
-#: app/ui/export-dialog.slint:1487 app/ui/export-dialog.slint:1491
+#: app/ui/export-dialog.slint:1545 app/ui/export-dialog.slint:1549
 msgctxt "ExportDialog"
 msgid "Contrast"
 msgstr "کنتراست"
 
-#: app/ui/export-dialog.slint:1511
+#: app/ui/export-dialog.slint:1569
 msgctxt "ExportDialog"
 msgid "Stain Normalisation"
 msgstr "نرمال‌سازی رنگ‌آمیزی"
 
-#: app/ui/export-dialog.slint:1521 app/ui/hud-settings.slint:427
+#: app/ui/export-dialog.slint:1579 app/ui/hud-settings.slint:445
 msgctxt "Stain normalization"
 msgid "None"
 msgstr "هیچ"
 
-#: app/ui/export-dialog.slint:1522 app/ui/export-dialog.slint:1533
+#: app/ui/export-dialog.slint:1580 app/ui/export-dialog.slint:1591
 msgctxt "ExportDialog"
 msgid "Stain normalisation"
 msgstr "نرمال‌سازی رنگ‌آمیزی"
 
-#: app/ui/export-dialog.slint:1532
+#: app/ui/export-dialog.slint:1590
 msgctxt "ExportDialog"
 msgid "Macenko"
 msgstr "Macenko"
 
-#: app/ui/export-dialog.slint:1543
+#: app/ui/export-dialog.slint:1601
 msgctxt "ExportDialog"
 msgid "Vahadane"
 msgstr "Vahadane"
 
-#: app/ui/export-dialog.slint:1557
+#: app/ui/export-dialog.slint:1615
 msgctxt "ExportDialog"
 msgid "Colour Deconvolution"
 msgstr "واپیچش رنگ"
 
-#: app/ui/export-dialog.slint:1567 app/ui/export-dialog.slint:1654
+#: app/ui/export-dialog.slint:1625 app/ui/export-dialog.slint:1712
 msgctxt "ExportDialog"
 msgid "Hematoxylin"
 msgstr "هماتوکسیلین"
 
-#: app/ui/export-dialog.slint:1577
+#: app/ui/export-dialog.slint:1635
 msgctxt "ExportDialog"
 msgid "H Intensity"
 msgstr "شدت H"
 
-#: app/ui/export-dialog.slint:1581
+#: app/ui/export-dialog.slint:1639
 msgctxt "ExportDialog"
 msgid "Hematoxylin intensity"
 msgstr "شدت هماتوکسیلین"
 
-#: app/ui/export-dialog.slint:1603 app/ui/export-dialog.slint:1665
+#: app/ui/export-dialog.slint:1661 app/ui/export-dialog.slint:1723
 msgctxt "ExportDialog"
 msgid "Eosin"
 msgstr "ائوزین"
 
-#: app/ui/export-dialog.slint:1613
+#: app/ui/export-dialog.slint:1671
 msgctxt "ExportDialog"
 msgid "E Intensity"
 msgstr "شدت E"
 
-#: app/ui/export-dialog.slint:1617
+#: app/ui/export-dialog.slint:1675
 msgctxt "ExportDialog"
 msgid "Eosin intensity"
 msgstr "شدت ائوزین"
 
-#: app/ui/export-dialog.slint:1634
+#: app/ui/export-dialog.slint:1692
 msgctxt "ExportDialog"
 msgid "Isolated Channel"
 msgstr "کانال جداشده"
 
-#: app/ui/export-dialog.slint:1643
+#: app/ui/export-dialog.slint:1701
 msgctxt "Isolated channel"
 msgid "None"
 msgstr "هیچ"
 
-#: app/ui/export-dialog.slint:1644 app/ui/export-dialog.slint:1655
+#: app/ui/export-dialog.slint:1702 app/ui/export-dialog.slint:1713
 msgctxt "ExportDialog"
 msgid "Isolated channel"
 msgstr "کانال جداشده"
 
-#: app/ui/export-dialog.slint:1679
+#: app/ui/export-dialog.slint:1737
 msgctxt "ExportDialog"
 msgid "Measurement"
 msgstr "اندازه‌گیری"
 
-#: app/ui/export-dialog.slint:1688
+#: app/ui/export-dialog.slint:1746
 msgctxt "ExportDialog"
 msgid "Measure a distance in the viewport to enable these settings."
 msgstr "برای فعال شدن این تنظیمات، یک فاصله را در ناحیهٔ نمایش اندازه‌گیری کنید."
 
-#: app/ui/export-dialog.slint:1698
+#: app/ui/export-dialog.slint:1756
 msgctxt "ExportDialog"
 msgid "Show Measurement"
 msgstr "نمایش اندازه‌گیری"
 
-#: app/ui/export-dialog.slint:1711 app/ui/export-dialog.slint:1841
+#: app/ui/export-dialog.slint:1769 app/ui/export-dialog.slint:1903
 msgctxt "ExportDialog"
 msgid "Colour"
 msgstr "رنگ"
 
-#: app/ui/export-dialog.slint:1730 app/ui/export-dialog.slint:1860
+#: app/ui/export-dialog.slint:1788 app/ui/export-dialog.slint:1922
 msgctxt "ExportDialog"
 msgid "Thickness"
 msgstr "ضخامت"
 
-#: app/ui/export-dialog.slint:1734
+#: app/ui/export-dialog.slint:1792
 msgctxt "ExportDialog"
 msgid "Measurement line thickness"
 msgstr "ضخامت خط اندازه‌گیری"
 
-#: app/ui/export-dialog.slint:1783
+#: app/ui/export-dialog.slint:1845
 msgctxt "ExportDialog"
 msgid "Font Size"
 msgstr "اندازهٔ قلم"
 
-#: app/ui/export-dialog.slint:1787
+#: app/ui/export-dialog.slint:1849
 msgctxt "ExportDialog"
 msgid "Measurement font size"
 msgstr "اندازهٔ قلم اندازه‌گیری"
 
-#: app/ui/export-dialog.slint:1808
+#: app/ui/export-dialog.slint:1870
 msgctxt "ExportDialog"
 msgid "Region of Interest"
 msgstr "ناحیهٔ مورد نظر"
 
-#: app/ui/export-dialog.slint:1818
+#: app/ui/export-dialog.slint:1880
 msgctxt "ExportDialog"
 msgid "Select a region of interest in the viewport to enable these settings."
 msgstr ""
 "برای فعال شدن این تنظیمات، یک ناحیهٔ مورد نظر را در ناحیهٔ نمایش انتخاب کنید."
 
-#: app/ui/export-dialog.slint:1828
+#: app/ui/export-dialog.slint:1890
 msgctxt "ExportDialog"
 msgid "Show Outline"
 msgstr "نمایش خط دور"
 
-#: app/ui/export-dialog.slint:1864
+#: app/ui/export-dialog.slint:1926
 msgctxt "ExportDialog"
 msgid "Region outline thickness"
 msgstr "ضخامت خط دور ناحیه"
 
 #. Translators: a tint drawn over the exported image outside the region of
 #. interest.
-#: app/ui/export-dialog.slint:1922
+#: app/ui/export-dialog.slint:1988
 msgctxt "ExportDialog"
 msgid "Outside Overlay"
 msgstr "پوشش بیرون ناحیه"
 
-#: app/ui/export-dialog.slint:1926
+#: app/ui/export-dialog.slint:1992
 msgctxt "ExportDialog"
 msgid "Enable Overlay"
 msgstr "فعال کردن پوشش"
 
 #. Translators: heading of what is drawn onto the exported image (scale bar,
 #. colour processing note), as for a figure in a paper.
-#: app/ui/export-dialog.slint:1955
+#: app/ui/export-dialog.slint:2021
 msgctxt "ExportDialog"
 msgid "Figure"
 msgstr "عناصر شکل"
 
-#: app/ui/export-dialog.slint:1960
+#: app/ui/export-dialog.slint:2026
 msgctxt "ExportDialog"
 msgid "Scale Bar"
 msgstr "نوار مقیاس"
 
-#: app/ui/export-dialog.slint:1969
+#: app/ui/export-dialog.slint:2035
 msgctxt "ExportDialog"
 msgid "Colour Processing Note"
 msgstr "یادداشت پردازش رنگ"
 
-#: app/ui/export-dialog.slint:1981 app/ui/export-dialog.slint:1992
-#: app/ui/export-dialog.slint:2014
+#: app/ui/export-dialog.slint:2047 app/ui/export-dialog.slint:2058
+#: app/ui/export-dialog.slint:2080
 msgctxt "ExportDialog"
 msgid "Format"
 msgstr "قالب"
 
-#: app/ui/export-dialog.slint:1991
+#: app/ui/export-dialog.slint:2057
 msgctxt "ExportDialog"
 msgid "JPEG (Smaller)"
-msgstr "JPEG (کم‌حجم‌تر)"
+msgstr "‏JPEG (کم‌حجم‌تر)"
 
-#: app/ui/export-dialog.slint:2002
+#: app/ui/export-dialog.slint:2068
 msgctxt "ExportDialog"
 msgid "PNG (Lossless)"
-msgstr "PNG (بی‌اتلاف)"
+msgstr "‏PNG (بی‌اتلاف)"
 
-#: app/ui/export-dialog.slint:2013
+#: app/ui/export-dialog.slint:2079
 msgctxt "ExportDialog"
 msgid "TIFF (Lossless)"
-msgstr "TIFF (بی‌اتلاف)"
+msgstr "‏TIFF (بی‌اتلاف)"
 
-#: app/ui/export-dialog.slint:2027
+#: app/ui/export-dialog.slint:2093
 msgctxt "ExportDialog"
 msgid "Quality"
 msgstr "کیفیت"
 
-#: app/ui/export-dialog.slint:2032
+#: app/ui/export-dialog.slint:2098
 msgctxt "ExportDialog"
 msgid "JPEG quality"
 msgstr "کیفیت JPEG"
 
-#: app/ui/export-dialog.slint:2083 app/ui/export-dialog.slint:2096
+#: app/ui/export-dialog.slint:2149 app/ui/export-dialog.slint:2162
 msgctxt "ExportDialog"
 msgid "Reset"
 msgstr "بازنشانی"
 
-#: app/ui/export-dialog.slint:2084
+#: app/ui/export-dialog.slint:2150
 msgctxt "ExportDialog"
 msgid "Restores the default export settings"
 msgstr "تنظیمات پیش‌فرض صدور را بازمی‌گرداند"
 
-#: app/ui/export-dialog.slint:2120 app/ui/export-dialog.slint:2132
+#: app/ui/export-dialog.slint:2186 app/ui/export-dialog.slint:2198
 msgctxt "ExportDialog"
 msgid "Cancel"
 msgstr "لغو"
 
-#: app/ui/export-dialog.slint:2148 app/ui/export-dialog.slint:2176
+#: app/ui/export-dialog.slint:2214 app/ui/export-dialog.slint:2242
 msgctxt "ExportDialog"
 msgid "Export"
 msgstr "صدور"
@@ -6425,22 +6446,22 @@ msgctxt "HeatMapPanelView"
 msgid "Done"
 msgstr "تمام"
 
-#: app/ui/home-screen.slint:42
+#: app/ui/home-screen.slint:46
 msgctxt "HomeScreen"
 msgid "Whole Slide Image Viewer"
 msgstr "نمایشگر تصاویر تمام‌لام"
 
-#: app/ui/home-screen.slint:61 app/ui/home-screen.slint:91
+#: app/ui/home-screen.slint:66 app/ui/home-screen.slint:96
 msgctxt "HomeScreen"
 msgid "Open File"
 msgstr "باز کردن فایل"
 
-#: app/ui/home-screen.slint:107
+#: app/ui/home-screen.slint:112
 msgctxt "HomeScreen"
 msgid "or drag and drop WSI files or folders"
 msgstr "یا فایل‌ها یا پوشه‌های WSI را بکشید و رها کنید"
 
-#: app/ui/home-screen.slint:121
+#: app/ui/home-screen.slint:127
 msgctxt "HomeScreen"
 msgid "Recently Opened"
 msgstr "اخیراً باز شده"
@@ -6448,7 +6469,7 @@ msgstr "اخیراً باز شده"
 #. Translators: "not for primary diagnosis" is the regulatory wording: eov
 #. must not be used to make a diagnosis from the slide; do not translate it
 #. as the "principal diagnosis" of hospital coding.
-#: app/ui/home-screen.slint:215
+#: app/ui/home-screen.slint:221
 msgctxt "HomeScreen"
 msgid ""
 "For research and education. Not a medical device; not for primary diagnosis."
@@ -6456,155 +6477,155 @@ msgstr ""
 "برای پژوهش و آموزش. این نرم‌افزار وسیلهٔ پزشکی نیست و نباید برای تشخیص اولیه "
 "به کار رود."
 
-#: app/ui/home-screen.slint:244
+#: app/ui/home-screen.slint:250
 msgctxt "HomeScreen"
 msgid "Language: {}"
 msgstr "زبان: {}"
 
-#: app/ui/home-screen.slint:281
+#: app/ui/home-screen.slint:287
 msgctxt "HomeScreen"
 msgid "Check for Updates…"
 msgstr "بررسی به‌روزرسانی‌ها…"
 
-#: app/ui/home-screen.slint:285
+#: app/ui/home-screen.slint:291
 msgctxt "HomeScreen"
 msgid "Check for eov updates"
 msgstr "بررسی به‌روزرسانی‌های eov"
 
-#: app/ui/hud-settings.slint:171 app/ui/hud-settings.slint:188
+#: app/ui/hud-settings.slint:185 app/ui/hud-settings.slint:203
 msgctxt "HudSettingsPanel"
 msgid "Image Adjustments"
 msgstr "تنظیمات تصویر"
 
-#: app/ui/hud-settings.slint:202
+#: app/ui/hud-settings.slint:218
 msgctxt "HudSettingsPanel"
 msgid "Sharpness"
 msgstr "تیزی"
 
-#: app/ui/hud-settings.slint:219
+#: app/ui/hud-settings.slint:235
 msgctxt "HudSettingsPanel"
 msgid "Gamma"
 msgstr "گاما"
 
-#: app/ui/hud-settings.slint:232
+#: app/ui/hud-settings.slint:248
 msgctxt "HudSettingsPanel"
 msgid "Brightness"
 msgstr "روشنایی"
 
-#: app/ui/hud-settings.slint:244
+#: app/ui/hud-settings.slint:260
 msgctxt "HudSettingsPanel"
 msgid "Contrast"
 msgstr "کنتراست"
 
-#: app/ui/hud-settings.slint:268
+#: app/ui/hud-settings.slint:284
 msgctxt "HudSettingsPanel"
 msgid "Units"
 msgstr "واحدها"
 
-#: app/ui/hud-settings.slint:290
+#: app/ui/hud-settings.slint:307
 msgctxt "HudSettingsPanel"
 msgid "Micrometres (µm)"
 msgstr "میکرومتر (µm)"
 
-#: app/ui/hud-settings.slint:321
+#: app/ui/hud-settings.slint:338
 msgctxt "HudSettingsPanel"
 msgid "Millimetres (mm)"
 msgstr "میلی‌متر (mm)"
 
-#: app/ui/hud-settings.slint:335
+#: app/ui/hud-settings.slint:352
 msgctxt "HudSettingsPanel"
 msgid "mm"
 msgstr "mm"
 
-#: app/ui/hud-settings.slint:352
+#: app/ui/hud-settings.slint:369
 msgctxt "HudSettingsPanel"
 msgid "Inches (in)"
 msgstr "اینچ"
 
 #. Translators: the unit symbol of inches, as in "1.00 in".
-#: app/ui/hud-settings.slint:367
+#: app/ui/hud-settings.slint:384
 msgctxt "HudSettingsPanel"
 msgid "in"
 msgstr "اینچ"
 
-#. Translators: row label for stain normalisation, at most 68 px wide (about
-#. 11 characters): abbreviate as needed.
-#: app/ui/hud-settings.slint:391
+#. Translators: row label for stain normalisation; its column grows to fit
+#. it, up to 150 px (about 25 characters).
+#: app/ui/hud-settings.slint:408
 msgctxt "HudSettingsPanel"
 msgid "Stain Norm"
 msgstr "نرمال‌سازی رنگ‌آمیزی"
 
-#: app/ui/hud-settings.slint:413
+#: app/ui/hud-settings.slint:431
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: none"
 msgstr "نرمال‌سازی رنگ‌آمیزی: هیچ"
 
-#: app/ui/hud-settings.slint:444
+#: app/ui/hud-settings.slint:462
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: Macenko"
 msgstr "نرمال‌سازی رنگ‌آمیزی: Macenko"
 
-#: app/ui/hud-settings.slint:458
+#: app/ui/hud-settings.slint:476
 msgctxt "HudSettingsPanel"
 msgid "Macenko"
 msgstr "Macenko"
 
-#: app/ui/hud-settings.slint:475
+#: app/ui/hud-settings.slint:493
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: Vahadane"
 msgstr "نرمال‌سازی رنگ‌آمیزی: Vahadane"
 
-#: app/ui/hud-settings.slint:489
+#: app/ui/hud-settings.slint:507
 msgctxt "HudSettingsPanel"
 msgid "Vahadane"
 msgstr "Vahadane"
 
-#: app/ui/hud-settings.slint:511
+#: app/ui/hud-settings.slint:530
 msgctxt "HudSettingsPanel"
 msgid "Colour Deconvolution"
 msgstr "واپیچش رنگ"
 
-#: app/ui/hud-settings.slint:530
+#: app/ui/hud-settings.slint:550
 msgctxt "HudSettingsPanel"
 msgid "Hematoxylin intensity"
 msgstr "شدت هماتوکسیلین"
 
-#: app/ui/hud-settings.slint:616
+#: app/ui/hud-settings.slint:636
 msgctxt "HudSettingsPanel"
 msgid "View hematoxylin alone"
 msgstr "مشاهدهٔ هماتوکسیلین به‌تنهایی"
 
-#: app/ui/hud-settings.slint:640
+#: app/ui/hud-settings.slint:660
 msgctxt "HudSettingsPanel"
 msgid "Show hematoxylin"
 msgstr "نمایش هماتوکسیلین"
 
-#: app/ui/hud-settings.slint:648
+#: app/ui/hud-settings.slint:668
 msgctxt "Hematoxylin, as one letter"
 msgid "H"
 msgstr "H"
 
-#: app/ui/hud-settings.slint:685
+#: app/ui/hud-settings.slint:705
 msgctxt "HudSettingsPanel"
 msgid "Eosin intensity"
 msgstr "شدت ائوزین"
 
-#: app/ui/hud-settings.slint:771
+#: app/ui/hud-settings.slint:791
 msgctxt "HudSettingsPanel"
 msgid "View eosin alone"
 msgstr "مشاهدهٔ ائوزین به‌تنهایی"
 
-#: app/ui/hud-settings.slint:795
+#: app/ui/hud-settings.slint:815
 msgctxt "HudSettingsPanel"
 msgid "Show eosin"
 msgstr "نمایش ائوزین"
 
-#: app/ui/hud-settings.slint:803
+#: app/ui/hud-settings.slint:823
 msgctxt "Eosin, as one letter"
 msgid "E"
 msgstr "E"
 
-#: app/ui/hud-settings.slint:849 app/ui/hud-settings.slint:861
+#: app/ui/hud-settings.slint:869 app/ui/hud-settings.slint:881
 msgctxt "HudSettingsPanel"
 msgid "Reset to Defaults"
 msgstr "بازنشانی به پیش‌فرض‌ها"
@@ -6614,107 +6635,107 @@ msgctxt "HudToolbar"
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 پیکسل تصویر به ازای هر پیکسل نمایشگر"
 
-#: app/ui/hud-toolbar.slint:196
+#: app/ui/hud-toolbar.slint:200
 msgctxt "HudToolbar"
 msgid "Rotation: click to type an angle"
 msgstr "چرخش: برای وارد کردن زاویه کلیک کنید"
 
-#: app/ui/hud-toolbar.slint:257
+#: app/ui/hud-toolbar.slint:261
 msgctxt "HudToolbar"
 msgid "Zoom out"
 msgstr "کوچک‌نمایی"
 
-#: app/ui/hud-toolbar.slint:270
+#: app/ui/hud-toolbar.slint:274
 msgctxt "HudToolbar"
 msgid "Zoom"
 msgstr "میزان بزرگ‌نمایی"
 
-#: app/ui/hud-toolbar.slint:360
+#: app/ui/hud-toolbar.slint:364
 msgctxt "HudToolbar"
 msgid "Zoom in"
 msgstr "بزرگ‌نمایی"
 
-#: app/ui/hud-toolbar.slint:370
+#: app/ui/hud-toolbar.slint:374
 msgctxt "HudToolbar"
 msgid "Rotate left 90°"
-msgstr "چرخاندن 90° به چپ"
+msgstr "چرخاندن ⁨90°⁩ به چپ"
 
-#: app/ui/hud-toolbar.slint:378
+#: app/ui/hud-toolbar.slint:382
 msgctxt "HudToolbar"
 msgid "Rotate right 90°"
-msgstr "چرخاندن 90° به راست"
+msgstr "چرخاندن ⁨90°⁩ به راست"
 
-#: app/ui/hud-toolbar.slint:386
+#: app/ui/hud-toolbar.slint:390
 msgctxt "HudToolbar"
 msgid "Flip horizontally"
 msgstr "قرینه‌سازی افقی"
 
-#: app/ui/hud-toolbar.slint:386
+#: app/ui/hud-toolbar.slint:390
 msgctxt "HudToolbar"
 msgid "Unflip"
 msgstr "لغو قرینه‌سازی"
 
-#: app/ui/hud-toolbar.slint:400
+#: app/ui/hud-toolbar.slint:404
 msgctxt "HudToolbar"
 msgid "Rotation"
 msgstr "چرخش"
 
-#: app/ui/hud-toolbar.slint:433
+#: app/ui/hud-toolbar.slint:437
 msgctxt "HudToolbar"
 msgid "Rotation in degrees"
 msgstr "چرخش بر حسب درجه"
 
-#: app/ui/hud-toolbar.slint:493
+#: app/ui/hud-toolbar.slint:497
 msgctxt "HudToolbar"
 msgid "Focal plane"
 msgstr "صفحهٔ کانونی"
 
-#: app/ui/hud-toolbar.slint:498
+#: app/ui/hud-toolbar.slint:502
 msgctxt "HudToolbar"
 msgid "Previous focal plane"
 msgstr "صفحهٔ کانونی قبلی"
 
-#: app/ui/hud-toolbar.slint:499
+#: app/ui/hud-toolbar.slint:503
 msgctxt "HudToolbar"
 msgid "Next focal plane"
 msgstr "صفحهٔ کانونی بعدی"
 
-#: app/ui/hud-toolbar.slint:509
+#: app/ui/hud-toolbar.slint:513
 msgctxt "HudToolbar"
 msgid "Time point"
 msgstr "نقطهٔ زمانی"
 
-#: app/ui/hud-toolbar.slint:514
+#: app/ui/hud-toolbar.slint:518
 msgctxt "HudToolbar"
 msgid "Previous time point"
 msgstr "نقطهٔ زمانی قبلی"
 
-#: app/ui/hud-toolbar.slint:515
+#: app/ui/hud-toolbar.slint:519
 msgctxt "HudToolbar"
 msgid "Next time point"
 msgstr "نقطهٔ زمانی بعدی"
 
-#: app/ui/hud-toolbar.slint:529
+#: app/ui/hud-toolbar.slint:533
 msgctxt "HudToolbar"
 msgid "Colour management"
 msgstr "مدیریت رنگ"
 
-#: app/ui/hud-toolbar.slint:541
+#: app/ui/hud-toolbar.slint:545
 msgctxt "HudToolbar"
 msgid "ICC"
 msgstr "ICC"
 
-#: app/ui/hud-toolbar.slint:612
+#: app/ui/hud-toolbar.slint:625
 msgctxt "HudToolbar"
 msgid "Adjustments"
 msgstr "تنظیمات تصویر"
 
-#: app/ui/hud-toolbar.slint:616
+#: app/ui/hud-toolbar.slint:629
 msgctxt "HudToolbar"
 msgid "The colours are adjusted"
 msgstr "رنگ‌ها تنظیم شده‌اند"
 
-#: app/ui/hud-toolbar.slint:658
+#: app/ui/hud-toolbar.slint:677
 msgctxt "HudToolbar"
 msgid "Menu"
 msgstr "منو"
@@ -6768,7 +6789,7 @@ msgstr "بستن"
 #: app/ui/measurements-panel.slint:252
 msgctxt "MeasurementsPanel"
 msgid "{}: {}"
-msgstr "{}: {}"
+msgstr "‏{}: {}"
 
 #. Translators: a small button on a measurement's row: moves the view to that
 #. measurement.
@@ -6797,32 +6818,32 @@ msgctxt "MeasurementsPanel"
 msgid "Clear All Measurements"
 msgstr "پاک کردن همهٔ اندازه‌گیری‌ها"
 
-#: app/ui/metadata-hud.slint:31
+#: app/ui/metadata-hud.slint:38
 msgctxt "MetadataHud"
 msgid "Slide Metadata"
 msgstr "فرادادهٔ لام"
 
-#: app/ui/minimap.slint:37
+#: app/ui/minimap.slint:38
 msgctxt "Minimap"
 msgid "Minimap"
 msgstr "نقشهٔ کوچک"
 
-#: app/ui/minimap.slint:38
+#: app/ui/minimap.slint:39
 msgctxt "Minimap"
 msgid "The whole slide; click or drag to move the view there"
 msgstr "کل لام؛ برای انتقال نما به آنجا کلیک کنید یا بکشید"
 
-#: app/ui/minimap.slint:120
+#: app/ui/minimap.slint:121
 msgctxt "ZoomSlider"
 msgid "Zoom"
 msgstr "میزان بزرگ‌نمایی"
 
-#: app/ui/minimap.slint:146
+#: app/ui/minimap.slint:147
 msgctxt "ZoomSlider"
 msgid "Zoom in"
 msgstr "بزرگ‌نمایی"
 
-#: app/ui/minimap.slint:210
+#: app/ui/minimap.slint:211
 msgctxt "ZoomSlider"
 msgid "Zoom out"
 msgstr "کوچک‌نمایی"
@@ -6875,7 +6896,7 @@ msgstr "بستن"
 #: app/ui/plugins-panel.slint:159
 msgctxt "PluginsPanel"
 msgid "Plugin packages (.eop) are loaded from {}"
-msgstr "بسته‌های افزونه (.eop) از {} بارگذاری می‌شوند"
+msgstr "بسته‌های افزونه (⁨.eop⁩) از {} بارگذاری می‌شوند"
 
 #: app/ui/plugins-panel.slint:195
 msgctxt "PluginsPanel"
@@ -6884,7 +6905,7 @@ msgstr "هیچ افزونه‌ای نصب نشده است."
 
 #. Translators: the plugin's version, then the version of eov's plugin API it
 #. was built for.
-#: app/ui/plugins-panel.slint:231
+#: app/ui/plugins-panel.slint:234
 msgctxt "PluginsPanel"
 msgid "{} (plugin API {})"
 msgstr "نسخهٔ {} (API افزونه {})"
@@ -6892,49 +6913,49 @@ msgstr "نسخهٔ {} (API افزونه {})"
 #: app/ui/plugins-panel.slint:253
 msgctxt "PluginsPanel"
 msgid "{} · version {} is available"
-msgstr "{} · نسخهٔ {} در دسترس است"
+msgstr "‏{} · نسخهٔ {} در دسترس است"
 
 #: app/ui/plugins-panel.slint:271
 msgctxt "PluginsPanel"
 msgid "Resources used since the plugin started"
 msgstr "منابع مصرف‌شده از زمان راه‌اندازی افزونه"
 
-#: app/ui/plugins-panel.slint:303
+#: app/ui/plugins-panel.slint:304
 msgctxt "PluginsPanel"
 msgid "Update {}"
 msgstr "به‌روزرسانی {}"
 
-#: app/ui/plugins-panel.slint:310
+#: app/ui/plugins-panel.slint:311
 msgctxt "PluginsPanel"
 msgid "Update"
 msgstr "به‌روزرسانی"
 
-#: app/ui/plugins-panel.slint:333
+#: app/ui/plugins-panel.slint:334
 msgctxt "PluginsPanel"
 msgid "Disable {}"
 msgstr "غیرفعال کردن {}"
 
-#: app/ui/plugins-panel.slint:333
+#: app/ui/plugins-panel.slint:334
 msgctxt "PluginsPanel"
 msgid "Enable {}"
 msgstr "فعال کردن {}"
 
-#: app/ui/plugins-panel.slint:339
+#: app/ui/plugins-panel.slint:340
 msgctxt "PluginsPanel"
 msgid "Disable"
 msgstr "غیرفعال کردن"
 
-#: app/ui/plugins-panel.slint:339
+#: app/ui/plugins-panel.slint:340
 msgctxt "PluginsPanel"
 msgid "Enable"
 msgstr "فعال کردن"
 
-#: app/ui/plugins-panel.slint:362
+#: app/ui/plugins-panel.slint:363
 msgctxt "PluginsPanel"
 msgid "Remove {}"
 msgstr "حذف {}"
 
-#: app/ui/plugins-panel.slint:368
+#: app/ui/plugins-panel.slint:369
 msgctxt "PluginsPanel"
 msgid "Remove"
 msgstr "حذف"
@@ -6959,21 +6980,21 @@ msgstr "رنگینهٔ مورد اندازه‌گیری"
 #: app/ui/quantify-panel.slint:161
 msgctxt "QuantifyPanel"
 msgid "Weak (1+) from"
-msgstr "ضعیف (1+) از"
+msgstr "ضعیف (⁨1+⁩) از"
 
 #. Translators: label above a number field: the stain concentration from
 #. which staining counts as moderate (2+).
 #: app/ui/quantify-panel.slint:175
 msgctxt "QuantifyPanel"
 msgid "Moderate (2+) from"
-msgstr "متوسط (2+) از"
+msgstr "متوسط (⁨2+⁩) از"
 
 #. Translators: label above a number field: the stain concentration from
 #. which staining counts as strong (3+).
 #: app/ui/quantify-panel.slint:189
 msgctxt "QuantifyPanel"
 msgid "Strong (3+) from"
-msgstr "قوی (3+) از"
+msgstr "قوی (⁨3+⁩) از"
 
 #: app/ui/quantify-panel.slint:203
 msgctxt "QuantifyPanel"
@@ -6999,54 +7020,54 @@ msgctxt "QuantifyPanel"
 msgid "Quantify"
 msgstr "کمّی‌سازی"
 
-#: app/ui/save-copy-dialog.slint:163 app/ui/save-copy-dialog.slint:190
+#: app/ui/save-copy-dialog.slint:237 app/ui/save-copy-dialog.slint:264
 msgctxt "SaveCopyDialog"
 msgid "Save a Copy of the Slide"
 msgstr "ذخیرهٔ رونوشت لام"
 
 #. Translators: heading of the choice of what to copy (the whole slide or the
 #. region of interest), not a measured area.
-#: app/ui/save-copy-dialog.slint:207
+#: app/ui/save-copy-dialog.slint:288
 msgctxt "SaveCopyDialog"
 msgid "Area"
 msgstr "محدوده"
 
-#: app/ui/save-copy-dialog.slint:211
+#: app/ui/save-copy-dialog.slint:292
 msgctxt "SaveCopyDialog"
 msgid "Whole slide"
 msgstr "کل لام"
 
-#: app/ui/save-copy-dialog.slint:221
+#: app/ui/save-copy-dialog.slint:302
 msgctxt "SaveCopyDialog"
 msgid "Region of interest"
 msgstr "ناحیهٔ مورد نظر"
 
-#: app/ui/save-copy-dialog.slint:222
+#: app/ui/save-copy-dialog.slint:303
 msgctxt "SaveCopyDialog"
 msgid "Draw one with the region tool first"
 msgstr "ابتدا با ابزار ناحیه یکی رسم کنید"
 
-#: app/ui/save-copy-dialog.slint:232
+#: app/ui/save-copy-dialog.slint:313
 msgctxt "SaveCopyDialog"
 msgid "Format"
 msgstr "قالب"
 
-#: app/ui/save-copy-dialog.slint:236
+#: app/ui/save-copy-dialog.slint:317
 msgctxt "SaveCopyDialog"
 msgid "Pyramidal TIFF"
 msgstr "فایل TIFF هرمی"
 
-#: app/ui/save-copy-dialog.slint:237
+#: app/ui/save-copy-dialog.slint:318
 msgctxt "SaveCopyDialog"
 msgid "Opens in eov, QuPath, OpenSlide and most WSI tools"
 msgstr "در eov، QuPath، OpenSlide و بیشتر ابزارهای WSI باز می‌شود"
 
-#: app/ui/save-copy-dialog.slint:246
+#: app/ui/save-copy-dialog.slint:327
 msgctxt "SaveCopyDialog"
 msgid "OME-TIFF"
 msgstr "OME-TIFF"
 
-#: app/ui/save-copy-dialog.slint:247
+#: app/ui/save-copy-dialog.slint:328
 msgctxt "SaveCopyDialog"
 msgid ""
 "For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution "
@@ -7054,37 +7075,37 @@ msgid ""
 msgstr ""
 "برای eov، QuPath، Bio-Formats و OMERO (OpenSlide فقط وضوح کامل آن را می‌بیند)"
 
-#: app/ui/save-copy-dialog.slint:256
+#: app/ui/save-copy-dialog.slint:337
 msgctxt "SaveCopyDialog"
 msgid "Compression"
 msgstr "فشرده‌سازی"
 
-#: app/ui/save-copy-dialog.slint:260
+#: app/ui/save-copy-dialog.slint:341
 msgctxt "SaveCopyDialog"
 msgid "JPEG, high quality (90)"
 msgstr "کیفیت بالا با JPEG (90)"
 
-#: app/ui/save-copy-dialog.slint:269
+#: app/ui/save-copy-dialog.slint:350
 msgctxt "SaveCopyDialog"
 msgid "JPEG, smaller files (80)"
 msgstr "فایل‌های کم‌حجم‌تر با JPEG (80)"
 
-#: app/ui/save-copy-dialog.slint:278
+#: app/ui/save-copy-dialog.slint:359
 msgctxt "SaveCopyDialog"
 msgid "Lossless (Deflate)"
 msgstr "بی‌اتلاف (Deflate)"
 
-#: app/ui/save-copy-dialog.slint:279
+#: app/ui/save-copy-dialog.slint:360
 msgctxt "SaveCopyDialog"
 msgid "Exact pixels; several times larger"
 msgstr "پیکسل‌های دقیق؛ چند برابر حجیم‌تر"
 
-#: app/ui/save-copy-dialog.slint:292 app/ui/save-copy-dialog.slint:320
+#: app/ui/save-copy-dialog.slint:370
 msgctxt "SaveCopyDialog"
 msgid "De-identify"
 msgstr "شناسه‌زدایی"
 
-#: app/ui/save-copy-dialog.slint:337
+#: app/ui/save-copy-dialog.slint:380
 msgctxt "SaveCopyDialog"
 msgid ""
 "No label, macro or thumbnail image, and no properties but the pixel size, "
@@ -7095,7 +7116,7 @@ msgstr ""
 "قدرت عدسی شیئی و رنگ‌آمیزی. متن یا علامت‌های درون تصویر اسکن‌شدهٔ بافت حذف "
 "نمی‌شوند."
 
-#: app/ui/save-copy-dialog.slint:338
+#: app/ui/save-copy-dialog.slint:381
 msgctxt "SaveCopyDialog"
 msgid ""
 "The copy keeps the label and macro images and every property of the slide; "
@@ -7104,12 +7125,12 @@ msgstr ""
 "رونوشت، تصاویر برچسب و ماکرو و همهٔ ویژگی‌های لام را نگه می‌دارد؛ هر یک از "
 "این‌ها می‌تواند هویت بیمار را آشکار کند."
 
-#: app/ui/save-copy-dialog.slint:366
+#: app/ui/save-copy-dialog.slint:411
 msgctxt "SaveCopyDialog"
 msgid "Cancel"
 msgstr "لغو"
 
-#: app/ui/save-copy-dialog.slint:373
+#: app/ui/save-copy-dialog.slint:418
 msgctxt "SaveCopyDialog"
 msgid "Save…"
 msgstr "ذخیره…"
@@ -7211,12 +7232,12 @@ msgctxt "ShortcutsPanel"
 msgid "Close"
 msgstr "بستن"
 
-#: app/ui/shortcuts-panel.slint:142
+#: app/ui/shortcuts-panel.slint:137
 msgctxt "ShortcutsPanel"
 msgid "no key"
 msgstr "بدون کلید"
 
-#: app/ui/shortcuts-panel.slint:176 app/ui/shortcuts-panel.slint:182
+#: app/ui/shortcuts-panel.slint:171 app/ui/shortcuts-panel.slint:177
 msgctxt "ShortcutsPanel"
 msgid "Copy Config Path"
 msgstr "کپی مسیر پیکربندی"
@@ -7325,39 +7346,39 @@ msgctxt "SlideInfoPanel"
 msgid "Use the file's value"
 msgstr "استفاده از مقدار فایل"
 
-#: app/ui/slide-info-panel.slint:424 app/ui/slide-info-panel.slint:425
+#: app/ui/slide-info-panel.slint:427 app/ui/slide-info-panel.slint:428
 msgctxt "SlideInfoPanel"
 msgid "Filter properties"
 msgstr "فیلتر کردن ویژگی‌ها"
 
 #. Translators: how many rows the filter shows, of all rows ("12 of 40"). To
 #. swap the numbers, write {1} for the second and {0} for the first.
-#: app/ui/slide-info-panel.slint:443
+#: app/ui/slide-info-panel.slint:448
 msgctxt "SlideInfoPanel"
 msgid "{} of {}"
-msgstr "{} از {}"
+msgstr "‏{} از {}"
 
-#: app/ui/slide-info-panel.slint:454
+#: app/ui/slide-info-panel.slint:459
 msgctxt "SlideInfoPanel"
 msgid "Copy all properties"
 msgstr "کپی همهٔ ویژگی‌ها"
 
-#: app/ui/slide-info-panel.slint:462
+#: app/ui/slide-info-panel.slint:467
 msgctxt "SlideInfoPanel"
 msgid "Copy all"
 msgstr "کپی همه"
 
-#: app/ui/slide-info-panel.slint:489
+#: app/ui/slide-info-panel.slint:494
 msgctxt "SlideInfoPanel"
 msgid "{}: {}"
-msgstr "{}: {}"
+msgstr "‏{}: {}"
 
-#: app/ui/slide-info-panel.slint:490
+#: app/ui/slide-info-panel.slint:495
 msgctxt "SlideInfoPanel"
 msgid "Copies the value"
 msgstr "مقدار را کپی می‌کند"
 
-#: app/ui/slide-info-panel.slint:533
+#: app/ui/slide-info-panel.slint:538
 msgctxt "SlideInfoPanel"
 msgid ""
 "Click a row to copy its value. Properties are shown as the scanner wrote "
@@ -7387,8 +7408,8 @@ msgstr "پیام‌ها"
 msgctxt "StatusBar"
 msgid "{n} message"
 msgid_plural "{n} messages"
-msgstr[0] "{n} پیام"
-msgstr[1] "{n} پیام"
+msgstr[0] "‏{n} پیام"
+msgstr[1] "‏{n} پیام"
 
 #: app/ui/status-bar.slint:168
 msgctxt "NotificationsPopup"
@@ -7447,7 +7468,7 @@ msgstr "هشدار"
 #: app/ui/tab-controls.slint:650
 msgctxt "Tab"
 msgid "{} (modified)"
-msgstr "{} (تغییریافته)"
+msgstr "‏{} (تغییریافته)"
 
 #: app/ui/tab-controls.slint:771
 msgctxt "Tab"
@@ -7464,17 +7485,17 @@ msgctxt "TabBar"
 msgid "New tab"
 msgstr "زبانهٔ جدید"
 
-#: app/ui/viewport.slint:26
+#: app/ui/viewport.slint:27
 msgctxt "Viewport"
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 پیکسل تصویر به ازای هر پیکسل نمایشگر"
 
-#: app/ui/viewport.slint:113
+#: app/ui/viewport.slint:114
 msgctxt "Viewport"
 msgid "Slide view"
 msgstr "نمای لام"
 
-#: app/ui/viewport.slint:160
+#: app/ui/viewport.slint:161
 msgctxt "Viewport"
 msgid "Loading…"
 msgstr "در حال بارگذاری…"
@@ -7486,210 +7507,192 @@ msgstr "فاصله"
 
 #. Translators: tooltip of Undo; {} names the edit it reverts ("Add
 #. measurement", or a plugin's own wording).
-#: app/ui/window-toolbar.slint:79
+#: app/ui/window-toolbar.slint:83
 msgctxt "WindowToolbar"
 msgid "Undo {}"
 msgstr "واگرد {}"
 
-#: app/ui/window-toolbar.slint:80
+#: app/ui/window-toolbar.slint:84
 msgctxt "WindowToolbar"
 msgid "Undo"
 msgstr "واگرد"
 
 #. Translators: tooltip of Redo; {} names the edit it repeats ("Add
 #. measurement", or a plugin's own wording).
-#: app/ui/window-toolbar.slint:82
+#: app/ui/window-toolbar.slint:86
 msgctxt "WindowToolbar"
 msgid "Redo {}"
 msgstr "ازنو {}"
 
-#: app/ui/window-toolbar.slint:83
+#: app/ui/window-toolbar.slint:87
 msgctxt "WindowToolbar"
 msgid "Redo"
 msgstr "ازنو"
 
 #. A tooltip and the key of its shortcut ("Undo (Ctrl+Z)").
-#: app/ui/window-toolbar.slint:86 app/ui/window-toolbar.slint:89
-#: app/ui/window-toolbar.slint:307
+#: app/ui/window-toolbar.slint:90 app/ui/window-toolbar.slint:93
+#: app/ui/window-toolbar.slint:311
 msgctxt "WindowToolbar"
 msgid "{} ({})"
 msgstr "{} ({})"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:617
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:661
 msgctxt "WindowToolbar"
 msgid "Close window"
 msgstr "بستن پنجره"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:588
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:632
 msgctxt "WindowToolbar"
 msgid "Maximize window"
 msgstr "بزرگ کردن پنجره"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:558
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:602
 msgctxt "WindowToolbar"
 msgid "Minimize window"
 msgstr "کوچک کردن پنجره"
 
-#: app/ui/window-toolbar.slint:197
+#: app/ui/window-toolbar.slint:201
 msgctxt "WindowToolbar"
 msgid "Open file (right-click for folder or recent)"
 msgstr "باز کردن فایل (برای پوشه یا موارد اخیر راست‌کلیک کنید)"
 
-#: app/ui/window-toolbar.slint:230
+#: app/ui/window-toolbar.slint:234
 msgctxt "WindowToolbar"
 msgid "Hide Series Bar"
 msgstr "پنهان کردن نوار سری"
 
-#: app/ui/window-toolbar.slint:230
+#: app/ui/window-toolbar.slint:234
 msgctxt "WindowToolbar"
 msgid "Show Series Bar"
 msgstr "نمایش نوار سری"
 
-#: app/ui/window-toolbar.slint:239
+#: app/ui/window-toolbar.slint:243
 msgctxt "WindowToolbar"
 msgid "Toggle minimap"
 msgstr "نمایش/پنهان کردن نقشهٔ کوچک"
 
-#: app/ui/window-toolbar.slint:249
+#: app/ui/window-toolbar.slint:253
 msgctxt "WindowToolbar"
 msgid "Link the views of panes that show the same slide"
 msgstr "پیوند نماهای قاب‌هایی که لام یکسانی را نشان می‌دهند"
 
-#: app/ui/window-toolbar.slint:259
+#: app/ui/window-toolbar.slint:263
 msgctxt "WindowToolbar"
 msgid "Link panes with different slides"
 msgstr "پیوند قاب‌هایی با لام‌های متفاوت"
 
-#: app/ui/window-toolbar.slint:259
+#: app/ui/window-toolbar.slint:263
 msgctxt "WindowToolbar"
 msgid "Unlink panes"
 msgstr "جدا کردن قاب‌ها"
 
-#: app/ui/window-toolbar.slint:273
+#: app/ui/window-toolbar.slint:277
 msgctxt "WindowToolbar"
 msgid "Done adjusting (saves the alignment)"
 msgstr "پایان تنظیم (هم‌ترازی را ذخیره می‌کند)"
 
-#: app/ui/window-toolbar.slint:274
+#: app/ui/window-toolbar.slint:278
 msgctxt "WindowToolbar"
 msgid "Adjust alignment: move one pane alone"
 msgstr "تنظیم هم‌ترازی: جابه‌جایی یک قاب به‌تنهایی"
 
-#: app/ui/window-toolbar.slint:292
+#: app/ui/window-toolbar.slint:296
 msgctxt "WindowToolbar"
 msgid "Navigate"
 msgstr "پیمایش"
 
-#: app/ui/window-toolbar.slint:304
+#: app/ui/window-toolbar.slint:308
 msgctxt "WindowToolbar"
 msgid "Region of interest"
 msgstr "ناحیهٔ مورد نظر"
 
-#: app/ui/window-toolbar.slint:318
+#: app/ui/window-toolbar.slint:322
 msgctxt "WindowToolbar"
 msgid "Measure: {} ({}; right-click for more)"
 msgstr "اندازه‌گیری: {} ({}؛ برای گزینه‌های بیشتر راست‌کلیک کنید)"
 
-#: app/ui/window-toolbar.slint:319
+#: app/ui/window-toolbar.slint:323
 msgctxt "WindowToolbar"
 msgid "Measure: {} (right-click for more)"
 msgstr "اندازه‌گیری: {} (برای گزینه‌های بیشتر راست‌کلیک کنید)"
 
-#: app/ui/window-toolbar.slint:339
+#: app/ui/window-toolbar.slint:343
 msgctxt "WindowToolbar"
 msgid "Toggle metadata HUD"
 msgstr "نمایش/پنهان کردن پانل شناور فراداده"
 
-#: app/ui/window-toolbar.slint:349
+#: app/ui/window-toolbar.slint:353
 msgctxt "WindowToolbar"
 msgid "Toggle scale bar"
 msgstr "نمایش/پنهان کردن نوار مقیاس"
 
 #. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "Dark"
-msgstr "تیره"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "High Contrast"
-msgstr "کنتراست بالا"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "Light"
-msgstr "روشن"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
+#: app/ui/window-toolbar.slint:365
 msgctxt "WindowToolbar"
 msgid "Theme: {}"
 msgstr "پوسته: {}"
 
-#: app/ui/window-toolbar.slint:372
+#: app/ui/window-toolbar.slint:376
 msgctxt "WindowToolbar"
 msgid "Language"
 msgstr "زبان"
 
-#: app/ui/window-toolbar.slint:380
+#: app/ui/window-toolbar.slint:384
 msgctxt "WindowToolbar"
 msgid "Export Dataset"
 msgstr "صدور مجموعه‌داده"
 
-#: app/ui/window-toolbar.slint:396
+#: app/ui/window-toolbar.slint:400
 msgctxt "WindowToolbar"
 msgid "CPU"
 msgstr "CPU"
 
-#: app/ui/window-toolbar.slint:397
+#: app/ui/window-toolbar.slint:401
 msgctxt "WindowToolbar"
 msgid "Use CPU renderer"
 msgstr "استفاده از موتور رندر CPU"
 
-#: app/ui/window-toolbar.slint:410
+#: app/ui/window-toolbar.slint:414
 msgctxt "WindowToolbar"
 msgid "GPU"
 msgstr "GPU"
 
-#: app/ui/window-toolbar.slint:411
+#: app/ui/window-toolbar.slint:415
 msgctxt "WindowToolbar"
 msgid "GPU renderer unavailable"
 msgstr "موتور رندر GPU در دسترس نیست"
 
-#: app/ui/window-toolbar.slint:411
+#: app/ui/window-toolbar.slint:415
 msgctxt "WindowToolbar"
 msgid "Use GPU renderer"
 msgstr "استفاده از موتور رندر GPU"
 
-#: app/ui/window-toolbar.slint:433
+#: app/ui/window-toolbar.slint:440
 msgctxt "WindowToolbar"
 msgid "Filtering mode"
 msgstr "حالت فیلترینگ"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:490
 msgctxt "WindowToolbar"
 msgid "Bilinear"
 msgstr "دوخطی"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:502
 msgctxt "WindowToolbar"
 msgid "Lanczos-3"
 msgstr "Lanczos-3"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:496
 msgctxt "WindowToolbar"
 msgid "Trilinear"
 msgstr "سه‌خطی"
 
-#: app/ui/window-toolbar.slint:521
+#: app/ui/window-toolbar.slint:565
 msgctxt "WindowToolbar"
 msgid "Plugins (some could not be started)"
 msgstr "افزونه‌ها (برخی راه‌اندازی نشدند)"
 
-#: app/ui/window-toolbar.slint:521
+#: app/ui/window-toolbar.slint:565
 msgctxt "WindowToolbar"
 msgid "Plugins ({})"
 msgstr "افزونه‌ها ({})"

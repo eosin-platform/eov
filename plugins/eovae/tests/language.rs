@@ -14,10 +14,18 @@ use eovae::plugin::{JobKind, JobSummary, NoRun};
 use eovae::results::Counts;
 use eovae::tiling::ReadPlan;
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 type H = TestHarness<eovae::Eovae<eovae::NoRuntime>>;
+
+/// Held by each test: they change the language of the whole library.
+static LANGUAGE: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    LANGUAGE.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// A few of eovae's texts in German, as its catalog would have them.
 const GERMAN: &[(&str, &str)] = &[
@@ -103,6 +111,7 @@ fn notification(h: &H, message: impl Fn(&str) -> bool) -> Option<NotifyArgs> {
 
 #[test]
 fn summaries_and_problems_follow_the_language_of_the_interface() {
+    let _language = one_at_a_time();
     let host = MockHost::new();
     {
         let mut state = host.state();
@@ -166,11 +175,11 @@ fn summaries_and_problems_follow_the_language_of_the_interface() {
     // one: the user reads German, eov's log and batch output get English.
     let unusable = eovae::model::inspect(Path::new("model.pt"), &AtomicBool::new(false))
         .expect_err("only .onnx files are models");
-    assert_eq!(unusable.shown, "nur .onnx-Modelle werden unterstützt");
+    assert_eq!(unusable.shown(), "nur .onnx-Modelle werden unterstützt");
     assert_eq!(unusable.english, "only .onnx models are supported");
     let failed = NoRun::ModelFailed(unusable).message();
     assert_eq!(
-        failed.shown,
+        failed.shown(),
         "Das Modell konnte nicht geladen werden: nur .onnx-Modelle werden unterstützt"
     );
     assert_eq!(
@@ -194,11 +203,11 @@ fn summaries_and_problems_follow_the_language_of_the_interface() {
             .expect_err("too few bytes for 2×2 pixels")
     };
     assert_eq!(
-        short(1).shown,
+        short(1).shown(),
         "der Host lieferte 1 Byte für einen Bereich von 2×2"
     );
     assert_eq!(
-        short(5).shown,
+        short(5).shown(),
         "der Host lieferte 5 Bytes für einen Bereich von 2×2"
     );
     assert_eq!(
@@ -265,4 +274,80 @@ fn summaries_and_problems_follow_the_language_of_the_interface() {
     // English (PLG-15): eovae logs none.
     let problems = [logged(&h, "warn"), logged(&h, "error")].concat();
     assert!(problems.is_empty(), "{problems:?}");
+}
+
+/// What eovae's sidebar shows in `property` just now.
+fn sidebar_property(h: &H, property: &str) -> Value {
+    h.state()
+        .surfaces
+        .values()
+        .find(|s| s.open && s.spec.kind == SurfaceKind::Sidebar)
+        .and_then(|s| s.properties.get(property).cloned())
+        .unwrap_or(Value::Null)
+}
+
+#[test]
+fn a_model_error_in_the_sidebar_follows_each_change_of_language() {
+    let _language = one_at_a_time();
+    // eovae's folder, with a French catalog: eov's LanguageChanged makes
+    // the SDK load it from there.
+    let mut init = test_init("eovae");
+    let root = Path::new(&init.plugin_root);
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin.toml"),
+        root.join("plugin.toml"),
+    )
+    .unwrap();
+    let french = root.join("translations/fr/LC_MESSAGES");
+    std::fs::create_dir_all(&french).unwrap();
+    std::fs::write(
+        french.join("eovae.po"),
+        concat!(
+            "msgid \"\"\n",
+            "msgstr \"\"\n",
+            "\"Content-Type: text/plain; charset=UTF-8\\n\"\n",
+            "\"Language: fr\\n\"\n",
+            "\"Plural-Forms: nplurals=2; plural=(n > 1);\\n\"\n",
+            "\n",
+            "msgid \"only .onnx models are supported\"\n",
+            "msgstr \"seuls les modèles .onnx sont pris en charge\"\n",
+        ),
+    )
+    .unwrap();
+    // A model eovae cannot load: its error stays in the Model section.
+    init.settings
+        .insert("config".into(), json!({ "model_path": "model.pt" }));
+    let h: H = TestHarness::with_host(MockHost::new(), init).unwrap();
+    speak_german();
+    h.send(HostEvent::Ready {
+        restore_sidebar: false,
+    })
+    .unwrap();
+    h.send(HostEvent::ToolbarButtonClicked {
+        button_id: eovae::plugin::TOOLBAR_BUTTON.into(),
+    })
+    .unwrap();
+    let shows = |text: &str| {
+        let shown = sidebar_property(&h, "model-message");
+        shown == json!(text) && sidebar_property(&h, "model-message-error") == json!(true)
+    };
+    wait_until("the error in German", || {
+        shows("nur .onnx-Modelle werden unterstützt")
+    });
+
+    // The model is not loaded again: the error is worded again.
+    h.send(HostEvent::LanguageChanged {
+        language: "fr".into(),
+    })
+    .unwrap();
+    wait_until("the error in French", || {
+        shows("seuls les modèles .onnx sont pris en charge")
+    });
+    h.send(HostEvent::LanguageChanged {
+        language: "en".into(),
+    })
+    .unwrap();
+    wait_until("the error in English", || {
+        shows("only .onnx models are supported")
+    });
 }

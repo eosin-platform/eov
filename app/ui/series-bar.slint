@@ -78,7 +78,7 @@ component SeriesCard inherits Rectangle {
             if item.series_label != "": Text {
                 text: item.series_label;
                 color: Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 font-weight: 700;
                 vertical-alignment: center;
                 accessible-role: none;
@@ -87,7 +87,7 @@ component SeriesCard inherits Rectangle {
             Text {
                 text: item.name;
                 color: Theme.text-primary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 font-weight: 500;
                 horizontal-alignment: right;
                 vertical-alignment: center;
@@ -139,7 +139,7 @@ component SeriesCard inherits Rectangle {
                     y: 3px;
                     text: item.objective_label;
                     color: Theme.slide-badge-text;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     font-weight: 700;
                     accessible-role: none;
                 }
@@ -158,7 +158,7 @@ component SeriesCard inherits Rectangle {
                     y: 3px;
                     text: item.stain_label;
                     color: Theme.slide-badge-text;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     font-weight: 600;
                     accessible-role: none;
                 }
@@ -176,7 +176,7 @@ component SeriesCard inherits Rectangle {
                 Text {
                     text: @tr("Loading thumbnail");
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -349,7 +349,7 @@ export component SeriesBar inherits Rectangle {
                     height: parent.height;
                     text <=> root.filter;
                     color: Theme.text-primary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     vertical-alignment: center;
                     single-line: true;
                     accessible-label: @tr("Filter the series");
@@ -372,7 +372,7 @@ export component SeriesBar inherits Rectangle {
                     height: parent.height;
                     text: @tr("Filter (name, stain)");
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     vertical-alignment: center;
                     accessible-role: none;
                 }
@@ -397,7 +397,7 @@ export component SeriesBar inherits Rectangle {
                 sort-text := Text {
                     text: "↕ " + root.sort-label;
                     color: Theme.text-primary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     accessible-role: none;
@@ -542,7 +542,7 @@ export component SeriesBar inherits Rectangle {
             height: self.preferred-height;
             text: root.active-tooltip;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             wrap: word-wrap;
             horizontal-alignment: Locale.start;
         }

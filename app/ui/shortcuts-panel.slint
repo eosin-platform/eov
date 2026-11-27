@@ -104,41 +104,36 @@ export component ShortcutsPanel inherits Rectangle {
 
                             list := VerticalLayout {
                                 for row in root.rows: Rectangle {
-                                    height: row.heading ? 32px : 24px;
+                                    // A long entry (a plugin's tool with the keys it
+                                    // goes with) wraps onto more lines.
+                                    height: max(row.heading ? 32px : 24px, entry-layout.preferred-height);
 
-                                    if row.heading: Text {
-                                        x: 0px;
-                                        y: parent.height - self.height - 4px;
-                                        width: parent.width;
-                                        text: row.label;
-                                        horizontal-alignment: Locale.start;
-                                        color: Theme.accent;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                    }
-
-                                    if !row.heading: HorizontalLayout {
+                                    entry-layout := HorizontalLayout {
+                                        // A heading sits 4px above the row's bottom.
+                                        padding-top: row.heading ? 0px : 3px;
+                                        padding-bottom: row.heading ? 4px : 3px;
                                         spacing: 12px;
 
                                         Text {
                                             text: row.label;
-                                            color: Theme.text-primary;
+                                            color: row.heading ? Theme.accent : Theme.text-primary;
                                             font-size: 12px;
+                                            font-weight: row.heading ? 600 : 400;
                                             horizontal-alignment: Locale.start;
-                                            vertical-alignment: center;
+                                            vertical-alignment: row.heading ? TextVerticalAlignment.bottom : TextVerticalAlignment.center;
                                             horizontal-stretch: 1;
-                                            overflow: elide;
+                                            wrap: word-wrap;
                                         }
 
                                         if row.id != "": Text {
                                             text: row.id;
                                             color: Theme.text-secondary;
-                                            font-size: 10px;
+                                            font-size: Locale.text-size(10px);
                                             font-family: "monospace";
                                             vertical-alignment: center;
                                         }
 
-                                        Text {
+                                        if !row.heading: Text {
                                             text: row.keys == "" ? @tr("no key") : row.keys;
                                             color: row.keys == "" ? Theme.text-secondary : Theme.text-primary;
                                             font-size: 12px;
@@ -155,7 +150,7 @@ export component ShortcutsPanel inherits Rectangle {
                     Text {
                         text: root.hint;
                         color: Theme.text-secondary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         wrap: word-wrap;
                         horizontal-alignment: Locale.start;
                         height: self.preferred-height;

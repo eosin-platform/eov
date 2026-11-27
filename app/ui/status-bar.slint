@@ -33,7 +33,7 @@ export component StatusBar inherits Rectangle {
             horizontal-stretch: 1;
             text: root.status-text + (root.plugin-status-text != "" ? (root.status-text != "" ? "  ·  " : "") + root.plugin-status-text : "");
             color: Theme.text-secondary;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             horizontal-alignment: Locale.start;
             vertical-alignment: center;
             overflow: elide;
@@ -46,7 +46,7 @@ export component StatusBar inherits Rectangle {
                 max-width: 260px;
                 text: job.title + (job.message != "" ? " — " + job.message : "");
                 color: Theme.text-primary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -123,7 +123,7 @@ export component StatusBar inherits Rectangle {
             messages-text := Text {
                 text: root.unread-notifications > 0 ? "● " + @tr("{n} message" | "{n} messages" % root.unread-notifications) : @tr("Messages");
                 color: root.unread-errors ? Theme.danger : root.unread-notifications > 0 ? Theme.warning : Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 accessible-role: none;
@@ -187,7 +187,7 @@ export component NotificationsPopup inherits Rectangle {
                     text: @tr("Open Log Folder");
                     accessible-role: none;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -213,7 +213,7 @@ export component NotificationsPopup inherits Rectangle {
                     text: @tr("Clear");
                     accessible-role: none;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
@@ -290,15 +290,17 @@ export component NotificationsPopup inherits Rectangle {
                         if item.detail != "": Text {
                             text: item.detail;
                             color: Theme.text-secondary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             wrap: word-wrap;
                             horizontal-alignment: Locale.start;
                         }
 
                         Text {
-                            text: item.source + (item.source != "" ? " · " : "") + item.time;
+                            // The source, then the time (isolated by eov): from the right in
+                            // right-to-left languages, whatever letters the source's name has.
+                            text: Locale.in-direction((item.source != "" ? Locale.isolate(item.source) + " · " : "") + item.time);
                             color: Theme.text-secondary;
-                            font-size: 10px;
+                            font-size: Locale.text-size(10px);
                             horizontal-alignment: Locale.start;
                         }
                     }

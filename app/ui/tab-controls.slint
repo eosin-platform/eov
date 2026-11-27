@@ -994,9 +994,16 @@ export component ContextMenu inherits Rectangle {
     in property <length> menu-y: 0px;
     /// Taller menus scroll.
     in property <length> height-limit: 100000px;
+    /// Wider menus elide their items (the window gives its width).
+    in property <length> width-limit: 100000px;
     callback item-clicked(string);
-    property <length> menu-width: 240px;
+    /// As wide as the widest item, and 240 px at least.
+    out property <length> menu-width: min(root.width-limit, max(240px, item-list.preferred-width));
     property <length> content-height: items.length * 28px;
+    // Right to left, every item keeps the room of the widest key: the
+    // labels, aligned at the start (right), then share one edge, while the
+    // keys stay in their column at the right, as left to right.
+    property <length> key-column: Locale.rtl ? key-widths.preferred-width : 0px;
 
     x: menu-x;
     y: menu-y;
@@ -1023,10 +1030,25 @@ export component ContextMenu inherits Rectangle {
         }
     }
 
+    // Measures the keys for `key-column` (never shown).
+    Rectangle {
+        width: 0px;
+        height: 0px;
+        visible: false;
+
+        key-widths := VerticalLayout {
+            for item in root.items: Text {
+                text: Locale.isolate(item.shortcut);
+                font-size: Locale.text-size(11px);
+                accessible-role: none;
+            }
+        }
+    }
+
     Flickable {
         content-height: root.content-height;
 
-        VerticalLayout {
+        item-list := VerticalLayout {
             for item in items: Rectangle {
                 height: 28px;
                 background: item-touch.has-hover && item.enabled ? Theme.context-menu-hover : transparent;
@@ -1107,10 +1129,14 @@ export component ContextMenu inherits Rectangle {
                         accessible-role: none;
                     }
 
+                    // The key, kept in its own direction (a lone "[" or "]"
+                    // must not be drawn mirrored), at the right edge.
                     Text {
-                        text: item.shortcut;
+                        min-width: root.key-column;
+                        text: Locale.isolate(item.shortcut);
                         color: Theme.text-secondary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
+                        horizontal-alignment: Locale.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                         vertical-alignment: center;
                         accessible-role: none;
                     }

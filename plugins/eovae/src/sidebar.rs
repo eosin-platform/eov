@@ -183,7 +183,7 @@ fn download_text(state: &crate::plugin::State) -> (String, String, bool) {
             ),
             false,
         ),
-        (None, Some(note)) => (note.clone(), true),
+        (None, Some(note)) => (note.shown(), true),
         // Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
         (None, None) if stored => (tr!("{} is in eov's model store.", what), false),
         (None, None) => match &args.url {
@@ -209,19 +209,27 @@ fn download_text(state: &crate::plugin::State) -> (String, String, bool) {
     (label, note, error)
 }
 
+/// Joins a number and its unit so that a line never breaks between them
+/// (the sidebar's texts wrap; a no-break space).
+const UNIT: char = '\u{a0}';
+
 /// A size in MB or GB, for people: isolated, to go into texts.
 fn mib(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
     i18n::isolate(if mb >= 1024.0 {
-        format!("{} GB", i18n::format_decimal(mb / 1024.0, 1))
+        format!("{}{UNIT}GB", i18n::format_decimal(mb / 1024.0, 1))
     } else {
-        format!("{} MB", i18n::format_decimal(mb, 0))
+        format!("{}{UNIT}MB", i18n::format_decimal(mb, 0))
     })
 }
 
-/// A resolution in µm per pixel, for people: isolated, to go into texts.
+/// A resolution in µm per pixel, for people: isolated, to go into texts. A
+/// word joiner keeps "µm/px" on one line (a line may break after a slash).
 fn mpp_text(mpp: f64, decimals: usize) -> String {
-    i18n::isolate(format!("{} µm/px", i18n::format_decimal(mpp, decimals)))
+    i18n::isolate(format!(
+        "{}{UNIT}µm/\u{2060}px",
+        i18n::format_decimal(mpp, decimals)
+    ))
 }
 
 fn group_digits(value: f64, separator: char) -> String {
@@ -300,7 +308,9 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             path.file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            error.shown.clone(),
+            // Written again on every refresh, so that it follows a change
+            // of language.
+            error.shown(),
         ),
     };
     set("model-state", json!(model_state));
@@ -320,7 +330,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             .error
             .as_ref()
             .filter(|(sig, _)| *sig == request.signature())
-            .map(|(_, e)| e.shown.clone())
+            .map(|(_, e)| e.shown())
     });
     let message = match (&state.engine.building, &engine_error) {
         (Some(building), _) if model_state == 2 => building.clone(),
@@ -345,7 +355,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             engine_info
                 .as_ref()
                 .and_then(|i| i.fallback.as_ref())
-                .map(|f| tr!("CUDA unavailable: {}", crate::engine::reason_text(f)))
+                .map(|f| tr!("CUDA unavailable: {}", f))
                 .unwrap_or_default()
         ),
     );
@@ -366,7 +376,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
     match &model {
         Some(info) => {
             let mut detail = vec![
-                format!("{} px", info.tile_size),
+                format!("{}{UNIT}px", info.tile_size),
                 info.layout.label().to_string(),
             ];
             detail.push(match info.fixed_batch {
@@ -378,7 +388,7 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
             if let Some(mpp) = info.contract.mpp {
                 detail.push(mpp_text(mpp, 3));
             }
-            detail.push(format!("{} MB", (info.bytes as f64 / 1e6).round()));
+            detail.push(format!("{}{UNIT}MB", (info.bytes as f64 / 1e6).round()));
             set(
                 "model-detail",
                 json!(match info.card {
@@ -546,7 +556,12 @@ pub fn properties<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) -> Map<Strin
                 let mut parts = vec![
                     // Translators: a level of the slide's pyramid, in the resolution choices
                     tr!("Level {}", level.index),
-                    format!("{}×", i18n::format_decimal(level.downsample, decimals)),
+                    // Isolated, so that "4×" keeps its order in
+                    // right-to-left languages.
+                    i18n::isolate(format!(
+                        "{}×",
+                        i18n::format_decimal(level.downsample, decimals)
+                    )),
                 ];
                 if let Some(mpp) = file.geometry.level_mpp(level) {
                     parts.push(mpp_text(mpp, 2));
@@ -1524,7 +1539,8 @@ mod tests {
     fn numbers_are_readable() {
         assert_eq!(thousands(1234567.4), "1,234,567");
         assert_eq!(thousands(12.0), "12");
-        assert_eq!(mib(3 * 1024 * 1024 * 1024), "3.0 GB");
+        assert_eq!(mib(3 * 1024 * 1024 * 1024), "3.0\u{a0}GB");
+        assert_eq!(mpp_text(0.2272, 3), "0.227\u{a0}µm/\u{2060}px");
     }
 
     #[test]

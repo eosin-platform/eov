@@ -85,7 +85,7 @@ export component PluginsPanel inherits Rectangle {
                             text: root.checking ? @tr("Checking…") : @tr("Check for updates");
                             accessible-role: none;
                             color: root.checking ? Theme.text-secondary : Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -115,7 +115,7 @@ export component PluginsPanel inherits Rectangle {
                             text: @tr("Open plugin folder");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -158,7 +158,7 @@ export component PluginsPanel inherits Rectangle {
                 Text {
                     text: root.plugin-dir != "" ? @tr("Plugin packages (.eop) are loaded from {}", Locale.isolate(root.plugin-dir)) : "";
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                     // Only its own height: otherwise the text takes the panel's
@@ -169,7 +169,7 @@ export component PluginsPanel inherits Rectangle {
                 if root.note != "": Text {
                     text: root.note;
                     color: Theme.warning;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                     height: self.preferred-height;
@@ -178,7 +178,7 @@ export component PluginsPanel inherits Rectangle {
                 if root.update-note != "": Text {
                     text: root.update-note;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                     height: self.preferred-height;
@@ -218,8 +218,11 @@ export component PluginsPanel inherits Rectangle {
                                     horizontal-stretch: 1;
                                     spacing: 3px;
 
+                                    // The name and version start where the language
+                                    // starts a line (in the same order).
                                     HorizontalLayout {
                                         spacing: 8px;
+                                        alignment: Locale.rtl ? LayoutAlignment.end : LayoutAlignment.start;
                                         Text {
                                             text: row.name;
                                             color: Theme.text-primary;
@@ -230,11 +233,8 @@ export component PluginsPanel inherits Rectangle {
                                             // Translators: the plugin's version, then the version of eov's plugin API it was built for.
                                             text: row.api-version != "" ? @tr("{} (plugin API {})", Locale.isolate(row.version), Locale.isolate(row.api-version)) : row.version;
                                             color: Theme.text-secondary;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             vertical-alignment: center;
-                                        }
-                                        Rectangle {
-                                            horizontal-stretch: 1;
                                         }
                                     }
 
@@ -243,7 +243,7 @@ export component PluginsPanel inherits Rectangle {
                                     if row.description != "": Text {
                                         text: row.description;
                                         color: Theme.text-secondary;
-                                        font-size: 11px;
+                                        font-size: Locale.text-size(11px);
                                         wrap: word-wrap;
                                         horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
@@ -252,7 +252,7 @@ export component PluginsPanel inherits Rectangle {
                                     Text {
                                         text: row.update != "" ? @tr("{} · version {} is available", row.status, Locale.isolate(row.update)) : row.status;
                                         color: row.status-level == 0 ? Theme.success : row.status-level == 1 ? Theme.text-secondary : Theme.danger;
-                                        font-size: 11px;
+                                        font-size: Locale.text-size(11px);
                                         wrap: word-wrap;
                                         horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
@@ -264,7 +264,7 @@ export component PluginsPanel inherits Rectangle {
                                     if row.usage != "": Text {
                                         text: row.usage;
                                         color: Theme.text-secondary;
-                                        font-size: 11px;
+                                        font-size: Locale.text-size(11px);
                                         wrap: word-wrap;
                                         horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
@@ -274,16 +274,17 @@ export component PluginsPanel inherits Rectangle {
                                     if row.detail != "": Text {
                                         text: row.detail;
                                         color: Theme.warning;
-                                        font-size: 11px;
+                                        font-size: Locale.text-size(11px);
                                         wrap: word-wrap;
                                         horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
                                     }
 
                                     Text {
-                                        text: row.id + (row.origin != "" ? " · " + row.origin : "") + (row.source != "" ? " · " + row.source : "");
+                                        // The id, origin and folder: from the right in right-to-left languages.
+                                        text: Locale.in-direction(Locale.isolate(row.id) + (row.origin != "" ? " · " + row.origin : "") + (row.source != "" ? " · " + Locale.isolate(row.source) : ""));
                                         color: Theme.text-secondary;
-                                        font-size: 10px;
+                                        font-size: Locale.text-size(10px);
                                         wrap: word-wrap;
                                         horizontal-alignment: Locale.start;
                                         height: self.preferred-height;
@@ -310,7 +311,7 @@ export component PluginsPanel inherits Rectangle {
                                             text: @tr("Update");
                                             accessible-role: none;
                                             color: Theme.text-on-accent;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             horizontal-alignment: center;
                                             vertical-alignment: center;
                                         }
@@ -339,7 +340,7 @@ export component PluginsPanel inherits Rectangle {
                                             text: row.can-disable ? @tr("Disable") : @tr("Enable");
                                             accessible-role: none;
                                             color: Theme.text-primary;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             horizontal-alignment: center;
                                             vertical-alignment: center;
                                         }
@@ -368,7 +369,7 @@ export component PluginsPanel inherits Rectangle {
                                             text: @tr("Remove");
                                             accessible-role: none;
                                             color: Theme.danger;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             horizontal-alignment: center;
                                             vertical-alignment: center;
                                         }

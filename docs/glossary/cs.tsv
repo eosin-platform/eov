@@ -30,12 +30,12 @@ pixel size	velikost pixelu
 MPP (µm per pixel)	MPP (µm na pixel)	MPP stays.
 calibration	kalibrace	
 level, pyramid level	úroveň, úroveň pyramidy	Level-0 pixels: „pixely úrovně 0“.
-tile	dlaždice	Also the dataset's „Tile Size“: „velikost dlaždice“.
-patch (dataset)	výřez	Patch extraction: „extrakce výřezů“.
+tile	dlaždice	A square piece of the image loaded at a time. The dataset's patches are „výřezy“: Patch Size „Velikost výřezu“.
+patch (dataset)	výřez	Patch extraction: „extrakce výřezů“; Patch Size: „Velikost výřezu“, „velikost výřezu musí být od … do … pixelů“.
 cache	mezipaměť	
 region of interest (ROI)	oblast zájmu (ROI)	Keep ROI as the abbreviation.
 region (annotation)	oblast	A drawn area.
-measurement	měření	Same form in singular and plural: add „všechna“, „vybraná“, „více“ where the number matters.
+measurement	měření	Same form in singular and plural: add „všechna“, „vybraná“, „více“ where the number matters. Only real measurements (the Measure tool, measured IF: „naměřená IF“); Cellaris statistics of predicted values are never „měření“.
 Measure (tool)	Měření	Tool name; verbs „měřit“, „změřit“.
 distance	vzdálenost	
 path length	délka lomené čáry	Measure mode of a polyline.
@@ -202,7 +202,7 @@ quotation marks “ ”	„ “	Czech quotes (U+201E, U+201C).
 number and unit	12 MB, 50 %, 90°, 20×	Space before units and %; none before the ° of an angle; 1024 × 768 px.
 undo-step labels (plugins)	podstatné jméno slovesné	„Přidání bodu“, „Smazání vrstvy“, shown as „Zpět: …“; a label that is also a dialog title stays a noun („Smazání třídy“). Exception: „Smazat anotaci“ is shared with a context-menu item.
 Count (tab), Count tool	Počítání, nástroj Počítání	Annotations plugin; tool tooltip „Počítání buněk (Shift+klik: druhá třída)“.
-count point(s), counts	počítací bod(y), počty	Points placed with the Count tool: „Vymazat počty…“, „Odebrat všech 12 počítacích bodů…“.
+count point(s), counts	počítací bod(y), počty	Points placed with the Count tool: „Vymazat počty…“, „Vymazat všech 12 počítacích bodů…“ (same verb as the button „Vymazat“).
 HPF field	pole HPF	A placed high-power field; tool „Pole HPF (H)“; „{} /pole HPF“.
 regular layer	běžná vrstva	As opposed to the layers of count points and HPF fields.
 shape, vertex, outline	tvar, vrchol, obrys	„Obrys protínal sám sebe…“.
@@ -223,7 +223,8 @@ cell (Cellaris grid square, 41.6 µm)	políčko	Not a biological cell: never „
 window (square model input)	okno	Cellaris/eovae: „okno predikcí“, „{} s na okno“.
 display window (marker value range)	rozsah zobrazení	Cellaris; eov's Channels panel says „Okna (rozsahy zobrazení)“.
 tissue block (5 µm square)	blok tkáně	
-readout, region readout	odečet, odečet oblasti	Cellaris; tool „Odečet oblasti Cellaris“, section „ODEČET OBLASTI“.
+readout, region readout (Cellaris)	statistiky, statistiky oblasti	Statistics (mean, spread, density r²) computed from a model's predicted values over a region: never a measurement, so never „odečet“ (an instrument reading), „měření“ or „naměřený“. Tool „Statistiky oblasti Cellaris“, section „STATISTIKY OBLASTI“, layer „Cellaris — oblast pro statistiky“; computing a readout: „výpočet statistik“; readouts: „statistiky oblastí“.
+compute (predictions, a readout)	vypočítat; výpočet	Calculating values with a model: „Výpočet: {done} z {n} políček“, „Vypočítat statistiky velké oblasti?“, „Nevypočteno: {}“; never „měřit“.
 spread (readout column: SD)	kolísání	Not „rozptyl“ (that is the variance).
 density r²	r² denzity	Cellaris readout column.
 bright-field	světlé pole	„H&E ve světlém poli“.

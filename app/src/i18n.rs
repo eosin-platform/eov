@@ -207,10 +207,14 @@ pub(crate) fn init(command_line: Option<&str>) -> Option<String> {
 }
 
 /// The window in the current language: its texts (Slint's bundled
-/// translations, which also set how Slint writes numbers), the writing
+/// translations, which also set how Slint writes numbers), the fonts of
+/// Chinese, Japanese and Korean text (see [`crate::fonts`]), the writing
 /// direction and the Home screen's language link.
 pub(crate) fn apply_to_window(ui: &AppWindow) {
     let language = i18n::current();
+    // Before the texts change, so that they are laid out once, in the
+    // language's font.
+    crate::fonts::apply(language);
     // English is the texts as written: Slint selects it as "".
     let bundle = if language.is_source() {
         ""
@@ -401,6 +405,14 @@ pub(crate) fn switch_to(ui: &AppWindow, language: &'static Language) {
     tracing::info!("Interface language changed to {}", language.tag);
     activate(language);
     apply_to_window(ui);
+    // The status bar's last message is in the previous language: the bar
+    // starts again from what the window says at startup (the same text in
+    // the window's catalog). Messages written from here on stay, such as
+    // choose()'s when the language cannot be saved.
+    ui.set_status_text(
+        // Translators: the status bar's text when there is nothing to report.
+        tr!("AppWindow" => "Ready").into(),
+    );
     crate::host_ui::language_changed(ui, language);
 }
 
@@ -597,6 +609,48 @@ mod tests {
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
+    /// Texts that the window and Rust code share (the same context and
+    /// text) are translated in Rust too: the theme menu names the themes
+    /// as the toolbar's tooltip does (`"Theme" => "Dark"`). Their entries
+    /// keep the references of both (tools/i18n/i18n.py `extract`), so
+    /// build.rs keeps them in the Rust tables.
+    #[test]
+    fn texts_shared_with_the_window_are_translated_in_rust_too() {
+        use crate::ThemeKind;
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("translations");
+        // Tests run in English.
+        let english: Vec<String> = ThemeKind::ALL.iter().map(|kind| kind.label()).collect();
+        assert_eq!(english, ["Dark", "Light", "High Contrast"]);
+        let mut failures = Vec::new();
+        for language in i18n::translations() {
+            let catalog = Catalog::load(&dir, "eov", language)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{} has no catalog", language.tag));
+            let rust = rust_catalog(language).unwrap();
+            for text in &english {
+                let wanted = catalog
+                    .translate(Some("Theme"), text)
+                    .unwrap_or_else(|| panic!("{}: {text:?} is not translated", language.tag));
+                if rust.translate(Some("Theme"), text) != Some(wanted) {
+                    failures.push(format!(
+                        "{}: {text:?} is not in the Rust tables",
+                        language.tag
+                    ));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        // The menu itself, on this test's thread only (thread-local-language).
+        let german = i18n::by_tag("de").unwrap();
+        activate(german);
+        let labels: Vec<String> = ThemeKind::ALL.iter().map(|kind| kind.label()).collect();
+        activate(i18n::source());
+        let catalog = Catalog::load(&dir, "eov", german).unwrap().unwrap();
+        for (label, text) in labels.iter().zip(&english) {
+            assert_eq!(Some(label.as_str()), catalog.translate(Some("Theme"), text));
+        }
+    }
+
     /// The macOS bundle declares every language, so that macOS shows its
     /// own panels in the user's language.
     #[test]
@@ -760,6 +814,28 @@ mod window_tests {
         });
     }
 
+    /// The status bar's last message was written in the previous language:
+    /// after a change the bar says "Ready" in the new one, as at startup.
+    #[test]
+    fn a_language_change_starts_the_status_bar_again() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = window();
+            let _english = English(&ui);
+            ui.set_status_text("Opened C3L-00004-21.svs (3 levels)".into());
+            let german = i18n::by_tag("de").unwrap();
+            switch_to(&ui, german);
+            // In German, as eov's tables have it (English until the entry
+            // the window shares with Rust code is in them).
+            let ready = translation(german, Some("AppWindow"), "Ready")
+                .unwrap_or_else(|| "Ready".to_string());
+            assert_eq!(ui.get_status_text(), ready);
+            // Showing the language already shown changes nothing.
+            ui.set_status_text("Gespeichert".into());
+            switch_to(&ui, german);
+            assert_eq!(ui.get_status_text(), "Gespeichert");
+        });
+    }
+
     #[test]
     fn rust_messages_are_translated_with_their_values() {
         // On this test's thread only (thread-local-language).
@@ -871,6 +947,61 @@ mod window_tests {
                     assert!(locale.invoke_is_number(text.into()), "{tag}: {text:?}");
                 }
                 assert!(!locale.invoke_is_number("abc".into()), "{tag}");
+            }
+        });
+    }
+
+    /// Fields that take a whole number (pixels, threads, colour values)
+    /// read one written with a thousands separator as that number in every
+    /// language, `,` and `.` alike (three digits after the separator are no
+    /// fraction anyone means there), and round other decimals.
+    #[test]
+    fn whole_numbers_are_read_in_every_language() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            let ui = window();
+            let _english = English(&ui);
+            for language in i18n::LANGUAGES {
+                switch_to(&ui, language);
+                let tag = language.tag;
+                let locale = ui.global::<Locale>();
+                for (text, value) in [
+                    ("1,024", 1024),
+                    ("1.024", 1024),
+                    ("1 024", 1024),
+                    ("1\u{A0}024", 1024),
+                    ("1\u{202F}024", 1024),
+                    ("١٬٠٢٤", 1024),
+                    ("۱٬۰۲۴", 1024),
+                    ("65,536", 65536),
+                    ("512", 512),
+                    ("۵۱۲", 512),
+                    // Decimals, rounded.
+                    ("128.6", 129),
+                    ("128,6", 129),
+                    ("١٢٨٫٦", 129),
+                    ("2,5", 3),
+                    ("1,0245", 1),
+                    // The Arabic decimal sign never separates thousands,
+                    // and a first digit 0 makes a decimal.
+                    ("1٫024", 1),
+                    ("0,250", 0),
+                ] {
+                    assert!(
+                        locale.invoke_is_whole_number(text.into()),
+                        "{tag}: {text:?}"
+                    );
+                    assert_eq!(
+                        locale.invoke_whole_number(text.into()),
+                        value,
+                        "{tag}: {text:?}"
+                    );
+                }
+                for text in ["", "x", "inf", "1 024 x"] {
+                    assert!(
+                        !locale.invoke_is_whole_number(text.into()),
+                        "{tag}: {text:?}"
+                    );
+                }
             }
         });
     }

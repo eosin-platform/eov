@@ -21,6 +21,7 @@ mod distribution;
 mod export_dialog;
 mod file_ops;
 mod file_types;
+mod fonts;
 mod gpu;
 mod history;
 mod host_ui;

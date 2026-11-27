@@ -58,7 +58,7 @@ patch (dataset)	แพตช์	ภาพย่อยของชุดข้อ
 cache	แคช	
 region of interest (ROI)	บริเวณที่สนใจ (ROI)	ใช้ ROI เป็นตัวย่อในป้ายสั้น
 region (in general)	บริเวณ	พื้นที่ที่วัดได้ใช้ “พื้นที่”
-measurement	การวัด, ผลการวัด	
+measurement	การวัด, ผลการวัด	เฉพาะการวัดจริง (เครื่องมือวัดของ eov, IF ที่วัดจริง) สถิติสรุปของ Cellaris คำนวณจากค่าทำนาย ไม่ใช่ผลการวัด
 Measure (tool)	วัด	ชื่อเครื่องมือ ในประโยคใช้ “เครื่องมือวัด”
 distance	ระยะทาง	
 path length	ความยาวเส้นทาง	
@@ -317,7 +317,8 @@ tumour cells, immune cells	เซลล์เนื้องอก, เซลล
 DICOM bulk annotations	แอนโนเทชัน DICOM แบบ bulk	ชื่อ IOD/แอตทริบิวต์ DICOM (Microscopy Bulk Simple Annotations, SOP Class UID) คงภาษาอังกฤษ
 DICOM study, attribute	การตรวจ (study), แอตทริบิวต์	Patient/Study/Series = ผู้ป่วย/การตรวจ/ชุด
 coordinates	พิกัด	
-readout (Cellaris region readout)	การอ่านค่า, ผลการอ่านค่า	“Cellaris region readout” = “การอ่านค่าบริเวณของ Cellaris”
+readout (Cellaris region readout)	สถิติสรุป	สถิติสรุปของค่าที่โมเดลทำนายภายในบริเวณ (เฉลี่ย การกระจาย r² ความหนาแน่น) คำนวณจากค่าทำนาย ไม่ใช่การวัด ห้ามใช้ “การอ่านค่า” “วัด” หรือ “ผลการวัด” “Cellaris region readout” = “สถิติสรุปบริเวณของ Cellaris” (ชื่อเครื่องมือ ใช้คำเดียวกันเมื่ออ้างถึง) “REGION READOUT” = “สถิติสรุปบริเวณ” “Compute a readout” = “คำนวณสถิติสรุป” “Cellaris — readout region” = “Cellaris — บริเวณที่คำนวณสถิติสรุป”
+compute (predictions, a readout)	คำนวณ	คำนวณค่าด้วยโมเดล เช่น “กำลังคำนวณ: ช่องกริด {done} จาก {n} ช่อง” “คำนวณสถิติสรุป” ห้ามใช้ “วัด”
 cell (Cellaris grid cell)	ช่องกริด	ช่องสี่เหลี่ยมของสไลด์ที่ทำนายพร้อมกัน ไม่ใช่เซลล์ทางชีววิทยา ลักษณนาม “ช่อง”
 window (model input, Cellaris)	หน้าต่างภาพ	ภาพสี่เหลี่ยมจัตุรัสที่โมเดลใช้ทำนาย ลักษณนาม “หน้าต่าง” ต่างจาก display window = ช่วงการแสดงผล
 tissue block (5 µm square)	บล็อกเนื้อเยื่อ	สี่เหลี่ยมเนื้อเยื่อขนาด 5 µm ไม่ใช่บล็อกพาราฟิน ลักษณนาม “บล็อก”
@@ -334,3 +335,8 @@ stick, trigger, D-Pad, shoulder button, dead zone	สติก, ทริกเ�
 mappings (gamepad)	การกำหนดปุ่ม	
 pointer (system pointer)	ตัวชี้	“Move Pointer” = “เลื่อนตัวชี้”
 marker (example plugin)	เครื่องหมาย	จุดที่วางบนสไลด์ ไม่ใช่มาร์กเกอร์โปรตีน
+worker thread	เธรดทำงาน	ส่วนของโปรแกรมหรือปลั๊กอินที่ทำงานเบื้องหลัง “Could not start a worker thread” = “ไม่สามารถเริ่มเธรดทำงานได้”
+host (eov as a plugin's host)	โฮสต์	“the host returned {n} bytes…” = “โฮสต์ส่งคืนข้อมูล {n} ไบต์…”
+flagged (tissue QC)	ทำเครื่องหมาย	เครื่องหมายเพื่อการทบทวน ไม่ใช่ผลที่แน่นอน “possible folds or blur” = “บริเวณที่อาจเป็นรอยพับหรือเบลอ”
+file type names (… whole-slide image)	ภาพสไลด์ทั้งแผ่น Aperio, ภาพ BigTIFF	ชื่อชนิดไฟล์ในตัวจัดการไฟล์: คำนามก่อน แล้วตามด้วยชื่อผู้ผลิตหรือรูปแบบที่ไม่แปล
+finite (value)	จำนวนจำกัด	“no finite values” = “ไม่มีค่าที่เป็นจำนวนจำกัด” “non-finite coordinates” = “พิกัดไม่ใช่จำนวนจำกัด”

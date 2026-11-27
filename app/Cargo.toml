@@ -50,6 +50,9 @@ slint = { version = "1.19.0", default-features = false, features = [
     "renderer-software",
     "unstable-wgpu-30",
     "unstable-winit-030",
+    # Slint's font collection: CJK text in the font of the interface's
+    # language (src/fonts.rs). Renamed with the next fontique release.
+    "unstable-fontique-012",
 ] }
 
 # The interpreter's property and callback types (same pinned version as the

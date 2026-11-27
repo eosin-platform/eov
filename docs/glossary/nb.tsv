@@ -23,10 +23,10 @@ MPP (µm per pixel)	MPP (µm per piksel)	Keep MPP.
 calibration	kalibrering	Calibrate = kalibrere; Kalibrer.
 level, pyramid level	nivå, pyramidenivå	et nivå, nivåer; L0 = full resolution.
 tile	flis	Square piece of the image loaded at a time (en flis, flisen, fliser, flisene).
-patch (dataset)	utsnitt	Small image cut from a slide for machine learning (et utsnitt, utsnittet, utsnitt, utsnittene). Dataset "Tile Size" = Utsnittsstørrelse.
+patch (dataset)	utsnitt	Small image cut from a slide for machine learning (et utsnitt, utsnittet, utsnitt, utsnittene). Dataset "Patch Size" = Utsnittsstørrelse; patch size = utsnittsstørrelse.
 cache	hurtigbuffer	As in Norwegian Windows; tile cache = flishurtigbuffer.
 region of interest (ROI)	interesseområde (ROI)	Keep ROI as the abbreviation; the region = området.
-measurement	måling	en måling, målingen, målinger.
+measurement	måling	en måling, målingen, målinger. Only for real measurements (the measure tool, measured IF: målt IF); never for Cellaris's statistics of predicted values.
 measure (tool)	måleverktøy; tool name: Måling	Measure: Distance = Måling: Avstand.
 Navigate (tool)	Navigering	Tool name.
 annotation	annotasjon	A drawn mark with a meaning (en annotasjon, annotasjonen, annotasjoner); not a comment (kommentar, merknad).
@@ -225,7 +225,8 @@ attach (annotations to a slide)	knytte til	Attach = Knytt til; Attached {n} laye
 Bring them in (old annotations)	Hent dem inn	Bringing pre-1.0 annotations into the current database = hente inn.
 plugin undo labels	lowercase noun phrase (oppretting av punkt, sletting av laget «{}»)	As eov's own labels; a label that is also a menu item or dialog title keeps the imperative (Slett lag, Slett klasse, Fjern tellinger, Slett annotasjon). Could not save "{}" = Kunne ikke lagre endringen «{}».
 even-odd rule	even-odd-regelen	Fill rule for self-crossing outlines.
-readout, region readout	avlesning, områdeavlesning	Cellaris: REGION READOUT = OMRÅDEAVLESNING; tool Cellaris region readout = Cellaris-områdeavlesning.
+readout, region readout (Cellaris)	statistikk, områdestatistikk	Statistics (mean, spread, density r²) computed from the model's predicted values over a region, not a measurement: never «avlesning» (an instrument or meter reading), «måling» or «målt». REGION READOUT = OMRÅDESTATISTIKK; tool Cellaris region readout = Cellaris-områdestatistikk (verktøyet Cellaris-områdestatistikk); readout region = område for statistikk; Compute a readout = beregne statistikk; a long readout = en lang statistikkberegning; the readout = statistikken.
+compute (predictions, a readout)	beregne; Beregn	Computing = beregner; Computing: 3 of 10 cells = Beregner: 3 av 10 felt; not computed = ikke beregnet; never «måle».
 prediction, predict	prediksjon, predikere	Predicted = predikert; never "spådd".
 window (model input)	vindu	A square image the model predicts from (et vindu, vinduer).
 cell (Cellaris grid square)	felt	A 41.6 µm square of the slide predicted at once (et felt, felt); never "celle", which reads as a biological cell.

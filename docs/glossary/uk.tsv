@@ -285,7 +285,7 @@ DICOM bulk annotations	масові анотації DICOM	IOD names (Microscopy
 Feret diameter (max), min caliper	макс. діаметр Ферета, мін. діаметр Ферета	
 combined positive score (CPS)	комбінований показник позитивності (CPS)	PD-L1; keep CPS.
 95% CI	95 % ДІ	Довірчий інтервал: «(95 % ДІ {low}–{high})».
-readout (Cellaris region readout)	показники ділянки	Tool «Показники ділянки Cellaris»; section «ПОКАЗНИКИ ДІЛЯНКИ». The plugin's own word «вимірювання» only where the English says measure.
+readout (Cellaris region readout)	статистика ділянки	Statistics computed from a model's predicted values, not a measurement: tool «Статистика ділянки Cellaris», section «СТАТИСТИКА ДІЛЯНКИ», layer «Cellaris — ділянка для статистики», «Обчислити статистику великої ділянки?», «обчислення статистики ділянки». Never «вимірювання», «показання» (an instrument reading) or «показники» (reads as measured lab values, like CPS «комбінований показник позитивності»). «вимірювання», «виміряний» only where the English says measurements or measured (IF).
 cell (Cellaris, eovae grid)	комірка	A square of the slide predicted at once; never «клітина» there.
 window (model input)	вікно	A square image a model predicts from; display window stays «вікно відображення».
 tissue block (5 µm square)	квадрат тканини	Not «блок» (paraffin block).
@@ -304,3 +304,9 @@ game controller, stick, trigger, D-pad, bumper	ігровий контролер
 dead zone, response curve	мертва зона, крива відгуку	Narrow column: «Мертва зона лів.», «Швидк. масштабу».
 mapping (gamepad)	призначення	«Рух вказівника» for the Move Pointer actions.
 marker (example plugin point)	мітка	A placed point, not a protein marker.
+worker thread	робочий потік	A background thread of eov or a plugin: «Не вдалося запустити робочий потік», «У робочому потоці eovae стався неочікуваний збій».
+host (plugin API)	eov	The program a plugin runs in: «the host returned …» → «eov повернула …» (feminine, as «програма eov»).
+flagged (tissue QC)	позначений контролем якості тканини	Flags for review, not certainties: «З них {n} позначив контроль якості тканини»; «можливі складки або розмиття».
+fallback (stain vectors)	резервний	Generic H&E vectors used when a slide's stain fit fails: «резервні вектори барвників»; the reference/target stays «еталонний».
+… whole-slide image (file type)	Зображення цілого препарату …	File type names in file managers: «Зображення цілого препарату Hamamatsu NDPI», «Зображення BigTIFF».
+inch (in)	дюйм (in)	The unit symbol in stays, like µm and mm: «Дюйми (in)», «{} in».

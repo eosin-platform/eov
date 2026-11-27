@@ -18,20 +18,15 @@ msgid "EOV VAE"
 msgstr "EOV VAE"
 
 #: plugin.toml
-#, fuzzy
-#| msgctxt "plugin.toml"
-#| msgid ""
-#| "Reconstruction-error (VAE anomaly) analysis with ONNX models: heat maps, "
-#| "reconstructions, error statistics and hot regions. Research use only; not "
-#| "for diagnosis."
 msgctxt "plugin.toml"
 msgid ""
 "Reconstruction-error analysis with ONNX VAE models, showing how unlike the "
 "training data the tissue looks: heat maps, reconstructions, error statistics "
 "and highest-error regions. Research use only; not for diagnosis."
 msgstr ""
-"Аналіз похибки реконструкції (аномалій VAE) за допомогою моделей ONNX: "
-"теплові карти, реконструкції, статистика похибок і гарячі ділянки. Лише для "
+"Аналіз похибки реконструкції за допомогою моделей VAE у форматі ONNX, що "
+"показує, наскільки тканина не схожа на навчальні дані: теплові карти, "
+"реконструкції, статистика похибок і ділянки з найбільшою похибкою. Лише для "
 "наукових досліджень; не призначено для діагностики."
 
 #: src/batch.rs:89
@@ -80,15 +75,11 @@ msgstr "пропускати фрагменти, на яких лише скло
 #. Translators: a batch parameter: keep auto and lo,hi, the values typed;
 #. p05–p95 is the 5th to 95th percentile
 #: src/batch.rs:140
-#, fuzzy
-#| msgid ""
-#| "error-map colours: auto (p05-p95 of each slide) or lo,hi (mean absolute "
-#| "error; the same scale for every slide)"
 msgid ""
 "error-map colours: auto (p05–p95 of each slide) or lo,hi (mean absolute "
 "error; the same scale for every slide)"
 msgstr ""
-"кольори карти похибок: auto (p05-p95 кожного препарату) або lo,hi (середня "
+"кольори карти похибок: auto (p05–p95 кожного препарату) або lo,hi (середня "
 "абсолютна похибка; однакова шкала для всіх препаратів)"
 
 #. Translators: a batch parameter: keep off, store and reuse, the values typed
@@ -102,14 +93,9 @@ msgstr ""
 
 #. Translators: {} is what was typed into the SHA-256 field; it is
 #. ignored and the field keeps its previous value.
-#: src/config.rs:159
-#, fuzzy
-#| msgid ""
-#| "'{}' is not a SHA-256 (64 hex digits); the reference model is downloaded"
+#: src/config.rs:163
 msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
-msgstr ""
-"«{}» не є SHA-256 (64 шістнадцяткові цифри); для завантаження буде "
-"використано еталонну модель"
+msgstr "«{}» не є SHA-256 (64 шістнадцяткові цифри), тому його не збережено."
 
 #: src/contract.rs:162
 msgid "HistoVAE defaults"
@@ -172,6 +158,12 @@ msgstr "кеш результатів вимкнено"
 msgid "the result cache stopped"
 msgstr "кеш результатів припинив роботу"
 
+#. Translators: inference device: CUDA when it works, else the CPU
+#: src/engine.rs:49 ui/eovae-sidebar.slint:747
+msgctxt "Device"
+msgid "Auto"
+msgstr "Авто"
+
 #: src/engine.rs:107
 msgid "CPU · {n} thread"
 msgid_plural "CPU · {n} threads"
@@ -179,7 +171,7 @@ msgstr[0] "CPU · {n} потік"
 msgstr[1] "CPU · {n} потоки"
 msgstr[2] "CPU · {n} потоків"
 
-#: src/engine.rs:121
+#: src/engine.rs:122
 msgid ""
 "this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
 msgstr ""
@@ -197,7 +189,7 @@ msgid "no inference runtime in this build"
 msgstr "у цій збірці немає середовища виконання для інференсу"
 
 #. Translators: an error: the operation was cancelled
-#: src/message.rs:57
+#: src/message.rs:93
 msgid "cancelled"
 msgstr "скасовано"
 
@@ -294,7 +286,7 @@ msgstr ""
 
 #. Translators: about the model's input tensor; the words in
 #. parentheses name its four axes in order and may be translated.
-#: src/model.rs:304
+#: src/model.rs:305
 msgid ""
 "it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
 msgid_plural ""
@@ -306,22 +298,22 @@ msgstr[1] ""
 msgstr[2] ""
 "він має {n} вимірів; тензор зображення має 4 (batch, channels, height, width)"
 
-#: src/model.rs:326
+#: src/model.rs:327
 msgid "it has {n} channel; eovae feeds RGB (3 channels)"
 msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
 msgstr[0] "він має {n} канал; eovae подає RGB (3 канали)"
 msgstr[1] "він має {n} канали; eovae подає RGB (3 канали)"
 msgstr[2] "він має {n} каналів; eovae подає RGB (3 канали)"
 
-#: src/model.rs:329
+#: src/model.rs:330
 msgid "its channel dimension is not 3 (RGB)"
 msgstr "його вимір каналів не дорівнює 3 (RGB)"
 
-#: src/model.rs:372
+#: src/model.rs:373
 msgid "the model has no inputs"
 msgstr "модель не має входів"
 
-#: src/model.rs:381
+#: src/model.rs:383
 msgid ""
 "the model needs {n} input ({names}); eovae feeds exactly one image input"
 msgid_plural ""
@@ -333,33 +325,33 @@ msgstr[1] ""
 msgstr[2] ""
 "модель потребує {n} входів ({names}); eovae подає рівно один вхід-зображення"
 
-#: src/model.rs:394
+#: src/model.rs:398
 msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
 msgstr "вхід «{name}» має тип {kind}; eovae подає float32 або float16"
 
-#: src/model.rs:403
+#: src/model.rs:408
 msgid "input '{}' does not declare its shape"
 msgstr "вхід «{}» не оголошує своєї форми"
 
-#: src/model.rs:407
+#: src/model.rs:417
 msgid "input '{name}' is not an image: {error}"
 msgstr "вхід «{name}» не є зображенням: {error}"
 
-#: src/model.rs:418
+#: src/model.rs:428
 msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
 msgstr ""
 "вхід «{name}» має розмір {height}×{width}; eovae аналізує квадратні фрагменти"
 
-#: src/model.rs:437
+#: src/model.rs:447
 msgid "tiles of {} px are not supported (16–2048)"
 msgstr "фрагменти розміром {} px не підтримуються (16–2048)"
 
 #. Translators: an output of the model (its name) that declares no shape
-#: src/model.rs:465
+#: src/model.rs:476
 msgid "{} (no shape)"
 msgstr "{} (без форми)"
 
-#: src/model.rs:499
+#: src/model.rs:510
 msgid ""
 "the model only encodes (outputs mu and logvar); export the reconstruction "
 "model (HistoVAE: create_onnx --mode reconstruct)"
@@ -367,60 +359,59 @@ msgstr ""
 "модель лише кодує (виводить mu і logvar); експортуйте модель реконструкції "
 "(HistoVAE: create_onnx --mode reconstruct)"
 
-#: src/model.rs:510
+#: src/model.rs:522
 msgid ""
 "no output is an RGB image matching the input {shape} (outputs: {outputs})"
 msgstr ""
 "жоден вихід не є RGB-зображенням, що відповідає входу {shape} (виходи: "
 "{outputs})"
 
-#: src/model.rs:666
+#: src/model.rs:678
 msgid "only .onnx models are supported"
 msgstr "підтримуються лише моделі .onnx"
 
-#: src/model.rs:670
+#: src/model.rs:683
 msgid "{} does not exist"
 msgstr "{} не існує"
 
-#. The detail is technical, and English like a library's.
-#: src/model.rs:676
+#: src/model.rs:691
 msgid "not a valid ONNX model: {}"
 msgstr "недійсна модель ONNX: {}"
 
-#: src/model.rs:688
+#: src/model.rs:705
 msgid "the model's weights point outside its folder ('{}')"
 msgstr "ваги моделі вказують за межі її папки («{}»)"
 
-#: src/model.rs:697
+#: src/model.rs:715
 msgid ""
 "the model's weights file '{}' is missing; keep it next to the .onnx file"
 msgstr "файл ваг моделі «{}» відсутній; зберігайте його поруч із файлом .onnx"
 
-#: src/ort_backend.rs:153
+#: src/ort_backend.rs:154
 msgid "it could not be opened: {}"
 msgstr "її не вдалося відкрити: {}"
 
-#: src/ort_backend.rs:157
+#: src/ort_backend.rs:159
 msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
 msgstr "це не ONNX Runtime (немає OrtGetApiBase)"
 
-#: src/ort_backend.rs:162
+#: src/ort_backend.rs:164
 msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
 msgstr "це не ONNX Runtime (OrtGetApiBase нічого не повернула)"
 
-#: src/ort_backend.rs:177
+#: src/ort_backend.rs:180
 msgid "it is ONNX Runtime {version}, older than {oldest}"
 msgstr "це ONNX Runtime {version}, старіша за {oldest}"
 
-#: src/ort_backend.rs:292
+#: src/ort_backend.rs:297
 msgid "{path}: opening it crashed ({error})"
 msgstr "{path}: під час відкриття стався збій ({error})"
 
-#: src/ort_backend.rs:318
+#: src/ort_backend.rs:323
 msgid "loading it crashed ({})"
 msgstr "під час завантаження стався збій ({})"
 
-#: src/ort_backend.rs:323
+#: src/ort_backend.rs:328
 msgid ""
 "ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
 "again."
@@ -430,7 +421,7 @@ msgstr ""
 
 #. Translators: {variable} is an environment variable; "Model →
 #. Runtime" is the Runtime… button in the sidebar's Model section
-#: src/ort_backend.rs:342
+#: src/ort_backend.rs:347
 msgid ""
 "ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
 "the library, or choose it under Model → Runtime. Tried: {tried}"
@@ -440,56 +431,49 @@ msgstr ""
 "«ONNX Runtime…». Перевірено: {tried}"
 
 #. Translators: a library that was loaded, as a note after an error
-#: src/ort_backend.rs:381
+#: src/ort_backend.rs:386
 msgid "loaded {}"
 msgstr "завантажено {}"
 
-#: src/ort_backend.rs:453
+#: src/ort_backend.rs:458
 msgid "building the session took longer than {} s"
 msgstr "створення сеансу тривало довше ніж {} с"
 
-#: src/ort_backend.rs:472
+#: src/ort_backend.rs:477
 msgid "Building CPU session…"
 msgstr "Створення сеансу CPU…"
 
-#: src/ort_backend.rs:473
+#: src/ort_backend.rs:478
 msgid "Building CUDA session…"
 msgstr "Створення сеансу CUDA…"
 
-#: src/ort_backend.rs:483
+#: src/ort_backend.rs:489
 msgid "ONNX Runtime does not see input '{}'"
 msgstr "ONNX Runtime не бачить входу «{}»"
 
-#: src/ort_backend.rs:491
+#: src/ort_backend.rs:498
 msgid "unknown output '{}'"
 msgstr "невідомий вихід «{}»"
 
-#: src/ort_backend.rs:497
+#: src/ort_backend.rs:505
 msgid "ONNX Runtime does not see output '{}'"
 msgstr "ONNX Runtime не бачить виходу «{}»"
 
-#: src/ort_backend.rs:553
+#: src/ort_backend.rs:561
 msgid "Checking the model…"
 msgstr "Перевірка моделі…"
 
-#: src/ort_backend.rs:554
+#: src/ort_backend.rs:562
 msgid "Warming up CUDA…"
 msgstr "Розігрівання CUDA…"
 
-#: src/ort_backend.rs:560
+#: src/ort_backend.rs:568
 msgid "test run failed: {}"
 msgstr "помилка тестового запуску: {}"
 
 #. Translators: the model's output has the wrong size;
 #. {returned} and {expected} are bare numbers of values.
-#: src/ort_backend.rs:569
-#, fuzzy
-#| msgid ""
-#| "the model returned {returned} values for a batch of {n} tile; expected "
-#| "{expected}"
-#| msgid_plural ""
-#| "the model returned {returned} values for a batch of {n} tiles; expected "
-#| "{expected}"
+#: src/ort_backend.rs:578
 msgid ""
 "the model returned the wrong number of values for {n} tile: {returned} "
 "instead of {expected}"
@@ -497,32 +481,32 @@ msgid_plural ""
 "the model returned the wrong number of values for {n} tiles: {returned} "
 "instead of {expected}"
 msgstr[0] ""
-"модель повернула {returned} знач. для пакета з {n} фрагмента; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для {n} фрагмента: {returned} "
+"замість {expected}"
 msgstr[1] ""
-"модель повернула {returned} знач. для пакета з {n} фрагментів; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для {n} фрагментів: "
+"{returned} замість {expected}"
 msgstr[2] ""
-"модель повернула {returned} знач. для пакета з {n} фрагментів; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для {n} фрагментів: "
+"{returned} замість {expected}"
 
-#: src/ort_backend.rs:598
+#: src/ort_backend.rs:607
 msgid "Loading ONNX Runtime…"
 msgstr "Завантаження ONNX Runtime…"
 
-#: src/ort_backend.rs:638
+#: src/ort_backend.rs:646
 msgid "CUDA is unavailable: {}"
 msgstr "CUDA недоступна: {}"
 
-#: src/ort_backend.rs:660
+#: src/ort_backend.rs:667
 msgid "ONNX Runtime: {}"
 msgstr "ONNX Runtime: {}"
 
-#: src/ort_backend.rs:661
+#: src/ort_backend.rs:668
 msgid "ONNX Runtime is loaded with the first model."
 msgstr "ONNX Runtime завантажується разом із першою моделлю."
 
-#: src/ort_backend.rs:821
+#: src/ort_backend.rs:829
 msgid "the model produced no '{}'"
 msgstr "модель не видала «{}»"
 
@@ -533,11 +517,11 @@ msgstr "модель не видала «{}»"
 #: src/pipeline.rs:317
 msgid "the host returned {n} byte for a {tile}×{tile} region"
 msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "eov повернула {n} байт для ділянки {tile}×{tile}"
+msgstr[1] "eov повернула {n} байти для ділянки {tile}×{tile}"
+msgstr[2] "eov повернула {n} байтів для ділянки {tile}×{tile}"
 
-#: src/pipeline.rs:335
+#: src/pipeline.rs:336
 msgid "{n} tile could not be read (level {level}); last error: {error}"
 msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
 msgstr[0] ""
@@ -550,24 +534,18 @@ msgstr[2] ""
 
 #. Translators: why an analysis failed: it ended before every
 #. tile was done ({done} of the {total} tiles were).
-#: src/pipeline.rs:440
+#: src/pipeline.rs:441
 msgid "it stopped before every tile was done ({done} of {total})"
 msgstr ""
+"обробку перервано до завершення всіх фрагментів (оброблено {done} з {total})"
 
-#: src/pipeline.rs:480
+#: src/pipeline.rs:481
 msgid "inference failed: {}"
 msgstr "помилка інференсу: {}"
 
 #. Translators: the model's output has the wrong size; {returned}
 #. and {expected} are bare numbers of values.
-#: src/pipeline.rs:492
-#, fuzzy
-#| msgid ""
-#| "the model returned {returned} values for a batch of {n} tile; expected "
-#| "{expected}"
-#| msgid_plural ""
-#| "the model returned {returned} values for a batch of {n} tiles; expected "
-#| "{expected}"
+#: src/pipeline.rs:494
 msgid ""
 "the model returned the wrong number of values for a batch of {n} tile: "
 "{returned} instead of {expected}"
@@ -575,24 +553,24 @@ msgid_plural ""
 "the model returned the wrong number of values for a batch of {n} tiles: "
 "{returned} instead of {expected}"
 msgstr[0] ""
-"модель повернула {returned} знач. для пакета з {n} фрагмента; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для пакета з {n} фрагмента: "
+"{returned} замість {expected}"
 msgstr[1] ""
-"модель повернула {returned} знач. для пакета з {n} фрагментів; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для пакета з {n} фрагментів: "
+"{returned} замість {expected}"
 msgstr[2] ""
-"модель повернула {returned} знач. для пакета з {n} фрагментів; очікувалося "
-"{expected}"
+"модель повернула неправильну кількість значень для пакета з {n} фрагментів: "
+"{returned} замість {expected}"
 
 #: src/plugin.rs:57
 msgid "VAE reconstruction analysis"
 msgstr "Аналіз реконструкції VAE"
 
-#: src/plugin.rs:61 src/presenter.rs:794
+#: src/plugin.rs:61 src/presenter.rs:796
 msgid "VAE tile grid"
 msgstr "Сітка фрагментів VAE"
 
-#: src/plugin.rs:65 src/presenter.rs:790
+#: src/plugin.rs:65 src/presenter.rs:792
 msgid "VAE overlay"
 msgstr "Накладання VAE"
 
@@ -616,66 +594,66 @@ msgstr "Видимі фрагменти"
 msgid "Automatic analysis"
 msgstr "Автоматичний аналіз"
 
-#: src/plugin.rs:516
+#: src/plugin.rs:518
 msgid "Load an ONNX model first."
 msgstr "Спершу відкрийте модель ONNX."
 
-#: src/plugin.rs:517
+#: src/plugin.rs:519
 msgid "The model is still loading."
 msgstr "Модель ще завантажується."
 
-#: src/plugin.rs:518
+#: src/plugin.rs:520
 msgid "The model could not be loaded: {}"
 msgstr "Не вдалося завантажити модель: {}"
 
-#: src/plugin.rs:519
+#: src/plugin.rs:521
 msgid "Preparing the inference engine…"
 msgstr "Підготовка рушія інференсу…"
 
 #. Translators: eovae is working out which slide file this is (its
 #. content fingerprint), to find its stored results; it does not
 #. identify a patient.
-#: src/plugin.rs:524
+#: src/plugin.rs:526
 msgid "Identifying the slide…"
 msgstr "Ідентифікація препарату…"
 
-#: src/plugin.rs:525
+#: src/plugin.rs:527
 msgid "The slide reports no pyramid levels."
 msgstr "Препарат не повідомляє рівнів піраміди."
 
-#: src/plugin.rs:526
+#: src/plugin.rs:528
 msgid "The slide is not open."
 msgstr "Препарат не відкрито."
 
 #. Translators: eovae is this plugin's name; {} says why, in English
-#: src/plugin.rs:753
+#: src/plugin.rs:755
 msgid "eovae settings were unreadable and were reset ({})"
-msgstr ""
+msgstr "Налаштування eovae не вдалося прочитати, тому їх скинуто ({})"
 
 #. Translators: the title of an error notification; eovae is
 #. this plugin's name
-#: src/plugin.rs:804
-#, fuzzy
-#| msgid "the inference engine failed unexpectedly"
+#: src/plugin.rs:806
 msgid "An eovae worker thread failed unexpectedly"
-msgstr "у рушії інференсу стався неочікуваний збій"
+msgstr "У робочому потоці eovae стався неочікуваний збій"
 
-#: src/plugin.rs:1120
+#: src/plugin.rs:1122
 msgid ""
 "This eov cannot show layers in some panes only: every pane of a slide shows "
 "the same VAE overlay."
 msgstr ""
+"Ця версія eov не може показувати шари лише в деяких областях перегляду: усі "
+"області перегляду препарату показують однакове накладання VAE."
 
-#: src/plugin.rs:1260
+#: src/plugin.rs:1262
 msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
 msgstr ""
 "Відкрийте модель ONNX на бічній панелі VAE, щоб проаналізувати цей препарат."
 
-#: src/plugin.rs:1305
+#: src/plugin.rs:1307
 msgid "VAE analysis"
 msgstr "Аналіз VAE"
 
-#: src/plugin.rs:1351
+#: src/plugin.rs:1353
 msgid ""
 "The ONNX Runtime library is used from the next start of eov if a runtime is "
 "already loaded."
@@ -683,270 +661,238 @@ msgstr ""
 "Якщо середовище виконання вже завантажено, бібліотеку ONNX Runtime буде "
 "використано з наступного запуску eov."
 
-#: src/plugin.rs:1378
+#: src/plugin.rs:1380
 msgid "The VAE result cache was cleared."
 msgstr "Кеш результатів VAE очищено."
 
-#: src/plugin.rs:1382
+#: src/plugin.rs:1384
 msgid "Could not clear the VAE result cache"
 msgstr "Не вдалося очистити кеш результатів VAE"
 
-#: src/plugin.rs:1411
+#: src/plugin.rs:1413
 msgid "the model file could not be read"
 msgstr "не вдалося прочитати файл моделі"
 
-#: src/plugin.rs:1440
+#: src/plugin.rs:1442
 msgid "The VAE model could not be loaded"
 msgstr "Не вдалося завантажити модель VAE"
 
 #. Translators: "Load ONNX…" is the sidebar's button of that name
-#: src/plugin.rs:1496
+#: src/plugin.rs:1498
 msgid "This eov cannot download models: load the model file with Load ONNX…"
 msgstr ""
 "Ця версія eov не може завантажувати моделі: відкрийте файл моделі кнопкою "
 "«Відкрити ONNX…»"
 
-#: src/plugin.rs:1620
+#: src/plugin.rs:1626
 msgid "the inference engine failed unexpectedly"
 msgstr "у рушії інференсу стався неочікуваний збій"
 
-#: src/plugin.rs:1666
+#: src/plugin.rs:1671
 msgid "VAE inference runs on the CPU: {}"
 msgstr "Інференс VAE виконується на CPU: {}"
 
-#: src/plugin.rs:1673
+#: src/plugin.rs:1676
 msgid "The VAE model cannot run"
 msgstr "Модель VAE неможливо запустити"
 
-#: src/plugin.rs:1754
+#: src/plugin.rs:1757
 msgid "Starting…"
 msgstr "Запуск…"
 
-#: src/plugin.rs:1810
+#: src/plugin.rs:1813
 msgid "Preparing the model…"
 msgstr "Підготовка моделі…"
 
-#: src/plugin.rs:1865
+#: src/plugin.rs:1868
 msgid "Draw a region of interest on the slide first."
 msgstr "Спершу намалюйте ділянку інтересу на препараті."
 
-#: src/plugin.rs:1884
+#: src/plugin.rs:1887
 msgid "The slide is not shown in a pane."
 msgstr "Препарат не показано в жодній області перегляду."
 
-#: src/plugin.rs:1939
+#: src/plugin.rs:1942
 msgid "VAE: whole slide"
 msgstr "VAE: увесь препарат"
 
-#: src/plugin.rs:1940
+#: src/plugin.rs:1943
 msgid "VAE: region of interest"
 msgstr "VAE: ділянка інтересу"
 
-#: src/plugin.rs:1941
+#: src/plugin.rs:1944
 msgid "VAE: viewport"
 msgstr "VAE: область перегляду"
 
-#: src/plugin.rs:1951
+#: src/plugin.rs:1954
 msgid "Analysing on {}"
 msgstr "Аналіз на {}"
 
-#: src/plugin.rs:1983
+#: src/plugin.rs:1986
 msgid "internal error while analysing tiles"
 msgstr "внутрішня помилка під час аналізу фрагментів"
 
-#: src/plugin.rs:2031
+#: src/plugin.rs:2034
 msgid "internal error: {}"
 msgstr "внутрішня помилка: {}"
 
-#: src/plugin.rs:2069
+#: src/plugin.rs:2072
 msgid "VAE analysis failed"
 msgstr "Помилка аналізу VAE"
 
-#: src/plugin.rs:2097
+#: src/plugin.rs:2100
 msgid "Nothing to export"
 msgstr "Немає чого експортувати"
 
-#: src/plugin.rs:2156
+#: src/plugin.rs:2159
 msgid "Exported {n} tile to {file}"
 msgid_plural "Exported {n} tiles to {file}"
 msgstr[0] "Експортовано {n} фрагмент у {file}"
 msgstr[1] "Експортовано {n} фрагменти у {file}"
 msgstr[2] "Експортовано {n} фрагментів у {file}"
 
-#: src/plugin.rs:2162
+#: src/plugin.rs:2165
 msgid "The export failed"
 msgstr "Помилка експорту"
 
 #. Translators: eovae is this plugin's name; {} is eov's reason, in English
-#: src/plugin.rs:2180
-#, fuzzy
-#| msgid "The model could not be loaded: {}"
+#: src/plugin.rs:2183
 msgid "eovae settings could not be saved: {}"
-msgstr "Не вдалося завантажити модель: {}"
+msgstr "Не вдалося зберегти налаштування eovae: {}"
 
 #. Translators: a duration in seconds
-#: src/plugin.rs:2232
+#: src/plugin.rs:2235
 msgid "{} s"
 msgstr "{} с"
 
 #. Translators: a duration in minutes and seconds, e.g. "3m 05s"
-#: src/plugin.rs:2235
+#: src/plugin.rs:2238
 msgid "{minutes}m {seconds}s"
 msgstr "{minutes} хв {seconds} с"
 
 #. Translators: a duration in hours and minutes, e.g. "1h 02m"
-#: src/plugin.rs:2241
+#: src/plugin.rs:2244
 msgid "{hours}h {minutes}m"
 msgstr "{hours} год {minutes} хв"
 
-#: src/plugin.rs:2252
+#: src/plugin.rs:2255
 msgid "about {} left"
 msgstr "залишилося приблизно {}"
 
-#: src/plugin.rs:2260
+#: src/plugin.rs:2263
 msgid "{analysed} analysed"
 msgstr "проаналізовано: {analysed}"
 
-#: src/plugin.rs:2262
+#: src/plugin.rs:2265
 msgid "{analysed} analysed, {background} background"
 msgstr "проаналізовано: {analysed}, фон: {background}"
 
-#: src/plugin.rs:2267
+#: src/plugin.rs:2270
 msgid "{analysed} analysed, {unreadable} unreadable"
 msgstr "проаналізовано: {analysed}, нечитабельних: {unreadable}"
 
-#: src/plugin.rs:2272
+#: src/plugin.rs:2275
 msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
 msgstr ""
 "проаналізовано: {analysed}, фон: {background}, нечитабельних: {unreadable}"
 
 #. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
-#: src/plugin.rs:2301
+#: src/plugin.rs:2304
 msgid "{what}: everything was already analysed."
 msgstr "{what}: усе вже проаналізовано."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2305
-#, fuzzy
-#| msgid "{what} finished in {duration}: {counts}."
+#: src/plugin.rs:2308
 msgid "Whole slide finished in {duration}: {counts}."
-msgstr "{what} — завершено за {duration} ({counts})."
+msgstr "Аналіз усього препарату завершено за {duration} ({counts})."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2311
-#, fuzzy
-#| msgid "{what} finished in {duration}: {counts}."
+#: src/plugin.rs:2314
 msgid "Viewport finished in {duration}: {counts}."
-msgstr "{what} — завершено за {duration} ({counts})."
+msgstr "Аналіз області перегляду завершено за {duration} ({counts})."
 
 #. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2317
-#, fuzzy
-#| msgid "{what} finished in {duration}: {counts}."
+#: src/plugin.rs:2320
 msgid "Region of interest finished in {duration}: {counts}."
-msgstr "{what} — завершено за {duration} ({counts})."
+msgstr "Аналіз ділянки інтересу завершено за {duration} ({counts})."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2323
-#, fuzzy
-#| msgid "{what} finished in {duration}: {counts}."
+#: src/plugin.rs:2326
 msgid "Automatic analysis finished in {duration}: {counts}."
-msgstr "{what} — завершено за {duration} ({counts})."
+msgstr "Автоматичний аналіз завершено за {duration} ({counts})."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2329
-#, fuzzy
-#| msgid "{what} cancelled after {duration}: {counts}."
+#: src/plugin.rs:2332
 msgid "Whole slide cancelled after {duration}: {counts}."
-msgstr "{what} — скасовано через {duration} ({counts})."
+msgstr "Аналіз усього препарату скасовано через {duration} ({counts})."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2335
-#, fuzzy
-#| msgid "{what} cancelled after {duration}: {counts}."
+#: src/plugin.rs:2338
 msgid "Viewport cancelled after {duration}: {counts}."
-msgstr "{what} — скасовано через {duration} ({counts})."
+msgstr "Аналіз області перегляду скасовано через {duration} ({counts})."
 
 #. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2341
-#, fuzzy
-#| msgid "{what} cancelled after {duration}: {counts}."
+#: src/plugin.rs:2344
 msgid "Region of interest cancelled after {duration}: {counts}."
-msgstr "{what} — скасовано через {duration} ({counts})."
+msgstr "Аналіз ділянки інтересу скасовано через {duration} ({counts})."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2347
-#, fuzzy
-#| msgid "{what} cancelled after {duration}: {counts}."
+#: src/plugin.rs:2350
 msgid "Automatic analysis cancelled after {duration}: {counts}."
-msgstr "{what} — скасовано через {duration} ({counts})."
+msgstr "Автоматичний аналіз скасовано через {duration} ({counts})."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2353
-#, fuzzy
-#| msgid "{what} failed ({counts}): {error}"
+#: src/plugin.rs:2356
 msgid "Whole slide failed ({counts}): {error}"
-msgstr "{what} — помилка ({counts}): {error}"
+msgstr "Помилка аналізу всього препарату ({counts}): {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2357
-#, fuzzy
-#| msgid "{what} failed ({counts}): {error}"
+#: src/plugin.rs:2360
 msgid "Viewport failed ({counts}): {error}"
-msgstr "{what} — помилка ({counts}): {error}"
+msgstr "Помилка аналізу області перегляду ({counts}): {error}"
 
 #. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2362
-#, fuzzy
-#| msgid "{what} failed ({counts}): {error}"
+#: src/plugin.rs:2365
 msgid "Region of interest failed ({counts}): {error}"
-msgstr "{what} — помилка ({counts}): {error}"
+msgstr "Помилка аналізу ділянки інтересу ({counts}): {error}"
 
 #. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2370
-#, fuzzy
-#| msgid "{what} failed ({counts}): {error}"
+#: src/plugin.rs:2373
 msgid "Automatic analysis failed ({counts}): {error}"
-msgstr "{what} — помилка ({counts}): {error}"
+msgstr "Помилка автоматичного аналізу ({counts}): {error}"
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
-#: src/plugin.rs:2377
-#, fuzzy
-#| msgid "{what} failed: {error}"
+#: src/plugin.rs:2380
 msgid "Whole slide failed: {error}"
-msgstr "{what} — помилка: {error}"
+msgstr "Помилка аналізу всього препарату: {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
-#: src/plugin.rs:2381
-#, fuzzy
-#| msgid "{what} failed: {error}"
+#: src/plugin.rs:2384
 msgid "Viewport failed: {error}"
-msgstr "{what} — помилка: {error}"
+msgstr "Помилка аналізу області перегляду: {error}"
 
 #. Translators: the analysis of the region of interest failed; {error}: why
-#: src/plugin.rs:2385
-#, fuzzy
-#| msgid "Region of interest"
+#: src/plugin.rs:2388
 msgid "Region of interest failed: {error}"
-msgstr "Ділянка інтересу"
+msgstr "Помилка аналізу ділянки інтересу: {error}"
 
 #. Translators: {error}: why
-#: src/plugin.rs:2389
-#, fuzzy
-#| msgid "Automatic analysis"
+#: src/plugin.rs:2392
 msgid "Automatic analysis failed: {error}"
-msgstr "Автоматичний аналіз"
+msgstr "Помилка автоматичного аналізу: {error}"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave an image of another size than asked for, in
 #. pixels.
-#: src/plugin.rs:2417
+#: src/plugin.rs:2422
 msgid ""
 "the host returned {width}×{height} for a {asked_width}×{asked_height} region"
 msgstr ""
+"eov повернула зображення {width}×{height} для ділянки {asked_width}"
+"×{asked_height}"
 
 #. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
-#: src/plugin.rs:2493
+#: src/plugin.rs:2498
 msgid "{done} of {n} tile"
 msgid_plural "{done} of {n} tiles"
 msgstr[0] "{done} з {n} фрагмента"
@@ -954,7 +900,7 @@ msgstr[1] "{done} з {n} фрагментів"
 msgstr[2] "{done} з {n} фрагментів"
 
 #. Translators: {eta} is the time left, e.g. "about 2m 05s left"
-#: src/plugin.rs:2499
+#: src/plugin.rs:2504
 msgid "{done} of {n} tile, {eta}"
 msgid_plural "{done} of {n} tiles, {eta}"
 msgstr[0] "{done} з {n} фрагмента, {eta}"
@@ -969,19 +915,44 @@ msgstr[0] "VAE {done} / {n} фрагмент"
 msgstr[1] "VAE {done} / {n} фрагменти"
 msgstr[2] "VAE {done} / {n} фрагментів"
 
-#. Translators: the status bar: how the inference engine is being prepared
-#: src/presenter.rs:385 src/presenter.rs:387
+#. Translators: the status bar: what the analysis is doing, or how
+#. the inference engine is being prepared
+#: src/presenter.rs:386 src/presenter.rs:389
 msgid "VAE: {}"
 msgstr "VAE: {}"
 
-#: src/presenter.rs:781
+#: src/presenter.rs:783
 msgid "VAE error map"
 msgstr "Карта похибок VAE"
 
 #. Translators: the outline of the region under the pointer
-#: src/presenter.rs:786
+#: src/presenter.rs:788
 msgid "VAE highlight"
 msgstr "Підсвічування VAE"
+
+#. Translators: the overlay that shows the slide as it is
+#: src/render.rs:59 ui/eovae-sidebar.slint:775
+msgctxt "Overlay"
+msgid "Original"
+msgstr "Оригінал"
+
+#. Translators: the overlay that shows the model's reconstruction
+#: src/render.rs:61 ui/eovae-sidebar.slint:776
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "Реконструкція"
+
+#. Translators: the overlay that shows a heat map of tile errors
+#: src/render.rs:63 ui/eovae-sidebar.slint:777
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "Карта похибок"
+
+#. Translators: the overlay that shows per-pixel differences
+#: src/render.rs:65 ui/eovae-sidebar.slint:778
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "Різниця"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for
@@ -990,19 +961,19 @@ msgstr "Підсвічування VAE"
 msgid "the host returned {n} byte for rows of a {width}×{height} region"
 msgid_plural ""
 "the host returned {n} bytes for rows of a {width}×{height} region"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "eov повернула {n} байт для рядків ділянки {width}×{height}"
+msgstr[1] "eov повернула {n} байти для рядків ділянки {width}×{height}"
+msgstr[2] "eov повернула {n} байтів для рядків ділянки {width}×{height}"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for a
 #. region of {width} × {height} pixels.
-#: src/resample.rs:216
+#: src/resample.rs:217
 msgid "the host returned {n} byte for a {width}×{height} region"
 msgid_plural "the host returned {n} bytes for a {width}×{height} region"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "eov повернула {n} байт для ділянки {width}×{height}"
+msgstr[1] "eov повернула {n} байти для ділянки {width}×{height}"
+msgstr[2] "eov повернула {n} байтів для ділянки {width}×{height}"
 
 #. Translators: Original and Reconstruction are overlays (the Overlay menu)
 #: src/sidebar.rs:35
@@ -1047,6 +1018,12 @@ msgstr ""
 msgid "{} normalisation"
 msgstr "нормалізація за методом {}"
 
+#. Translators: ImageNet's mean and standard deviation (std) per channel
+#: src/sidebar.rs:109 ui/eovae-sidebar.slint:738
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "mean/std ImageNet"
+
 #: src/sidebar.rs:163
 msgid "Download the reference model"
 msgstr "Завантажити еталонну модель"
@@ -1071,12 +1048,11 @@ msgstr "Модель вашої установи (SHA-256 {}…)"
 #. Translators: eov first asks the user whether to download the model
 #. (nothing is downloaded without that answer), then downloads it.
 #: src/sidebar.rs:182
-#, fuzzy
-#| msgid "eov is asking you, or downloading it (see the status bar)…"
 msgid ""
 "eov is asking you whether to download the model, or downloading it (see the "
 "status bar)…"
-msgstr "eov запитує вас або завантажує модель (див. рядок стану)…"
+msgstr ""
+"eov запитує вас, чи завантажити модель, або завантажує її (див. рядок стану)…"
 
 #. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
 #: src/sidebar.rs:188
@@ -1098,50 +1074,50 @@ msgstr ""
 "адміністратор не передав її eov."
 
 #. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
-#: src/sidebar.rs:260
+#: src/sidebar.rs:268
 msgid "Changed by you (model declares: {})"
 msgstr "Змінено вами (модель оголошує: {})"
 
-#: src/sidebar.rs:263
+#: src/sidebar.rs:271
 msgid "From HistoVAE defaults"
 msgstr "З типових значень HistoVAE"
 
-#: src/sidebar.rs:264
+#: src/sidebar.rs:272
 msgid "From built-in model card"
 msgstr "З вбудованої картки моделі"
 
-#: src/sidebar.rs:265
+#: src/sidebar.rs:273
 msgid "From model metadata"
 msgstr "З метаданих моделі"
 
 #. Translators: the sidecar is the model's <model>.eovae.json file
-#: src/sidebar.rs:267
+#: src/sidebar.rs:275
 msgid "From sidecar file"
 msgstr "Із супровідного файлу"
 
-#: src/sidebar.rs:289
+#: src/sidebar.rs:297
 msgid "No model loaded."
 msgstr "Модель не завантажено."
 
-#: src/sidebar.rs:295
+#: src/sidebar.rs:303
 msgid "Reading and hashing the model…"
 msgstr "Читання й хешування моделі…"
 
-#: src/sidebar.rs:348
+#: src/sidebar.rs:358
 msgid "CUDA unavailable: {}"
 msgstr "CUDA недоступна: {}"
 
 #. Translators: the model's fixed batch size (tiles per inference run)
-#: src/sidebar.rs:374
+#: src/sidebar.rs:384
 msgid "batch {}"
 msgstr "пакет {}"
 
 #. Translators: the model takes any number of tiles per inference run
-#: src/sidebar.rs:376
+#: src/sidebar.rs:386
 msgid "dynamic batch"
 msgstr "динамічний пакет"
 
-#: src/sidebar.rs:423
+#: src/sidebar.rs:433
 msgid "Embeddings from '{name}' ({n} value) are stored with results."
 msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
 msgstr[0] ""
@@ -1152,45 +1128,41 @@ msgstr[2] ""
 "Ембединги з «{name}» ({n} значень) зберігаються разом із результатами."
 
 #. Translators: the Threads field's hint: keep "auto", the word typed there
-#: src/sidebar.rs:503
+#: src/sidebar.rs:513
 msgid "1–{}, or auto"
 msgstr "1–{} або auto"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:527
+#: src/sidebar.rs:537
 msgid "Auto: the model's {mpp}, resampled from level {level}"
 msgstr "Авто: {mpp} моделі, передискретизовано з рівня {level}"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:533
+#: src/sidebar.rs:543
 msgid "Auto: the model's {mpp} = level {level}"
 msgstr "Авто: {mpp} моделі = рівень {level}"
 
 #. Translators: a resolution choice
-#: src/sidebar.rs:538
+#: src/sidebar.rs:548
 msgid "Auto (level 0)"
 msgstr "Авто (рівень 0)"
 
 #. Translators: a level of the slide's pyramid, in the resolution choices
-#: src/sidebar.rs:548
+#: src/sidebar.rs:558
 msgid "Level {}"
 msgstr "Рівень {}"
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:574
-#, fuzzy
-#| msgid ""
-#| "The slide's finest level is {level}, coarser than the model's {model}: "
-#| "tiles are interpolated and errors will be inflated."
+#: src/sidebar.rs:589
 msgid ""
 "The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
 "are interpolated and errors will be inflated."
 msgstr ""
-"Найдетальніший рівень препарату — {level}, це грубіше за {model} моделі: "
-"фрагменти інтерполюються, і похибки будуть завищені."
+"Роздільна здатність найдетальнішого рівня препарату — {mpp}, нижча, ніж у "
+"моделі ({model}): фрагменти інтерполюються, тож похибки будуть завищені."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:583
+#: src/sidebar.rs:598
 msgid ""
 "Level {level} is {mpp} but the model was trained at {model}; errors will be "
 "inflated."
@@ -1199,7 +1171,7 @@ msgstr ""
 "завищені."
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:593
+#: src/sidebar.rs:608
 msgid ""
 "Tiles are read from level {level} ({mpp}) and resampled to the model's "
 "{model}."
@@ -1208,24 +1180,29 @@ msgstr ""
 "моделі."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:604
+#: src/sidebar.rs:619
 msgid "Level {level} at {mpp} (model {model})."
 msgstr "Рівень {level}: {mpp} (модель {model})."
 
 #. Translators: {mpp} is a resolution like "0.23 µm/px"
-#: src/sidebar.rs:611
+#: src/sidebar.rs:626
 msgid "Level {level} at {mpp}."
 msgstr "Рівень {level}: {mpp}."
 
-#: src/sidebar.rs:616
+#: src/sidebar.rs:631
 msgid "Level {} (the slide is not calibrated)."
 msgstr "Рівень {} (препарат не відкалібровано)."
 
-#: src/sidebar.rs:629 src/sidebar.rs:886
+#: src/sidebar.rs:642 ui/eovae-sidebar.slint:749
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "Авто"
+
+#: src/sidebar.rs:644 src/sidebar.rs:901
 msgid "Open a slide."
 msgstr "Відкрийте препарат."
 
-#: src/sidebar.rs:651
+#: src/sidebar.rs:666
 msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
 msgid_plural ""
 "{done} of {n} tiles · {background} background · {unreadable} unreadable"
@@ -1237,7 +1214,7 @@ msgstr[2] ""
 "{done} з {n} фрагментів · фон: {background} · нечитабельних: {unreadable}"
 
 #. Translators: Viewport and Whole slide are the buttons of the same names
-#: src/sidebar.rs:699
+#: src/sidebar.rs:714
 msgid ""
 "Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
 "Whole slide."
@@ -1254,7 +1231,7 @@ msgstr[2] ""
 "Наблизьте, щоб аналізувати автоматично (видно {n} фрагментів), або запустіть "
 "«Область перегляду» чи «Увесь препарат»."
 
-#: src/sidebar.rs:748
+#: src/sidebar.rs:763
 msgid ""
 "{n} tissue tile scored, {background} background, {unreadable} unreadable — "
 "{percent} % of the {total} tiles at level {level}."
@@ -1272,13 +1249,13 @@ msgstr[2] ""
 "{unreadable} — {percent} % від усіх фрагментів рівня {level} ({total})."
 
 #. Translators: MAE is the mean absolute error; p95 the 95th percentile
-#: src/sidebar.rs:768
+#: src/sidebar.rs:783
 msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
 msgstr ""
 "MAE фрагментів: середнє {mean} · медіана {median} · p95 {p95} · макс. {max}"
 
 #. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
-#: src/sidebar.rs:788
+#: src/sidebar.rs:803
 msgid "{lo}–{hi}: {n} tile"
 msgid_plural "{lo}–{hi}: {n} tiles"
 msgstr[0] "{lo}–{hi}: {n} фрагмент"
@@ -1286,65 +1263,65 @@ msgstr[1] "{lo}–{hi}: {n} фрагменти"
 msgstr[2] "{lo}–{hi}: {n} фрагментів"
 
 #. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
-#: src/sidebar.rs:845
+#: src/sidebar.rs:860
 msgid "MAE {mae} · max {max}"
 msgstr "MAE {mae} · макс. {max}"
 
 #. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
-#: src/sidebar.rs:859
+#: src/sidebar.rs:874
 msgid "Tile MAE (p05–p95)"
 msgstr "MAE фрагмента (p05–p95)"
 
-#: src/sidebar.rs:866
+#: src/sidebar.rs:881
 msgid "Pixel error"
 msgstr "Похибка пікселів"
 
-#: src/sidebar.rs:885
+#: src/sidebar.rs:900
 msgid "Nothing analysed on this slide with these settings yet."
 msgstr "На цьому препараті з цими параметрами ще нічого не проаналізовано."
 
 #. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
-#: src/sidebar.rs:913
+#: src/sidebar.rs:928
 msgid "{used} of {budget} on disk · {n} run"
 msgid_plural "{used} of {budget} on disk · {n} runs"
 msgstr[0] "{used} з {budget} на диску · {n} запуск"
 msgstr[1] "{used} з {budget} на диску · {n} запуски"
 msgstr[2] "{used} з {budget} на диску · {n} запусків"
 
-#: src/sidebar.rs:919
+#: src/sidebar.rs:934
 msgid "Disk cache disabled"
 msgstr "Дисковий кеш вимкнено"
 
-#: src/sidebar.rs:927
+#: src/sidebar.rs:942
 msgid "Tile pixels in memory: {used} of {limit}"
 msgstr "Пікселі фрагментів у пам’яті: {used} з {limit}"
 
-#: src/sidebar.rs:995
+#: src/sidebar.rs:1010
 msgid "Open an ONNX model"
 msgstr "Відкриття моделі ONNX"
 
-#: src/sidebar.rs:997
+#: src/sidebar.rs:1012
 msgid "ONNX models"
 msgstr "Моделі ONNX"
 
-#: src/sidebar.rs:1024
+#: src/sidebar.rs:1039
 msgid "Choose the ONNX Runtime library"
 msgstr "Вибір бібліотеки ONNX Runtime"
 
-#: src/sidebar.rs:1272
+#: src/sidebar.rs:1287
 msgid "Open a slide first."
 msgstr "Спершу відкрийте препарат."
 
-#: src/sidebar.rs:1366
+#: src/sidebar.rs:1381
 msgid "Export tile scores"
 msgstr "Експорт оцінок фрагментів"
 
-#: src/sidebar.rs:1383
+#: src/sidebar.rs:1398
 msgid "Clear the VAE result cache?"
 msgstr "Очистити кеш результатів VAE?"
 
 #. Translators: {} is a size, e.g. "120 MB"
-#: src/sidebar.rs:1386
+#: src/sidebar.rs:1401
 msgid ""
 "This deletes {} of stored results for every slide. Results are recomputed "
 "when needed."
@@ -1352,100 +1329,64 @@ msgstr ""
 "Буде видалено {} збережених результатів для всіх препаратів. За потреби "
 "результати буде обчислено заново."
 
-#: src/sidebar.rs:1389
+#: src/sidebar.rs:1404
 msgid "Clear"
 msgstr "Очистити"
 
-#: src/sidebar.rs:1390
+#: src/sidebar.rs:1405
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: ui/eovae-sidebar.slint:201
+#: ui/eovae-sidebar.slint:718
 msgctxt "EovaeSidebar"
 msgid "No model loaded."
 msgstr "Модель не завантажено."
 
-#: ui/eovae-sidebar.slint:221
-msgctxt "Preprocessing"
-msgid "ImageNet mean/std"
-msgstr "mean/std ImageNet"
-
-#. Translators: inference device: CUDA when it works, else the CPU
-#: ui/eovae-sidebar.slint:230
-msgctxt "Device"
-msgid "Auto"
-msgstr "Авто"
-
-#: ui/eovae-sidebar.slint:232
-msgctxt "Resolution"
-msgid "Auto"
-msgstr "Авто"
-
-#: ui/eovae-sidebar.slint:258
-msgctxt "Overlay"
-msgid "Original"
-msgstr "Оригінал"
-
-#: ui/eovae-sidebar.slint:259
-msgctxt "Overlay"
-msgid "Reconstruction"
-msgstr "Реконструкція"
-
-#: ui/eovae-sidebar.slint:260
-msgctxt "Overlay"
-msgid "Error map"
-msgstr "Карта похибок"
-
-#: ui/eovae-sidebar.slint:261
-msgctxt "Overlay"
-msgid "Difference"
-msgstr "Різниця"
-
 #. Translators: the sidebar's section about the ONNX model
-#: ui/eovae-sidebar.slint:333
+#: ui/eovae-sidebar.slint:870
 msgctxt "EovaeSidebar"
 msgid "Model"
 msgstr "Модель"
 
-#: ui/eovae-sidebar.slint:347
+#: ui/eovae-sidebar.slint:884
 msgctxt "EovaeSidebar"
 msgid "No model"
 msgstr "Немає моделі"
 
 #. Translators: {} is the inference device, e.g. CPU · 8 threads
-#: ui/eovae-sidebar.slint:362
+#: ui/eovae-sidebar.slint:899
 msgctxt "EovaeSidebar"
 msgid "Running on {}"
 msgstr "Виконується на {}"
 
-#: ui/eovae-sidebar.slint:369
+#: ui/eovae-sidebar.slint:914
 msgctxt "EovaeSidebar"
 msgid "Load ONNX…"
 msgstr "Відкрити ONNX…"
 
 #. Translators: unloads the model
-#: ui/eovae-sidebar.slint:378
+#: ui/eovae-sidebar.slint:926
 msgctxt "EovaeSidebar"
 msgid "Clear"
 msgstr "Очистити"
 
 #. Translators: chooses the ONNX Runtime library
-#: ui/eovae-sidebar.slint:385
+#: ui/eovae-sidebar.slint:936
 msgctxt "EovaeSidebar"
 msgid "Runtime…"
 msgstr "ONNX Runtime…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Address…"
 msgstr "Адреса…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Hide address"
 msgstr "Сховати адресу"
 
-#: ui/eovae-sidebar.slint:423
+#: ui/eovae-sidebar.slint:990
 msgctxt "EovaeSidebar"
 msgid ""
 "Your site's copy of the model (the .onnx file; the reference model's .onnx."
@@ -1454,7 +1395,7 @@ msgstr ""
 "Копія моделі вашої установи (файл .onnx; файл .onnx.data еталонної моделі "
 "береться з тієї самої папки):"
 
-#: ui/eovae-sidebar.slint:438
+#: ui/eovae-sidebar.slint:1005
 msgctxt "EovaeSidebar"
 msgid ""
 "SHA-256 of your own model at that address (empty: the reference model, "
@@ -1463,170 +1404,167 @@ msgstr ""
 "SHA-256 вашої власної моделі за цією адресою (порожньо — еталонна модель, "
 "яку перевіряють за SHA-256, відомим eovae):"
 
-#: ui/eovae-sidebar.slint:443
+#: ui/eovae-sidebar.slint:1010
 msgctxt "EovaeSidebar"
 msgid "64 hex digits"
 msgstr "64 шістнадцяткові цифри"
 
 #. Translators: {} is the model's input: name · type · shape
-#: ui/eovae-sidebar.slint:458
+#: ui/eovae-sidebar.slint:1025
 msgctxt "EovaeSidebar"
 msgid "Input: {}"
 msgstr "Вхід: {}"
 
 #. Translators: the model's output the sidebar reads
-#: ui/eovae-sidebar.slint:462
+#: ui/eovae-sidebar.slint:1029
 msgctxt "EovaeSidebar"
 msgid "Output"
 msgstr "Вихід"
 
-#: ui/eovae-sidebar.slint:484
+#: ui/eovae-sidebar.slint:1048
 msgctxt "EovaeSidebar"
 msgid "Preprocessing"
 msgstr "Попередня обробка"
 
-#: ui/eovae-sidebar.slint:494
+#: ui/eovae-sidebar.slint:1059
 msgctxt "EovaeSidebar"
 msgid "Input range"
 msgstr "Діапазон входу"
 
-#: ui/eovae-sidebar.slint:506
+#: ui/eovae-sidebar.slint:1068
 msgctxt "EovaeSidebar"
 msgid "Output range"
 msgstr "Діапазон виходу"
 
-#: ui/eovae-sidebar.slint:518
+#: ui/eovae-sidebar.slint:1077
 msgctxt "EovaeSidebar"
 msgid "Composite transparency onto white"
 msgstr "Накладати прозорість на білий фон"
 
-#: ui/eovae-sidebar.slint:524
+#: ui/eovae-sidebar.slint:1083
 msgctxt "EovaeSidebar"
 msgid "Turn near-black pixels white"
 msgstr "Робити майже чорні пікселі білими"
 
-#: ui/eovae-sidebar.slint:532
+#: ui/eovae-sidebar.slint:1093
 msgctxt "EovaeSidebar"
 msgid "Use the model's preprocessing"
 msgstr "Використовувати попередню обробку моделі"
 
-#: ui/eovae-sidebar.slint:544
+#: ui/eovae-sidebar.slint:1104
 msgctxt "EovaeSidebar"
 msgid "Analysis"
 msgstr "Аналіз"
 
 #. Translators: the inference device (CPU or CUDA)
-#: ui/eovae-sidebar.slint:559
+#: ui/eovae-sidebar.slint:1119
 msgctxt "EovaeSidebar"
 msgid "Device"
 msgstr "Пристрій"
 
 #. Translators: the pyramid level tiles are read from
-#: ui/eovae-sidebar.slint:572
+#: ui/eovae-sidebar.slint:1129
 msgctxt "EovaeSidebar"
 msgid "Resolution"
 msgstr "Роздільна здатність"
 
 #. Translators: CPU inference threads
-#: ui/eovae-sidebar.slint:590
+#: ui/eovae-sidebar.slint:1144
 msgctxt "EovaeSidebar"
 msgid "Threads"
 msgstr "Потоки"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch"
 msgstr "Пакет"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch (model)"
 msgstr "Пакет (модель)"
 
 #. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
 #. (CUDA); the computed errors change slightly.
-#: ui/eovae-sidebar.slint:622
-#, fuzzy
-#| msgctxt "EovaeSidebar"
-#| msgid "Allow TF32 on CUDA (faster)"
+#: ui/eovae-sidebar.slint:1176
 msgctxt "EovaeSidebar"
 msgid "Allow TF32 on CUDA (faster, less precise)"
-msgstr "Дозволити TF32 на CUDA (швидше)"
+msgstr "Дозволити TF32 на CUDA (швидше, менш точно)"
 
-#: ui/eovae-sidebar.slint:628
+#: ui/eovae-sidebar.slint:1182
 msgctxt "EovaeSidebar"
 msgid "Skip background tiles"
 msgstr "Пропускати фонові фрагменти"
 
-#: ui/eovae-sidebar.slint:634
+#: ui/eovae-sidebar.slint:1188
 msgctxt "EovaeSidebar"
 msgid "Analyse visible tiles automatically"
 msgstr "Автоматично аналізувати видимі фрагменти"
 
 #. Translators: analyses the visible part of the slide
-#: ui/eovae-sidebar.slint:645
+#: ui/eovae-sidebar.slint:1207
 msgctxt "EovaeSidebar"
 msgid "Viewport"
 msgstr "Область перегляду"
 
 #. Translators: analyses the region of interest drawn on the slide
-#: ui/eovae-sidebar.slint:655
+#: ui/eovae-sidebar.slint:1219
 msgctxt "EovaeSidebar"
 msgid "ROI"
 msgstr "ROI"
 
-#: ui/eovae-sidebar.slint:664
+#: ui/eovae-sidebar.slint:1230
 msgctxt "EovaeSidebar"
 msgid "Whole slide"
 msgstr "Увесь препарат"
 
 #. Translators: stops the running analysis
-#: ui/eovae-sidebar.slint:674
+#: ui/eovae-sidebar.slint:1242
 msgctxt "EovaeSidebar"
 msgid "Cancel"
 msgstr "Скасувати"
 
-#: ui/eovae-sidebar.slint:722
+#: ui/eovae-sidebar.slint:1291
 msgctxt "EovaeSidebar"
 msgid "Results"
 msgstr "Результати"
 
 #. Translators: what the overlay shows: Original, Reconstruction, …
-#: ui/eovae-sidebar.slint:737
+#: ui/eovae-sidebar.slint:1306
 msgctxt "EovaeSidebar"
 msgid "Overlay"
 msgstr "Накладання"
 
-#: ui/eovae-sidebar.slint:824
+#: ui/eovae-sidebar.slint:1390
 msgctxt "EovaeSidebar"
 msgid "Highest-error regions"
 msgstr "Ділянки з найбільшою похибкою"
 
-#: ui/eovae-sidebar.slint:840
+#: ui/eovae-sidebar.slint:1409
 msgctxt "EovaeSidebar"
 msgid "Export CSV…"
 msgstr "Експортувати CSV…"
 
 #. Translators: the intended use: keep its meaning exactly
-#: ui/eovae-sidebar.slint:848
+#: ui/eovae-sidebar.slint:1416
 msgctxt "EovaeSidebar"
 msgid "Research use only; not for diagnosis."
 msgstr "Лише для наукових досліджень; не призначено для діагностики."
 
 #. Translators: the section about eovae's stored results
-#: ui/eovae-sidebar.slint:856
+#: ui/eovae-sidebar.slint:1424
 msgctxt "EovaeSidebar"
 msgid "Cache"
 msgstr "Кеш"
 
-#: ui/eovae-sidebar.slint:874
+#: ui/eovae-sidebar.slint:1442
 msgctxt "EovaeSidebar"
 msgid "Keep reconstructions on disk (large)"
 msgstr "Зберігати реконструкції на диску (великий обсяг)"
 
-#: ui/eovae-sidebar.slint:883
+#: ui/eovae-sidebar.slint:1453
 msgctxt "EovaeSidebar"
 msgid "Clear cache…"
 msgstr "Очистити кеш…"

@@ -8,7 +8,7 @@
 //! eov's own in one process, so they are not shown.
 
 use crate::overlay::store::OwnerUsage;
-use eov_plugin_api::i18n::{self, format_decimal, tr};
+use eov_plugin_api::i18n::{self, format_decimal, isolate, tr};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -125,10 +125,12 @@ impl UsageSnapshot {
             } else {
                 100.0 * self.event_time.as_secs_f64() / self.running_for.as_secs_f64()
             };
+            // Values are isolated (in right-to-left languages only), so that
+            // "708 µs" or "<0.1 %" keeps its order inside the sentence.
             let (time, events, share) = (
-                duration(self.event_time),
-                count(self.events),
-                percent(share),
+                isolate(duration(self.event_time)),
+                isolate(count(self.events)),
+                isolate(percent(share)),
             );
             let slowest = self
                 .slowest_event
@@ -146,8 +148,8 @@ impl UsageSnapshot {
                     time = time,
                     count = events,
                     share = share,
-                    slowest = duration(*slowest),
-                    event = event
+                    slowest = isolate(duration(*slowest)),
+                    event = isolate(event)
                 ),
                 // Translators: the time a plugin's handlers took on the UI
                 // thread, how many events they handled, and that time's
@@ -165,22 +167,25 @@ impl UsageSnapshot {
             parts.push(tr!(
                 "filters {time} over {count} frame"
                     | "filters {time} over {count} frames" % self.filter_calls,
-                time = duration(self.filter_time),
-                count = count(self.filter_calls)
+                time = isolate(duration(self.filter_time)),
+                count = isolate(count(self.filter_calls))
             ));
         }
         if self.region_reads > 0 {
-            parts.push(tr!("read {} of slide pixels", bytes(self.region_bytes)));
+            parts.push(tr!(
+                "read {} of slide pixels",
+                isolate(bytes(self.region_bytes))
+            ));
         }
         if overlays.objects > 0 || overlays.rasters > 0 {
             // Translators: inserted into "{count} objects in {layers}".
             let layers = tr!(
                 "Plugin usage" => "{count} layer" | "{count} layers" % overlays.layers,
-                count = count(overlays.layers as u64)
+                count = isolate(count(overlays.layers as u64))
             );
             let objects = tr!(
                 "{count} object in {layers}" | "{count} objects in {layers}" % overlays.objects,
-                count = count(overlays.objects as u64),
+                count = isolate(count(overlays.objects as u64)),
                 layers = layers
             );
             parts.push(if overlays.raster_bytes > 0 {
@@ -189,7 +194,7 @@ impl UsageSnapshot {
                 tr!(
                     "{objects}, {bytes} of rasters",
                     objects = objects,
-                    bytes = bytes(overlays.raster_bytes)
+                    bytes = isolate(bytes(overlays.raster_bytes))
                 )
             } else {
                 objects

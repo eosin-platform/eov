@@ -239,11 +239,12 @@ freehand outline	kontur odręczny
 perimeter	obwód	
 Feret diameter, min caliper	maks. / min. średnica (Fereta)	
 combined positive score (CPS)	złożony wskaźnik pozytywności (CPS)	PD-L1 scoring; immune cells: „komórki immunologiczne”.
-region readout (Cellaris)	odczyt obszaru	Tool name „Odczyt obszaru Cellaris”.
+readout, region readout (Cellaris)	statystyki; statystyki obszaru	Statistics (mean, spread, density r²) computed from a model's predicted values, not a measurement: never „odczyt” (a reading), „pomiar” or „wynik pomiaru”. Tool name „Statystyki obszaru Cellaris”, heading „STATYSTYKI OBSZARU”, layer „Cellaris — obszar statystyk”; „Obliczyć statystyki dużego obszaru?”, „obliczanie statystyk obszaru”.
+compute (predictions, a readout)	obliczyć; obliczanie	„Obliczanie: {done} z {n} pól”, „Nie udało się obliczyć części preparatu”; never „mierzyć” / „zmierzyć”.
 window (model input)	okno; okno predykcji	A square image the model predicts from: „{n} okien”.
 cell (Cellaris grid cell)	pole	A square of the slide predicted at once, not a biological cell: „{done} z {n} pól”.
 tissue block (5 µm square)	kwadrat tkanki	Not „blok”/„bloczek” (a paraffin block).
-display window (of a predicted marker)	okno wyświetlania	Ends: „Czerń” / „Biel”.
+display window (of a predicted marker)	okno wyświetlania	Ends: „Dolna granica” / „Górna granica” (see Low / High).
 spread (readout column)	rozrzut	Columns: „marker”, „średnia”, „rozrzut”, „r² gęstości”.
 bright-field	jasne pole	„obraz w jasnym polu”.
 reconstruction error	błąd rekonstrukcji	eovae; error map „mapa błędu”; MAE stays MAE.
@@ -262,3 +263,9 @@ On / Off (small switch)	Wł. / Wył.
 Not now	Nie teraz	
 Bring them in (import old annotations)	Zaimportuj	
 Back up…	Kopia zapasowa…	„Utwórz kopię zapasową bazy danych…”.
+<vendor> whole-slide image (file type)	Obraz całego preparatu <producent>	File-manager type names: „Obraz całego preparatu Hamamatsu NDPI”, „Obraz BigTIFF”.
+desktop (viewer, app)	na komputery	AppStream: „Szybka przeglądarka obrazów całych preparatów na komputery”. Not „desktopowa”.
+worker thread	wątek roboczy	„Nie udało się uruchomić wątku roboczego”; „Wątek roboczy eovae nieoczekiwanie uległ awarii”.
+host (eov, in plugin messages)	program eov	„program eov zwrócił {n} bajtów dla obszaru …”; not „host”.
+confirmation dialog title (Delete layer, Clear counts)	Usuwanie warstwy, Czyszczenie zliczeń	Imperfective verbal noun, as Windows („Dołączanie adnotacji”); undo labels keep the perfective form („Usunięcie warstwy”).
+Low / High (ends of a Cellaris marker's display window)	Dolna granica / Górna granica	Labels next to the sliders; replace the former „Czerń” / „Biel” (English Black / White).

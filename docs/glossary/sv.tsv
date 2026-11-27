@@ -217,7 +217,7 @@ Slide Information (panel)	Preparatinformation	Also the shortcut "Slide informati
 Check (button)	Sök	Confirms an update check: Söka efter uppdateringar för eov? → Sök.
 question titles (Update eov to {}?)	Uppdatera eov till {}?; Söka efter uppdateringar …?	Imperative/infinitive question as in Swedish dialogs; no "Vill du" except in body text.
 plugin update status	uppdaterat, förberett för installation, överhoppat, misslyckat	Neuter participles agreeing with tillägg ({plugin}: {status}).
-plugin origin	officiellt, github ({}), lokalt, ohanterat, system	Neuter, agreeing with tillägg.
+plugin origin	officiellt, GitHub ({}), lokalt, ohanterat, system	Neuter, agreeing with tillägg.
 plugin status (Active, Disabled)	Aktivt, Inaktiverat	
 rolled back (update)	rullades tillbaka	Not "återställdes" (ambiguous with restored).
 staging directory	mellanlagringskatalog	
@@ -254,11 +254,11 @@ text label (annotation)	textetikett	Not the slide's paper label (etikett) in thi
 DICOM bulk annotations	DICOM-bulkannoteringar	Microscopy Bulk Simple Annotations, modality ANN and other DICOM names stay in English.
 DICOM study	undersökning	Swedish PACS usage; patient and study attributes = patient- och undersökningsattribut; series = serie.
 GeoJSON feature	Feature-objekt	FeatureCollection stays.
-readout, region readout (Cellaris)	avläsning, områdesavläsning	Tool name Cellaris region readout = Cellaris-områdesavläsning; REGION READOUT = OMRÅDESAVLÄSNING.
+readout, region readout (Cellaris)	statistik, områdesstatistik	Statistics (mean, spread, density r²) computed from a model's predicted values over a region, not a measurement: never "avläsning" (an instrument or meter reading), "mätning", "mätvärde", "mäta" or "analys" ("mätningar"/"uppmätt" only where the English says measurements/measured). Tool name and job title Cellaris region readout = Cellaris-områdesstatistik; REGION READOUT = OMRÅDESSTATISTIK; readout region (layer) = område för statistik; Compute a readout of a large region? = Beräkna statistik för ett stort område?; Readout copied = Statistiken har kopierats; a long readout = en tidskrävande statistikberäkning; the readout can be cancelled = statistikberäkningen kan avbrytas.
 Cellaris cell (prediction grid square)	platta	Not a biological cell: a square of the slide predicted at once (en platta, plattor).
 tissue block (Cellaris, 5 µm square)	vävnadsruta	Not a paraffin block; bare "block" = ruta (5 µm-rutor).
 window (model input)	fönster	Square image the model predicts from (ett fönster, fönster); s per window = s per fönster.
-display window (marker, Cellaris)	visningsfönster	Black/White ends = Svart/Vit; {}, yours = {}, ditt eget.
+display window (marker, Cellaris)	visningsfönster	Low/High ends = Nedre/Övre; {}, yours = {}, ditt eget.
 predicted (heading), prediction	PREDIKTERAT, prediktion	PREDICTED — research use only, not for diagnosis = PREDIKTERAT — endast för forskningsändamål, inte för diagnostik.
 not for diagnosis	inte för diagnostik	Never soften; Research use only; not for diagnosis. = Endast för forskningsändamål; inte för diagnostik.
 density r² (optical density)	densitets-r²	Readout column; mean = medel, spread = spridning, marker = markör.
@@ -280,3 +280,5 @@ mapping, profile	mappning, profil	Mappings = Mappningar; Untitled = Namnlös.
 system pointer	systempekare	System pointer control = Styrning av systempekaren; Move Pointer = Flytta pekaren.
 macOS Accessibility path	Systeminställningar › Integritet och säkerhet › Hjälpmedel	Names as Swedish macOS shows them.
 Remote Desktop portal (Wayland)	fjärrskrivbordsportalen	Remote Desktop permission = behörighet för fjärrskrivbord.
+whole-slide image (file type name)	Digitalt preparat ({})	File managers' Type column: Aperio whole-slide image = Digitalt preparat (Aperio); Hamamatsu NDPI whole-slide image = Digitalt preparat (Hamamatsu NDPI); BigTIFF image = BigTIFF-bild.
+host (eov, in plugin messages)	värdprogrammet	The host returned … = värdprogrammet returnerade …; the Flatpak host computer = värddatorn.

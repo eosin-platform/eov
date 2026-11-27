@@ -8,6 +8,7 @@
 
 use crate::contract::ContractOverride;
 use crate::engine::DevicePreference;
+use crate::message::Message;
 use crate::model::ModelInfo;
 use crate::tiling::Resolution;
 use eov_plugin_api::i18n::{self, tr};
@@ -144,8 +145,9 @@ impl Config {
         (!text.is_empty()).then(|| text.to_string())
     }
 
-    /// A typed SHA-256: `Ok(None)` when empty, lower case when valid.
-    pub fn parse_sha256(text: &str) -> Result<Option<String>, String> {
+    /// A typed SHA-256: `Ok(None)` when empty, lower case when valid; why
+    /// not otherwise (the sidebar keeps it in view).
+    pub fn parse_sha256(text: &str) -> Result<Option<String>, Message> {
         let text = text.trim();
         if text.is_empty() {
             return Ok(None);
@@ -153,12 +155,15 @@ impl Config {
         if eov_plugin_api::protocol::is_sha256_hex(text) {
             Ok(Some(text.to_ascii_lowercase()))
         } else {
-            Err(tr!(
-                // Translators: {} is what was typed into the SHA-256 field; it is
-                // ignored and the field keeps its previous value.
-                "'{}' is not a SHA-256 (64 hex digits) and was not saved.",
-                i18n::isolate(text)
-            ))
+            let text = text.to_string();
+            Err(Message::new(move || {
+                tr!(
+                    // Translators: {} is what was typed into the SHA-256 field; it is
+                    // ignored and the field keeps its previous value.
+                    "'{}' is not a SHA-256 (64 hex digits) and was not saved.",
+                    i18n::isolate(&text)
+                )
+            }))
         }
     }
 

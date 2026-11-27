@@ -1,0 +1,114 @@
+// Content that scrolls when there is not enough room for it: the settings
+// of a dialog between its title and its buttons, when the window is too
+// short to show them all (the buttons stay in view).
+
+import { Theme } from "theme.slint";
+
+// A thin scroll bar for content `content-height` tall shown in
+// `visible-height` (a Flickable's `content-y`, two-way bound). Its thumb can
+// be dragged, a click beside the thumb moves it there, and the mouse wheel
+// scrolls. The bar is hidden while the content fits.
+component ScrollBar inherits Rectangle {
+    in property <length> content-height;
+    in property <length> visible-height;
+    in-out property <length> content-y;
+    /// The width of the strip that takes the pointer, centred on the bar.
+    in property <length> hit-width: 20px;
+
+    property <length> maximum: max(0px, root.content-height - root.visible-height);
+    property <length> thumb-height: min(root.height, max(24px, root.height * root.visible-height / max(1px, root.content-height)));
+    property <length> travel: max(1px, root.height - root.thumb-height);
+
+    /// Scrolls so that the thumb's top is at `top` (in the bar).
+    function thumb-to(top: length) {
+        root.content-y = -clamp(top / root.travel * root.maximum, 0px, root.maximum);
+    }
+
+    visible: root.maximum > 0.5px;
+    width: 6px;
+    border-radius: 3px;
+    background: Theme.field-fill;
+
+    thumb := Rectangle {
+        y: root.maximum > 0px ? root.travel * clamp(-root.content-y / root.maximum, 0, 1) : 0px;
+        width: parent.width;
+        height: root.thumb-height;
+        border-radius: 3px;
+        background: touch.pressed || touch.has-hover ? Theme.outline-hover : Theme.outline-strong;
+    }
+
+    touch := TouchArea {
+        // Where the thumb's top was when it was taken.
+        property <length> grab-top;
+
+        x: (parent.width - self.width) / 2;
+        width: root.hit-width;
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                if self.pressed-y < thumb.y || self.pressed-y > thumb.y + thumb.height {
+                    root.thumb-to(self.pressed-y - root.thumb-height / 2);
+                }
+                self.grab-top = thumb.y;
+            }
+        }
+
+        moved => {
+            if self.pressed {
+                root.thumb-to(self.grab-top + self.mouse-y - self.pressed-y);
+            }
+        }
+
+        scroll-event(event) => {
+            root.content-y = clamp(root.content-y + event.delta-y, -root.maximum, 0px);
+            accept
+        }
+    }
+}
+
+// Its children (one layout) scroll when the area is shorter than they are.
+// The area is as tall as its children when there is room (it then looks as
+// if it were not there), shorter otherwise, down to 60 px; a scroll bar then
+// shows `bar-offset` right of the area (in a dialog's padding, so the
+// children keep their width). The mouse wheel scrolls over the children and
+// over the bar; dragging the children with the mouse does not, so sliders
+// and text fields in them work as before; touch panning does. A field that
+// gets the keyboard focus is scrolled into view (Slint does that for every
+// Flickable).
+export component ScrollArea inherits Rectangle {
+    /// How far right of the area the scroll bar is.
+    in property <length> bar-offset: 7px;
+    // The clip reaches this far beyond the area at the left and right, so
+    // that it leaves the children's (anti-aliased) edges as they were.
+    property <length> margin: 4px;
+
+    preferred-height: content.preferred-height;
+    max-height: content.preferred-height;
+    min-height: min(content.preferred-height, 60px);
+
+    flick := Flickable {
+        x: -root.margin;
+        y: 0px;
+        width: root.width + 2 * root.margin;
+        height: root.height;
+        mouse-drag-pan-enabled: false;
+        content-width: self.width;
+        content-height: max(self.height, content.preferred-height);
+
+        content := VerticalLayout {
+            padding-left: root.margin;
+            padding-right: root.margin;
+
+            @children
+        }
+    }
+
+    bar := ScrollBar {
+        x: root.width + root.bar-offset;
+        y: 0px;
+        height: root.height;
+        content-height: flick.content-height;
+        visible-height: flick.height;
+        content-y <=> flick.content-y;
+    }
+}

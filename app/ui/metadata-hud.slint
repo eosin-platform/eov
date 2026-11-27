@@ -1,12 +1,18 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { MetadataItem } from "types.slint";
 
 export component MetadataHud inherits Rectangle {
     in property <[MetadataItem]> items: [];
+    /// The most the HUD may take (the pane's width less its margins).
+    in property <length> available-width: 100000px;
 
     property <int> item-count: items.length;
+    // The labels' column fits the longest label (78 px at least, at most
+    // half the HUD), and the HUD grows with it.
+    property <length> label-width: min(max(78px, label-widths.preferred-width), (root.available-width - 32px) / 2);
 
-    width: 292px;
+    width: min(root.available-width, 292px + root.label-width - 78px);
     height: 52px + item-count * 22px;
     background: Theme.hud-panel-bg;
     border-radius: 8px;
@@ -28,10 +34,12 @@ export component MetadataHud inherits Rectangle {
     Text {
         x: 16px;
         y: 12px;
+        width: parent.width - 32px;
         text: @tr("Slide Metadata");
         color: Theme.text-strong;
         font-size: 12px;
         font-weight: 700;
+        horizontal-alignment: Locale.start;
     }
 
     Rectangle {
@@ -52,24 +60,43 @@ export component MetadataHud inherits Rectangle {
         Text {
             x: 0px;
             y: 1px;
-            width: 78px;
+            width: root.label-width;
             text: item.label;
             color: Theme.text-label;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             font-weight: 600;
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
+            overflow: elide;
         }
 
         Text {
-            x: 86px;
+            x: root.label-width + 8px;
             y: 1px;
-            width: parent.width - 86px;
+            width: parent.width - root.label-width - 8px;
             text: item.value;
             color: Theme.text-strong;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             font-weight: 500;
+            horizontal-alignment: Locale.start;
             overflow: elide;
             vertical-alignment: center;
+        }
+    }
+
+    // Measures the labels for `label-width` (never shown).
+    Rectangle {
+        width: 0px;
+        height: 0px;
+        visible: false;
+
+        label-widths := VerticalLayout {
+            for item in root.items: Text {
+                text: item.label;
+                font-size: Locale.text-size(11px);
+                font-weight: 600;
+                accessible-role: none;
+            }
         }
     }
 }

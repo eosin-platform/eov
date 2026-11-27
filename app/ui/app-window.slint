@@ -1253,16 +1253,17 @@ export component AppWindow inherits Window {
             width: parent.width - 12px;
             text: root.hover-tooltip-text;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             wrap: word-wrap;
             horizontal-alignment: Locale.start;
         }
     }
 
+    // Tooltips stay inside the window: a longer one wraps.
     if toolbar.hovered-tooltip-visible: Rectangle {
         x: max(4px, min(root.width - self.width - 4px, toolbar.hovered-tooltip-center-x - self.width / 2));
         y: toolbar.hovered-tooltip-top-y;
-        width: toolbar-tooltip.preferred-width + 12px;
+        width: min(root.width - 8px, toolbar-tooltip.preferred-width + 12px);
         height: toolbar-tooltip.preferred-height + 6px;
         background: Theme.tooltip-bg;
         border-radius: 4px;
@@ -1272,9 +1273,12 @@ export component AppWindow inherits Window {
         toolbar-tooltip := Text {
             x: 6px;
             y: 3px;
+            width: parent.width - 12px;
             text: toolbar.hovered-tooltip-text;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            wrap: word-wrap;
+            horizontal-alignment: Locale.start;
         }
     }
 
@@ -1283,7 +1287,7 @@ export component AppWindow inherits Window {
         animate opacity { duration: 200ms; }
         x: max(4px, min(root.width - self.width - 4px, root.tab-tooltip-x - self.width / 2));
         y: root.tab-tooltip-y;
-        width: tab-path-tooltip.preferred-width + 12px;
+        width: min(root.width - 8px, tab-path-tooltip.preferred-width + 12px);
         height: tab-path-tooltip.preferred-height + 6px;
         background: Theme.tooltip-bg;
         border-radius: 4px;
@@ -1293,16 +1297,20 @@ export component AppWindow inherits Window {
         tab-path-tooltip := Text {
             x: 6px;
             y: 3px;
+            width: parent.width - 12px;
             text: root.tab-tooltip-text;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            wrap: word-wrap;
         }
     }
 
     ContextMenu {
         items: context-menu-items;
         is-visible: context-menu-visible;
-        menu-x: max(0px, min(root.width - 244px, context-menu-x));
+        // As wide as its widest item, within the window.
+        width-limit: root.width - 8px;
+        menu-x: max(0px, min(root.width - self.menu-width - 4px, context-menu-x));
         height-limit: root.height - 8px;
         menu-y: max(4px, min(root.height - min(context-menu-items.length * 28px, root.height - 8px) - 4px, context-menu-y));
 
@@ -1393,18 +1401,20 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Floating filtering dropdown (rendered above all content)
+    // Floating filtering dropdown (rendered above all content), as wide as
+    // its widest item (74 px wider than the combo box at least), within the
+    // window.
     if root.filter-popup-visible: Rectangle {
-        x: toolbar.filter-combo-abs-x;
+        x: max(4px, min(root.width - self.width - 4px, toolbar.filter-combo-abs-x));
         y: toolbar.filter-combo-abs-y;
-        width: toolbar.filter-combo-width + 74px;
+        width: min(root.width - 8px, max(toolbar.filter-combo-width + 74px, filter-items.preferred-width));
         height: 4 * 26px + 9px;
         background: Theme.context-menu-bg;
         border-radius: 4px;
         border-width: 1px;
         border-color: Theme.border;
 
-        VerticalLayout {
+        filter-items := VerticalLayout {
             padding: 2px;
 
             Rectangle {
@@ -1429,12 +1439,14 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     padding-left: 8px;
+                    padding-right: 8px;
                     Text {
                         text: (root.filtering-mode == FilteringMode.bilinear ? "✓ " : "   ") + @tr("Bilinear (Low Quality)");
                         color: Theme.text-primary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         horizontal-alignment: Locale.start;
                         vertical-alignment: center;
+                        overflow: elide;
                         accessible-role: none;
                     }
                 }
@@ -1462,12 +1474,14 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     padding-left: 8px;
+                    padding-right: 8px;
                     Text {
                         text: (root.filtering-mode == FilteringMode.trilinear ? "✓ " : "   ") + @tr("Trilinear (Balanced)");
                         color: Theme.text-primary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         horizontal-alignment: Locale.start;
                         vertical-alignment: center;
+                        overflow: elide;
                         accessible-role: none;
                     }
                 }
@@ -1495,12 +1509,14 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     padding-left: 8px;
+                    padding-right: 8px;
                     Text {
                         text: (root.filtering-mode == FilteringMode.lanczos3 ? "✓ " : "   ") + @tr("Lanczos-3 (High Quality)");
                         color: Theme.text-primary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         horizontal-alignment: Locale.start;
                         vertical-alignment: center;
+                        overflow: elide;
                         accessible-role: none;
                     }
                 }
@@ -1535,12 +1551,14 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     padding-left: 8px;
+                    padding-right: 8px;
                     Text {
                         text: (root.pixel-view ? "✓ " : "   ") + @tr("Show Pixels Above 100%");
                         color: Theme.text-primary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         horizontal-alignment: Locale.start;
                         vertical-alignment: center;
+                        overflow: elide;
                         accessible-role: none;
                     }
                 }

@@ -73,7 +73,7 @@ msgstr "ספירה עד עשר"
 #. Translators: the progress of the background job, e.g. "3 of 10"
 #: src/lib.rs:273
 msgid "{step} of {total}"
-msgstr "{step} מתוך {total}"
+msgstr "‏{step} מתוך {total}"
 
 #: src/lib.rs:616
 msgid "Add marker here"
@@ -84,7 +84,7 @@ msgstr "הוספת סמן כאן"
 msgid "{n} marker on the open slides"
 msgid_plural "{n} markers on the open slides"
 msgstr[0] "סמן אחד בשקופיות הפתוחות"
-msgstr[1] "{n} סמנים בשקופיות הפתוחות"
+msgstr[1] "‏{n} סמנים בשקופיות הפתוחות"
 
 #: ui/example-sidebar.slint:29
 msgctxt "ExampleSidebar"
@@ -101,7 +101,7 @@ msgctxt "ExampleSidebar"
 msgid "{n} marker"
 msgid_plural "{n} markers"
 msgstr[0] "סמן אחד"
-msgstr[1] "{n} סמנים"
+msgstr[1] "‏{n} סמנים"
 
 #: ui/example-sidebar.slint:46
 msgctxt "ExampleSidebar"

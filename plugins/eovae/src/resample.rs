@@ -120,15 +120,15 @@ impl Resampler {
             || !rgba.len().is_multiple_of(stride)
             || self.added + rgba.len() / stride > self.height
         {
-            let (width, height) = (self.width, self.height);
-            return Err(Message::new(|| {
+            let (width, height, bytes) = (self.width, self.height, rgba.len());
+            return Err(Message::new(move || {
                 // Translators: why a part of the slide could not be read: the
                 // host (eov) gave {n} bytes of pixel data, the wrong size for
                 // rows of a region of {width} × {height} pixels.
                 tr!(
                     "the host returned {n} byte for rows of a {width}×{height} region"
                         | "the host returned {n} bytes for rows of a {width}×{height} region"
-                            % rgba.len(),
+                            % bytes,
                     width = width,
                     height = height
                 )
@@ -208,13 +208,14 @@ pub fn resample(
 ) -> Result<Vec<u8>, Message> {
     let (width, height) = (plan.width as usize, plan.height as usize);
     if width == 0 || height == 0 || rgba.len() != width * height * 4 {
-        return Err(Message::new(|| {
+        let bytes = rgba.len();
+        return Err(Message::new(move || {
             // Translators: why a part of the slide could not be read: the
             // host (eov) gave {n} bytes of pixel data, the wrong size for a
             // region of {width} × {height} pixels.
             tr!(
                 "the host returned {n} byte for a {width}×{height} region"
-                    | "the host returned {n} bytes for a {width}×{height} region" % rgba.len(),
+                    | "the host returned {n} bytes for a {width}×{height} region" % bytes,
                 width = width,
                 height = height
             )

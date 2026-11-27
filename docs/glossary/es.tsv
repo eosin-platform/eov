@@ -44,7 +44,7 @@ stride	paso	Step between patches.
 dataset	conjunto de datos	
 cache	caché	Feminine: "la caché".
 region of interest (ROI)	región de interés (ROI)	Keep ROI.
-measurement	medición	
+measurement	medición	Only real measurements (the Medir tool; measured IF: "IF medida"). Cellaris's readout of predicted values is a "resumen", never a "medición".
 Measure (tool)	Medir	"herramienta Medir", "herramienta de medición".
 ruler	regla	
 distance	distancia	
@@ -236,7 +236,7 @@ Keyboard Shortcuts (panel)	Atajos de teclado
 Slide Information (panel)	Información de la preparación	
 language names	Inglés, Alemán, Español…	Capitalised as list items; the name of Spanish is "Español", identical to its native name.
 DPI	ppp	"{} ppp", "Resolución (ppp)".
-tile size (dataset)	tamaño de tesela	
+patch size (dataset)	tamaño de parche	The dataset dialog's Patch Size field ("Tamaño de parche"): "patch size must be between…" → "el tamaño de parche debe estar entre…". Not "tesela" (display tiles).
 file manager	administrador de archivos	
 parent folder	carpeta superior	
 archive (zip, tar)	archivo comprimido	
@@ -270,7 +270,8 @@ DICOM bulk annotations	anotaciones masivas DICOM	IOD name "Microscopy Bulk Simpl
 feature (GeoJSON)	entidad (feature)	
 combined positive score (CPS)	puntuación positiva combinada (CPS)	Keep CPS.
 95% confidence interval	IC 95 %	"(95% {low}–{high})" → "(IC 95 % {low}–{high})".
-readout (Cellaris)	lectura	"region readout" → "lectura de región"; tool "Lectura de región de Cellaris".
+readout, region readout (Cellaris)	resumen, resumen de región	Statistics (media, dispersión, r² de densidad) computed from the model's predicted values. Never "lectura" (an instrument reading) or "medición": the values are not measured. Tool "Resumen de región de Cellaris"; section "RESUMEN DE REGIÓN"; layer "Cellaris — región del resumen". Masculine ("Resumen copiado…", "Cancelado · {}", "sustituido por una región nueva"); plural "resúmenes".
+compute (predictions, a readout)	calcular	"Computing: {done} of {n} cells" → "Calculando: {done} de {n} celdas"; "Compute a readout of a large region?" → "¿Calcular el resumen de una región grande?". Never "medir".
 cell (Cellaris grid cell)	celda	A square of the slide predicted at once; never "célula" in Cellaris.
 tissue block (Cellaris)	cuadrado de tejido	A 5 µm square of tissue; not "bloque" (would read as a paraffin block). "{n} block" → "{n} cuadrado".
 window (model input)	ventana	Square image a model predicts from; "display window" (marker intensity range) → "ventana de visualización".

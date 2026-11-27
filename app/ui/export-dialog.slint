@@ -135,7 +135,7 @@ component ExportSlider inherits Rectangle {
             visible: !root.editing;
             text: root.display-text;
             color: Theme.text-value;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             horizontal-alignment: center;
             vertical-alignment: center;
             accessible-role: none;
@@ -149,7 +149,7 @@ component ExportSlider inherits Rectangle {
             x: 4px;
             width: parent.width - 8px;
             color: Theme.text-strong;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             horizontal-alignment: center;
             vertical-alignment: center;
             accessible-label: root.label;
@@ -190,6 +190,8 @@ component ExportSlider inherits Rectangle {
     }
 }
 
+// The heading of a section: its text starts where the language starts a
+// line (the icon stays at the left).
 component SectionHeader inherits Rectangle {
     in property <string> text;
     in property <image> icon-source;
@@ -198,8 +200,8 @@ component SectionHeader inherits Rectangle {
 
     HorizontalLayout {
         padding-left: 4px;
+        padding-right: 4px;
         spacing: 8px;
-        alignment: start;
 
         Image {
             y: (parent.height - self.height) / 2;
@@ -212,10 +214,12 @@ component SectionHeader inherits Rectangle {
         }
 
         Text {
+            horizontal-stretch: 1;
             text: root.text;
             color: Theme.text-strong;
             font-size: 12px;
             font-weight: 600;
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
         }
     }
@@ -232,6 +236,8 @@ component SegmentButton inherits Rectangle {
     in property <string> group;
     in property <bool> active: false;
     out property <bool> hovered: seg-touch.has-hover;
+    /// The width of its text.
+    out property <length> text-width: label.preferred-width;
     callback clicked();
 
     height: 26px;
@@ -253,10 +259,10 @@ component SegmentButton inherits Rectangle {
         }
     }
 
-    Text {
+    label := Text {
         text: root.text;
         color: root.active ? Theme.text-selected : Theme.text-primary;
-        font-size: 10px;
+        font-size: Locale.text-size(10px);
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
@@ -292,7 +298,7 @@ component DpiChip inherits Rectangle {
     Text {
         text: root.chip-value;
         color: root.active ? Theme.text-selected : Theme.text-secondary;
-        font-size: 10px;
+        font-size: Locale.text-size(10px);
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
@@ -309,7 +315,7 @@ component LabelRow inherits Rectangle {
         text: root.label;
         horizontal-alignment: Locale.start;
         color: Theme.text-label;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         vertical-alignment: center;
     }
 }
@@ -334,10 +340,12 @@ component ToggleSwitch inherits Rectangle {
         }
     }
 
+    // The label starts where the language starts a line (the switch stays
+    // at the left).
     HorizontalLayout {
         padding-left: 4px;
+        padding-right: 4px;
         spacing: 8px;
-        alignment: start;
 
         Rectangle {
             y: (parent.height - self.height) / 2;
@@ -367,9 +375,11 @@ component ToggleSwitch inherits Rectangle {
         }
 
         Text {
+            horizontal-stretch: 1;
             text: root.label;
             color: root.enabled ? Theme.text-primary : Theme.text-secondary;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
             accessible-role: none;
         }
@@ -411,6 +421,19 @@ component ColorField inherits Rectangle {
     callback color-changed(color);
     callback request-preview();
 
+    /// A red, green or blue value typed into the colour menu (a whole
+    /// number, see `Locale.is-whole-number`): 0 to 255.
+    pure function channel(text: string) -> int {
+        return max(0, min(255, Locale.whole-number(text)));
+    }
+
+    /// Makes this the colour, as choosing one in the colour menu does.
+    function set-rgb(red: int, green: int, blue: int) {
+        root.current-color = Colors.rgb(red, green, blue);
+        root.color-changed(root.current-color);
+        root.request-preview();
+    }
+
     height: 28px;
 
     HorizontalLayout {
@@ -444,7 +467,7 @@ component ColorField inherits Rectangle {
         Text {
             text: @tr("Opacity");
             color: Theme.text-label;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             vertical-alignment: center;
             accessible-role: none;
         }
@@ -463,7 +486,7 @@ component ColorField inherits Rectangle {
                 width: parent.width - 20px;
                 text: Math.round(root.opacity-pct);
                 color: Theme.text-value;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 horizontal-alignment: right;
                 vertical-alignment: center;
                 accessible-label: @tr("Opacity (%)");
@@ -482,7 +505,7 @@ component ColorField inherits Rectangle {
                 x: parent.width - 14px;
                 text: "%";
                 color: Theme.text-label;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 vertical-alignment: center;
                 accessible-role: none;
             }
@@ -513,8 +536,9 @@ component ColorField inherits Rectangle {
                 Text {
                     text: @tr("Pick a Colour");
                     color: Theme.text-primary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     font-weight: 500;
+                    horizontal-alignment: Locale.start;
                 }
 
                 // Row 1: warm / primary
@@ -755,7 +779,7 @@ component ColorField inherits Rectangle {
                     Text {
                         text: @tr("Red, as one letter" => "R");
                         color: Theme.text-label;
-                        font-size: 9px;
+                        font-size: Locale.text-size(9px);
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -774,21 +798,28 @@ component ColorField inherits Rectangle {
                             accessible-label: @tr("Red (0–255)");
                             text: root.current-color.red;
                             color: Theme.text-value;
-                            font-size: 9px;
+                            font-size: Locale.text-size(9px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
 
                             // Plain text, not `input-type: number`: that one
                             // lets through only ASCII digits, and Persian and
                             // Arabic keyboards type their own. What is not a
-                            // number leaves the colour as it is.
+                            // number leaves the colour as it is. A value is
+                            // used as it is typed, so that moving on to another
+                            // field (Tab, a click) keeps it; Enter shows the
+                            // value used.
                             accepted => {
-                                if Locale.is-number(self.text) {
-                                    root.current-color = Colors.rgb(max(0, min(255, Math.round(Locale.number(self.text)))), root.current-color.green, root.current-color.blue);
-                                    root.color-changed(root.current-color);
-                                    root.request-preview();
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.channel(self.text), root.current-color.green, root.current-color.blue);
                                 }
                                 self.text = root.current-color.red;
+                            }
+
+                            edited => {
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.channel(self.text), root.current-color.green, root.current-color.blue);
+                                }
                             }
                         }
                     }
@@ -796,7 +827,7 @@ component ColorField inherits Rectangle {
                     Text {
                         text: @tr("Green, as one letter" => "G");
                         color: Theme.text-label;
-                        font-size: 9px;
+                        font-size: Locale.text-size(9px);
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -815,21 +846,22 @@ component ColorField inherits Rectangle {
                             accessible-label: @tr("Green (0–255)");
                             text: root.current-color.green;
                             color: Theme.text-value;
-                            font-size: 9px;
+                            font-size: Locale.text-size(9px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
 
-                            // Plain text, not `input-type: number`: that one
-                            // lets through only ASCII digits, and Persian and
-                            // Arabic keyboards type their own. What is not a
-                            // number leaves the colour as it is.
+                            // Plain text (see the red).
                             accepted => {
-                                if Locale.is-number(self.text) {
-                                    root.current-color = Colors.rgb(root.current-color.red, max(0, min(255, Math.round(Locale.number(self.text)))), root.current-color.blue);
-                                    root.color-changed(root.current-color);
-                                    root.request-preview();
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.current-color.red, root.channel(self.text), root.current-color.blue);
                                 }
                                 self.text = root.current-color.green;
+                            }
+
+                            edited => {
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.current-color.red, root.channel(self.text), root.current-color.blue);
+                                }
                             }
                         }
                     }
@@ -837,7 +869,7 @@ component ColorField inherits Rectangle {
                     Text {
                         text: @tr("Blue, as one letter" => "B");
                         color: Theme.text-label;
-                        font-size: 9px;
+                        font-size: Locale.text-size(9px);
                         vertical-alignment: center;
                         accessible-role: none;
                     }
@@ -856,21 +888,22 @@ component ColorField inherits Rectangle {
                             accessible-label: @tr("Blue (0–255)");
                             text: root.current-color.blue;
                             color: Theme.text-value;
-                            font-size: 9px;
+                            font-size: Locale.text-size(9px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
 
-                            // Plain text, not `input-type: number`: that one
-                            // lets through only ASCII digits, and Persian and
-                            // Arabic keyboards type their own. What is not a
-                            // number leaves the colour as it is.
+                            // Plain text (see the red).
                             accepted => {
-                                if Locale.is-number(self.text) {
-                                    root.current-color = Colors.rgb(root.current-color.red, root.current-color.green, max(0, min(255, Math.round(Locale.number(self.text)))));
-                                    root.color-changed(root.current-color);
-                                    root.request-preview();
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.current-color.red, root.current-color.green, root.channel(self.text));
                                 }
                                 self.text = root.current-color.blue;
+                            }
+
+                            edited => {
+                                if Locale.is-whole-number(self.text) {
+                                    root.set-rgb(root.current-color.red, root.current-color.green, root.channel(self.text));
+                                }
                             }
                         }
                     }
@@ -902,16 +935,16 @@ component SmallTextInput inherits Rectangle {
         if root.label != "": Text {
             text: root.label;
             color: Theme.text-label;
-            font-size: 9px;
+            font-size: Locale.text-size(9px);
             vertical-alignment: center;
             accessible-role: none;
         }
 
         small-input := TextInput {
-            text: Math.round(root.value * 10) / 10;
+            text: Locale.localized-number(Math.round(root.value * 10) / 10);
             accessible-label: root.name;
             color: Theme.text-value;
-            font-size: 10px;
+            font-size: Locale.text-size(10px);
             horizontal-alignment: right;
             vertical-alignment: center;
 
@@ -921,17 +954,29 @@ component SmallTextInput inherits Rectangle {
                     root.value-changed(Locale.number(self.text));
                     root.request-preview();
                 }
-                self.text = Math.round(root.value * 10) / 10;
+                self.text = Locale.localized-number(Math.round(root.value * 10) / 10);
             }
         }
     }
 }
 
+// The stroke and caps rows: a label column as wide as the longer of their
+// labels, with the text at the start of the line, and choices of one width
+// that fits the longest of them (`label-width` and `button-width`, which
+// the dialog gives both rows; 46px and 52px unless a text needs more).
 component StrokeStyleSelector inherits Rectangle {
     in-out property <StrokeStyle> stroke-style: StrokeStyle.solid;
     in-out property <float> dash-length: 8;
     in-out property <float> dash-gap: 4;
     in-out property <float> dot-spacing: 4;
+    /// The width of the label column (at least its label's).
+    in property <length> label-width: 46px;
+    /// The width of each choice (at least what its text needs).
+    in property <length> button-width: 52px;
+    /// The width its label needs, with a gap before the choices.
+    out property <length> label-preferred-width: label.preferred-width + 8px;
+    /// The width its longest choice needs.
+    out property <length> button-preferred-width: max(solid-stroke.text-width, max(dashed-stroke.text-width, dotted-stroke.text-width)) + 12px;
     callback style-changed(StrokeStyle);
     callback dash-length-changed(float);
     callback dash-gap-changed(float);
@@ -945,16 +990,17 @@ component StrokeStyleSelector inherits Rectangle {
         spacing: 4px;
         alignment: start;
 
-        Text {
+        label := Text {
             text: @tr("Stroke");
             color: Theme.text-label;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
-            width: 46px;
+            width: max(root.label-width, self.preferred-width);
         }
 
-        SegmentButton {
-            width: 52px;
+        solid-stroke := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Solid");
             group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.solid;
@@ -964,8 +1010,8 @@ component StrokeStyleSelector inherits Rectangle {
             }
         }
 
-        SegmentButton {
-            width: 52px;
+        dashed-stroke := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Dashed");
             group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.dashed;
@@ -975,8 +1021,8 @@ component StrokeStyleSelector inherits Rectangle {
             }
         }
 
-        SegmentButton {
-            width: 52px;
+        dotted-stroke := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Dotted");
             group: @tr("Stroke");
             active: root.stroke-style == StrokeStyle.dotted;
@@ -1024,8 +1070,17 @@ component StrokeStyleSelector inherits Rectangle {
     }
 }
 
+// See StrokeStyleSelector.
 component CapStyleSelector inherits Rectangle {
     in-out property <CapStyle> cap-style: CapStyle.round;
+    /// The width of the label column (at least its label's).
+    in property <length> label-width: 46px;
+    /// The width of each choice (at least what its text needs).
+    in property <length> button-width: 52px;
+    /// The width its label needs, with a gap before the choices.
+    out property <length> label-preferred-width: label.preferred-width + 8px;
+    /// The width its longest choice needs.
+    out property <length> button-preferred-width: max(round-cap.text-width, max(square-cap.text-width, flat-cap.text-width)) + 12px;
     callback cap-changed(CapStyle);
     callback request-preview();
 
@@ -1036,16 +1091,17 @@ component CapStyleSelector inherits Rectangle {
         spacing: 4px;
         alignment: start;
 
-        Text {
+        label := Text {
             text: @tr("Caps");
             color: Theme.text-label;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
+            horizontal-alignment: Locale.start;
             vertical-alignment: center;
-            width: 46px;
+            width: max(root.label-width, self.preferred-width);
         }
 
-        SegmentButton {
-            width: 52px;
+        round-cap := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Round");
             group: @tr("Caps");
             active: root.cap-style == CapStyle.round;
@@ -1055,8 +1111,8 @@ component CapStyleSelector inherits Rectangle {
             }
         }
 
-        SegmentButton {
-            width: 52px;
+        square-cap := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Square");
             group: @tr("Caps");
             active: root.cap-style == CapStyle.square;
@@ -1066,8 +1122,8 @@ component CapStyleSelector inherits Rectangle {
             }
         }
 
-        SegmentButton {
-            width: 52px;
+        flat-cap := SegmentButton {
+            width: max(root.button-width, self.text-width + 12px);
             text: @tr("Flat");
             group: @tr("Caps");
             active: root.cap-style == CapStyle.flat;
@@ -1225,29 +1281,31 @@ export component ExportDialog inherits Rectangle {
                             spacing: 16px;
                             alignment: center;
 
+                            // The number in the language's notation, isolated: in
+                            // right-to-left languages it keeps its order.
                             Text {
-                                text: @tr("Estimated Size: {} MB", Math.round(root.estimated-mb * 100) / 100);
+                                text: @tr("Estimated Size: {} MB", Locale.isolate(Locale.localized-number(Math.round(root.estimated-mb * 100) / 100)));
                                 color: Theme.text-label;
-                                font-size: 10px;
+                                font-size: Locale.text-size(10px);
                             }
 
                             Text {
                                 text: @tr("{} × {} px", root.export-width, root.export-height);
                                 color: Theme.text-label;
-                                font-size: 10px;
+                                font-size: Locale.text-size(10px);
                             }
 
                             if root.preview-info.rendering: Text {
                                 text: @tr("Rendering preview…");
                                 color: Theme.text-label;
-                                font-size: 10px;
+                                font-size: Locale.text-size(10px);
                             }
                         }
 
                         if root.preview-info.note != "": Text {
                             text: root.preview-info.note;
                             color: Theme.notice;
-                            font-size: 10px;
+                            font-size: Locale.text-size(10px);
                             horizontal-alignment: center;
                             wrap: word-wrap;
                         }
@@ -1453,7 +1511,7 @@ export component ExportDialog inherits Rectangle {
                                 min-value: 0.2;
                                 max-value: 3.0;
                                 default-value: 1.0;
-                                display-text: Math.round(root.settings.gamma * 100) / 100 + "";
+                                display-text: Locale.localized-number(Math.round(root.settings.gamma * 100) / 100);
                                 changed(v) => {
                                     root.settings.gamma = v;
                                     root.settings-changed(root.settings);
@@ -1494,7 +1552,7 @@ export component ExportDialog inherits Rectangle {
                                 min-value: 0.2;
                                 max-value: 3.0;
                                 default-value: 1.0;
-                                display-text: Math.round(root.settings.contrast * 100) / 100 + "x";
+                                display-text: Locale.localized-number(Math.round(root.settings.contrast * 100) / 100) + "x";
                                 changed(v) => {
                                     root.settings.contrast = v;
                                     root.settings-changed(root.settings);
@@ -1584,7 +1642,7 @@ export component ExportDialog inherits Rectangle {
                                 min-value: 0.0;
                                 max-value: 3.0;
                                 default-value: 1.0;
-                                display-text: Math.round(root.settings.deconv-hematoxylin-intensity * 100) / 100 + "x";
+                                display-text: Locale.localized-number(Math.round(root.settings.deconv-hematoxylin-intensity * 100) / 100) + "x";
                                 changed(v) => {
                                     root.settings.deconv-hematoxylin-intensity = v;
                                     root.settings-changed(root.settings);
@@ -1620,7 +1678,7 @@ export component ExportDialog inherits Rectangle {
                                 min-value: 0.0;
                                 max-value: 3.0;
                                 default-value: 1.0;
-                                display-text: Math.round(root.settings.deconv-eosin-intensity * 100) / 100 + "x";
+                                display-text: Locale.localized-number(Math.round(root.settings.deconv-eosin-intensity * 100) / 100) + "x";
                                 changed(v) => {
                                     root.settings.deconv-eosin-intensity = v;
                                     root.settings-changed(root.settings);
@@ -1688,7 +1746,7 @@ export component ExportDialog inherits Rectangle {
                                     text: @tr("Measure a distance in the viewport to enable these settings.");
                                     horizontal-alignment: Locale.start;
                                     color: Theme.text-hint;
-                                    font-size: 10px;
+                                    font-size: Locale.text-size(10px);
                                     vertical-alignment: center;
                                     wrap: word-wrap;
                                 }
@@ -1737,7 +1795,7 @@ export component ExportDialog inherits Rectangle {
                                     min-value: 0.5;
                                     max-value: 10.0;
                                     default-value: 2.0;
-                                    display-text: Math.round(root.settings.measurement-thickness * 10) / 10 + "px";
+                                    display-text: Locale.localized-number(Math.round(root.settings.measurement-thickness * 10) / 10) + "px";
                                     changed(v) => {
                                         root.settings.measurement-thickness = v;
                                         root.settings-changed(root.settings);
@@ -1747,7 +1805,9 @@ export component ExportDialog inherits Rectangle {
                                     }
                                 }
 
-                                StrokeStyleSelector {
+                                measurement-stroke := StrokeStyleSelector {
+                                    label-width: max(46px, max(measurement-stroke.label-preferred-width, measurement-caps.label-preferred-width));
+                                    button-width: max(52px, max(measurement-stroke.button-preferred-width, measurement-caps.button-preferred-width));
                                     stroke-style: root.settings.measurement-stroke-style;
                                     dash-length: root.settings.measurement-dash-length;
                                     dash-gap: root.settings.measurement-dash-gap;
@@ -1769,7 +1829,9 @@ export component ExportDialog inherits Rectangle {
                                     }
                                 }
 
-                                CapStyleSelector {
+                                measurement-caps := CapStyleSelector {
+                                    label-width: max(46px, max(measurement-stroke.label-preferred-width, measurement-caps.label-preferred-width));
+                                    button-width: max(52px, max(measurement-stroke.button-preferred-width, measurement-caps.button-preferred-width));
                                     cap-style: root.settings.measurement-cap-style;
                                     cap-changed(c) => {
                                         root.settings.measurement-cap-style = c;
@@ -1818,7 +1880,7 @@ export component ExportDialog inherits Rectangle {
                                     text: @tr("Select a region of interest in the viewport to enable these settings.");
                                     horizontal-alignment: Locale.start;
                                     color: Theme.text-hint;
-                                    font-size: 10px;
+                                    font-size: Locale.text-size(10px);
                                     vertical-alignment: center;
                                     wrap: word-wrap;
                                 }
@@ -1867,7 +1929,7 @@ export component ExportDialog inherits Rectangle {
                                     min-value: 0.5;
                                     max-value: 10.0;
                                     default-value: 2.0;
-                                    display-text: Math.round(root.settings.roi-thickness * 10) / 10 + "px";
+                                    display-text: Locale.localized-number(Math.round(root.settings.roi-thickness * 10) / 10) + "px";
                                     changed(v) => {
                                         root.settings.roi-thickness = v;
                                         root.settings-changed(root.settings);
@@ -1877,7 +1939,9 @@ export component ExportDialog inherits Rectangle {
                                     }
                                 }
 
-                                StrokeStyleSelector {
+                                roi-stroke := StrokeStyleSelector {
+                                    label-width: max(46px, max(roi-stroke.label-preferred-width, roi-caps.label-preferred-width));
+                                    button-width: max(52px, max(roi-stroke.button-preferred-width, roi-caps.button-preferred-width));
                                     stroke-style: root.settings.roi-stroke-style;
                                     dash-length: root.settings.roi-dash-length;
                                     dash-gap: root.settings.roi-dash-gap;
@@ -1899,7 +1963,9 @@ export component ExportDialog inherits Rectangle {
                                     }
                                 }
 
-                                CapStyleSelector {
+                                roi-caps := CapStyleSelector {
+                                    label-width: max(46px, max(roi-stroke.label-preferred-width, roi-caps.label-preferred-width));
+                                    button-width: max(52px, max(roi-stroke.button-preferred-width, roi-caps.button-preferred-width));
                                     cap-style: root.settings.roi-cap-style;
                                     cap-changed(c) => {
                                         root.settings.roi-cap-style = c;

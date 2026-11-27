@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { MinimapRect } from "types.slint";
+import { Locale } from "locale.slint";
 
 export component Minimap inherits Rectangle {
     in property <image> thumbnail;
@@ -244,7 +245,7 @@ export component ZoomSlider inherits Rectangle {
             y: 3px;
             text: root.zoom-tooltip-label;
             color: Theme.tooltip-text;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             accessible-role: none;
         }
     }

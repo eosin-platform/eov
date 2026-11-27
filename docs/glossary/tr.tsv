@@ -37,7 +37,7 @@ downsample	alt örnekleme faktörü	Level-0 pixels per map pixel
 patch (dataset)	yama (pl. yamalar)	Dataset image for machine learning; the dataset dialog's “Tile size” = yama boyutu
 cache	önbellek	
 region of interest (ROI)	ilgi alanı (ROI)	“ROI” in compact labels; the ROI = ilgi alanı
-measurement	ölçüm	
+measurement	ölçüm	Only real measurements (the Ölç tool; measured IF = ölçülmüş IF; predictions are not measurements = tahminler ölçüm değildir); never for the Cellaris readout of predicted values (özet)
 Measure (tool)	Ölç	Tool name
 distance (measure mode)	mesafe	path length = yol uzunluğu, polygon area = çokgen alanı, rectangle area = dikdörtgen alanı, ellipse area = elips alanı, angle = açı
 annotation	anotasyon (pl. anotasyonlar)	A drawn mark with a meaning; a free-text comment is “yorum”
@@ -74,7 +74,7 @@ tissue	doku
 tissue QC	doku kalite kontrolü (doku QC)	QC = kalite kontrolü
 grid cell (of a check)	ızgara karesi	Not “hücre”, which reads as a biological cell
 pen marks	kalem izleri	
-folds	katlantılar	Tissue folds (doku katlantısı)
+folds	katlantılar	Tissue folds (doku katlantısı); QC flags are “possible”: possible folds or blur = olası katlantı veya bulanıklık (olası must cover both)
 blur, blurred areas, out of focus	bulanıklık, bulanık alanlar, odak dışı	
 tissue detection	doku algılama	
 tissue mask	doku maskesi	
@@ -247,7 +247,8 @@ DICOM study; (private) attributes	çalışma; (özel) öznitelikler	patient attr
 GeoJSON feature	öğe (feature)	FeatureCollection stays
 level-0 pixels	düzey 0 pikselleri	
 predicted (banner)	TAHMİN — yalnızca araştırma amaçlı kullanım içindir, tanı amacıyla kullanılamaz	Cellaris; translate completely, never shorten
-region readout (Cellaris)	bölge ölçümü	readout = ölçüm; Cellaris region readout = Cellaris bölge ölçümü
+readout, region readout (Cellaris)	özet, bölge özeti	Statistics (mean, spread, density r²) computed from a model's predicted values over a region, not a measurement: never “ölçüm”, “ölçülen”, “okuma” (an instrument reading) or “sinyal”. Tool Cellaris region readout = Cellaris bölge özeti; REGION READOUT = BÖLGE ÖZETİ; readout region = özet bölgesi; Readout copied … = Bölge özeti … kopyalandı; Compute a readout of a large region? = Büyük bir bölgenin özeti hesaplansın mı?
+compute (predictions, a readout)	hesapla, hesaplama	Never “ölç”: Compute (button) = Hesapla; Computing: … = Hesaplanıyor: …; {} % computed = %{} hesaplandı; Not computed: {} = Hesaplanmadı: {}; could not be computed = hesaplanamadı
 cell (Cellaris grid square, 41.6 µm)	ızgara karesi	Never “hücre”: it is not a biological cell
 tissue block (Cellaris, 5 µm square)	doku karesi	Never “doku bloğu”, which reads as a paraffin block
 window (square image a model predicts from)	pencere	s per window = pencere başına sn

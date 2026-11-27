@@ -3,7 +3,8 @@ term	translation	note
 (digits)	0–9 (ارقام لاتین)	Write numbers in Latin digits, like the values eov inserts (eov uses ٫ as the decimal separator itself); units, ×, %, ° stay as written.
 (punctuation)	، ؛ ؟ « » …	Persian comma ، semicolon ؛ question mark ؟; quotation marks « » for quoted names; keep the ellipsis … of menu items that open a dialog.
 (spelling)	ی ک، نیم‌فاصله، هٔ	Persian ی and ک (never ي ك); ZWNJ (نیم‌فاصله) in می‌، ‌ها، ‌های، ‌ای and compounds (پیش‌نمایش); ezafe after silent ه written هٔ (اندازهٔ پیکسل).
-(direction)	برنامهٔ eov …، فایل TIFF هرمی	The paragraph direction follows the first strong letter: start a text with a Persian word rather than a Latin one (eov, GPU, H&E, TIFF, [shortcuts]), e.g. برنامهٔ eov راه‌اندازی نشد. Placeholders that eov isolates do not count.
+(direction)	برنامهٔ eov …، فایل TIFF هرمی	The paragraph direction follows the first strong letter: start a text with a Persian word rather than a Latin one (eov, GPU, H&E, TIFF, [shortcuts]), e.g. برنامهٔ eov راه‌اندازی نشد. Placeholders that eov isolates do not count. Where a text must start with a Latin word or a placeholder, it starts with U+200F (RIGHT-TO-LEFT MARK); `import` adds it and `check` requires it.
+(left-to-right fragments)	پسوند .eop، گزینهٔ --language	Wrap a left-to-right fragment that contains punctuation (an extension, an option, a path, a number with its unit, a range, w × h, a config example) in U+2068 (FIRST STRONG ISOLATE) … U+2069 (POP DIRECTIONAL ISOLATE), or it is drawn as eop. or language--. Not around a single word or a placeholder standing alone (docs/translating.md, "Right-to-left languages").
 (plural forms)	{n} لام / {n} لام	Persian uses the singular noun after a number, so both plural forms are usually the same; both must show {n} (form 0 is used for 0 and 1).
 For research and education. Not a medical device; not for primary diagnosis.	برای پژوهش و آموزش. این نرم‌افزار وسیلهٔ پزشکی نیست و نباید برای تشخیص اولیه به کار رود.	Safety text: complete and explicit, never shortened.
 research use only (RUO)	فقط برای مصارف پژوهشی (RUO)	The phrase printed on RUO reagents; results must not be used for clinical decisions.
@@ -277,7 +278,7 @@ feature (GeoJSON)	عارضه (feature)
 unreadable, skipped	ناخوانا، رد شد	
 Retry	تلاش دوباره	Button.
 Not now	بعداً	Button.
-readout, region readout (Cellaris)	خوانش، خوانش ناحیه	
+readout, region readout (Cellaris)	خلاصهٔ آماری، خلاصهٔ آماری ناحیه	Statistics (mean, spread, density r²) computed from the model's predicted values, not a measurement: never خوانش (reads as an instrument reading), اندازه‌گیری or سنجش. Tool and job: خلاصهٔ آماری ناحیهٔ Cellaris; section REGION READOUT: خلاصهٔ آماری ناحیه; layer: ناحیهٔ خلاصهٔ آماری Cellaris; a readout starts / can be cancelled: محاسبهٔ خلاصهٔ آماری …; plural خلاصه‌های آماری.
 window (model input)	پنجره	One square image a model predicts from.
 cell (Cellaris grid cell)	خانهٔ شبکه	A small square of the slide predicted at once; not a biological cell.
 tissue block (5 µm square)	قطعهٔ بافت	Never بلوک (paraffin block).

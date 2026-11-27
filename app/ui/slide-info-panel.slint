@@ -34,7 +34,7 @@ component AssociatedImageCard inherits Rectangle {
         width: 100%;
         text: root.hidden-text;
         color: Theme.text-secondary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
     }
 
@@ -43,7 +43,7 @@ component AssociatedImageCard inherits Rectangle {
         width: 100%;
         text: @tr("None");
         color: Theme.text-secondary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
     }
 
@@ -52,7 +52,7 @@ component AssociatedImageCard inherits Rectangle {
         width: 100%;
         text: root.caption;
         color: Theme.text-primary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
     }
 }
@@ -154,7 +154,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: @tr("Save a Copy…");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -186,7 +186,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: root.hide-label ? @tr("Show label") : @tr("Hide label");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -287,7 +287,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: @tr("Channels…");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -361,7 +361,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: @tr("Set");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -390,7 +390,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: @tr("Use the file's value");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -414,12 +414,15 @@ export component SlideInfoPanel inherits Rectangle {
                         border-color: filter-input.has-focus ? Theme.accent : Theme.border;
                         background: Theme.input-bg;
 
+                        // What is typed and the placeholder start where the
+                        // language starts a line.
                         filter-input := TextInput {
                             x: 8px;
                             width: parent.width - 16px;
                             text <=> root.filter;
                             color: Theme.text-primary;
                             font-size: 12px;
+                            horizontal-alignment: Locale.start;
                             vertical-alignment: center;
                             accessible-label: @tr("Filter properties");
                             accessible-placeholder-text: @tr("Filter properties");
@@ -430,9 +433,11 @@ export component SlideInfoPanel inherits Rectangle {
 
                         if root.filter == "": Text {
                             x: 8px;
+                            width: parent.width - 16px;
                             text: @tr("Filter properties");
                             color: Theme.text-secondary;
                             font-size: 12px;
+                            horizontal-alignment: Locale.start;
                             vertical-alignment: center;
                             accessible-role: none;
                         }
@@ -442,7 +447,7 @@ export component SlideInfoPanel inherits Rectangle {
                         // Translators: how many rows the filter shows, of all rows ("12 of 40"). To swap the numbers, write {1} for the second and {0} for the first.
                         text: @tr("{} of {}", root.rows.length, root.total-rows);
                         color: Theme.text-secondary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         vertical-alignment: center;
                     }
 
@@ -462,7 +467,7 @@ export component SlideInfoPanel inherits Rectangle {
                             text: @tr("Copy all");
                             accessible-role: none;
                             color: Theme.text-primary;
-                            font-size: 11px;
+                            font-size: Locale.text-size(11px);
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -501,7 +506,7 @@ export component SlideInfoPanel inherits Rectangle {
                                     width: 40%;
                                     text: row.key;
                                     color: Theme.text-secondary;
-                                    font-size: 11px;
+                                    font-size: Locale.text-size(11px);
                                     horizontal-alignment: Locale.start;
                                     vertical-alignment: center;
                                     overflow: elide;
@@ -512,7 +517,7 @@ export component SlideInfoPanel inherits Rectangle {
                                     horizontal-stretch: 1;
                                     text: row.value;
                                     color: Theme.text-primary;
-                                    font-size: 11px;
+                                    font-size: Locale.text-size(11px);
                                     horizontal-alignment: Locale.start;
                                     vertical-alignment: center;
                                     overflow: elide;
@@ -532,7 +537,7 @@ export component SlideInfoPanel inherits Rectangle {
                 Text {
                     text: @tr("Click a row to copy its value. Properties are shown as the scanner wrote them.");
                     color: Theme.text-secondary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     horizontal-alignment: Locale.start;
                 }
             }

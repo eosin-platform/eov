@@ -592,7 +592,10 @@ fn memory_for_tile_pixels_is_bounded() {
     // 256 analysed tiles of ~4 KiB each exceed 1 MiB: payloads were evicted,
     // scores were kept.
     let memory = s.property("memory-text");
-    assert!(memory.as_str().unwrap().contains("of 1 MB"), "{memory}");
+    assert!(
+        memory.as_str().unwrap().contains("of 1\u{a0}MB"),
+        "{memory}"
+    );
     let coverage = s.property("coverage-text");
     assert!(
         coverage.as_str().unwrap().contains("256 tissue tiles"),
@@ -761,6 +764,36 @@ fn the_sidebar_matches_its_slint_contract() {
             assert!(
                 reply.is_ok() || name == "load-model",
                 "callback '{name}' failed: {reply:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_sidebar_uses_no_property_slint_renamed_since_1_17() {
+    // plugin.toml accepts Slint 1.17 and newer, and eov uses 1.19. Slint
+    // 1.19 renamed the scroll position and size of ScrollView, ListView
+    // and Flickable (`viewport-*` became `content-*`, and the old names
+    // warn), so a sidebar using either name breaks one of them: the list
+    // of a drop-down scrolls itself instead (`list-scroll`).
+    let ui = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/eovae-sidebar.slint"),
+    )
+    .unwrap();
+    let renamed = ["x", "y", "width", "height"]
+        .iter()
+        .flat_map(|axis| [format!("viewport-{axis}"), format!("content-{axis}")])
+        .collect::<Vec<_>>();
+    for (number, line) in ui.lines().enumerate() {
+        // The code, not a comment after it (a URL's "//" in a string cuts
+        // the line short, which only checks less), with `_` read as `-`
+        // as Slint reads names (`viewport_y` is `viewport-y`).
+        let code = line.split("//").next().unwrap().replace('_', "-");
+        for name in &renamed {
+            assert!(
+                !code.contains(name.as_str()),
+                "ui/eovae-sidebar.slint:{}: '{name}' exists in only some of the Slint versions plugin.toml accepts",
+                number + 1
             );
         }
     }

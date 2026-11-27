@@ -262,7 +262,8 @@ immune cells	иммунные клетки	«PD-L1-положительные и
 undo-step labels (plugins)	отглагольные существительные	«Добавление точки», «Удаление слоя», «Блокировка»; buttons and menu items with the same English text use the infinitive.
 annotations menu items	существительные	The Import/Export menu of the annotations sidebar is 230 px wide: «Импорт аннотаций…», «Экспорт в GeoJSON (QuPath)…».
 PREDICTED (label)	ПРЕДСКАЗАНИЕ	Always with «только для исследовательских целей, не предназначено для диагностики».
-region readout (Cellaris)	показатели области	The tool: «Показатели области Cellaris».
+readout, region readout (Cellaris)	показатели; показатели области	Statistics computed from a model's predicted values, not a measurement: never «измерение», «измеряемый», «замер», «показания» (an instrument reading) or «сигнал». The tool: «Показатели области Cellaris»; compute a readout: «вычислить показатели», «вычисление показателей»; the readout region (layer): «Cellaris — область вычисления показателей».
+compute (predictions, a readout)	вычислить; вычисление	Calculating values with a model: «Вычисление: 3 из 10 ячеек», «Вычислить показатели большой области?»; never «измерить».
 cell (Cellaris grid)	ячейка	A small square of the slide predicted at once — never «клетка».
 window (model input)	окно	A square image the model predicts from.
 tissue block (5 µm square)	квадрат ткани	Not «блок» (that is a paraffin block).
@@ -290,3 +291,9 @@ system pointer	системный указатель
 Remote Desktop portal; Accessibility (macOS)	портал удалённого рабочего стола; Универсальный доступ	System permission names as the systems show them in Russian.
 On / Off (small switch)	Вкл / Выкл	
 marker (example plugin)	метка	A placed point, not a biomarker.
+… whole-slide image (file type)	Изображение целого препарата …	File type names as shared-mime-info writes them («Изображение PNG»): «Изображение целого препарата Hamamatsu NDPI», «Изображение BigTIFF».
+host (of a plugin)	приложение eov	The host is eov: «приложение eov вернуло …» (neuter agreement).
+worker thread	рабочий поток	«Не удалось запустить рабочий поток», «сбой рабочего потока eovae».
+labels (text drawn on overlays)	подписи	Text burned into exported images; not «этикетка» (the slide label) and not «текстовая метка» (an annotation).
+flagged by tissue QC	отмечен контролем качества ткани	QC marks are flags for review: «по отметкам контроля качества ткани», «возможные складки или размытие».
+Low / High (display window)	Минимум / Максимум	Ends of a marker's display window, as the Channels panel names them.

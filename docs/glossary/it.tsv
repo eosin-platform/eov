@@ -244,7 +244,7 @@ tumour cells / immune cells	cellule tumorali / cellule immunitarie
 95% (confidence interval)	IC 95%	Italian adds IC; no space before %, as in eov's catalog.
 not for diagnosis	non per uso diagnostico	RUO phrase; banner "PREDICTED — research use only, not for diagnosis" → "PREDIZIONE — solo per uso di ricerca, non per uso diagnostico".
 prediction	predizione	"Hide predictions" → "Nascondi predizioni".
-region readout (Cellaris)	lettura della regione	Tool "Cellaris region readout" → "Lettura di regione Cellaris".
+readout, region readout (Cellaris)	riepilogo, riepilogo della regione	Statistics computed from a model's predicted values, not a measurement: never "lettura" (an instrument reading, or a pathologist reading the slide), "misura"/"misurazione" or "rilevazione". Masculine: "Annullato · {}", "sostituito da una nuova regione". Tool "Cellaris region readout" → "Riepilogo di regione Cellaris"; heading "REGION READOUT" → "RIEPILOGO DELLA REGIONE"; layer "Cellaris — readout region" → "Cellaris — regione del riepilogo".
 window (model input)	finestra	One square image a model predicts from.
 cell (Cellaris grid square)	cella	Never "cellula" here (grid square predicted at once).
 tissue block (5 µm)	blocco di tessuto	
@@ -261,7 +261,7 @@ stick, trigger, D-pad, shoulder button	levetta, grilletto, croce direzionale, pu
 dead zone, response curve, mapping, profile	zona morta, curva di risposta, assegnazione, profilo	
 has focus (window)	la finestra di eov è attiva	
 marker (example plugin point)	indicatore	A placed point; "marcatore" is reserved for protein markers.
-compute (predictions, a readout)	calcolare, calcolo	Never "misurare": "Compute a readout of a large region?" → "Calcolare la lettura di una regione grande?"; "Computing: …" → "Calcolo in corso: …".
+compute (predictions, a readout)	calcolare, calcolo	Never "misurare": "Compute a readout of a large region?" → "Calcolare il riepilogo di una regione grande?"; "Computing: …" → "Calcolo in corso: …".
 this eov	questa versione di eov	"does not run with this eov" → "non funziona con questa versione di eov".
 worker thread	thread di lavoro	A part of eov or a plugin that works in the background: "Could not start a worker thread" → "Impossibile avviare un thread di lavoro".
 host (eov, as plugins see it)	host	Masculine: "the host returned …" → "l'host ha restituito …".

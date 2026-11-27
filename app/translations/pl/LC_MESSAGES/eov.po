@@ -72,10 +72,9 @@ msgstr "Zapisano wyrównanie"
 #. Translators: the saved alignment of the linked panes was forgotten; they
 #. stay where they are now.
 #: app/src/callbacks.rs:492
-#, fuzzy
-#| msgid "Align linked slides as they are shown"
 msgid "Alignment reset: the linked panes stay as they are now."
-msgstr "Wyrównaj połączone preparaty w obecnym położeniu"
+msgstr ""
+"Zresetowano wyrównanie: połączone okienka pozostają w obecnym położeniu."
 
 #. Translators: about the zoom, 100% showing one slide pixel per
 #. screen pixel.
@@ -104,7 +103,7 @@ msgstr "Kolory ze skanu (zarządzanie kolorami wyłączone)"
 #. shown again (its tab is brought to the front).
 #: app/src/callbacks.rs:650 app/src/file_ops.rs:607 app/src/file_ops.rs:1094
 msgid "Switched to {}"
-msgstr ""
+msgstr "Przełączono na {}"
 
 #: app/src/callbacks.rs:688 app/src/file_ops.rs:633
 msgid "Opened new tab for {}"
@@ -134,7 +133,7 @@ msgstr ""
 #. channels (both bare numbers).
 #: app/src/channels.rs:344
 msgid "Channels shown: {shown} of {total}"
-msgstr ""
+msgstr "Wyświetlane kanały: {shown} z {total}"
 
 #: app/src/channels.rs:350
 msgid "{n} significant bit"
@@ -255,66 +254,65 @@ msgstr "Preparaty"
 msgid "no input paths were given"
 msgstr "nie podano ścieżek wejściowych"
 
-#. Translators: the size of the dataset's patches is out of range.
-#: app/src/dataset_dialog.rs:157
-msgid "tile size must be between {min} and {max} pixels (got {value})"
+#. Translators: the dialog's Patch Size field (the size of the
+#. dataset's patches, in pixels) is out of range.
+#: app/src/dataset_dialog.rs:158
+msgid "patch size must be between {min} and {max} pixels (got {value})"
 msgstr ""
 "rozmiar kafelka musi wynosić od {min} do {max} pikseli (podano {value})"
 
 #. Translators: the step between the dataset's patches is out of
 #. range.
-#: app/src/dataset_dialog.rs:165
+#: app/src/dataset_dialog.rs:166
 msgid "stride must be between {min} and {max} pixels (got {value})"
 msgstr "krok musi wynosić od {min} do {max} pikseli (podano {value})"
 
 #. Translators: the number of threads (processor cores) to use is out
 #. of range.
-#: app/src/dataset_dialog.rs:173
+#: app/src/dataset_dialog.rs:174
 msgid "threads must be between {min} and {max} (got {value})"
 msgstr "liczba wątków musi wynosić od {min} do {max} (podano {value})"
 
 #. Translators: {} is the number given.
-#: app/src/dataset_dialog.rs:180
-#, fuzzy
-#| msgid "white threshold must be in (0, 1] (got {})"
+#: app/src/dataset_dialog.rs:181
 msgid "white threshold must be above 0 and at most 1 (got {})"
-msgstr "próg bieli musi należeć do przedziału (0; 1] (podano {})"
+msgstr "próg bieli musi być większy od 0 i wynosić co najwyżej 1 (podano {})"
 
-#: app/src/dataset_dialog.rs:232
+#: app/src/dataset_dialog.rs:233
 msgid "Extracting dataset patches"
 msgstr "Wycinanie kafelków do zbioru danych"
 
-#: app/src/dataset_dialog.rs:271
+#: app/src/dataset_dialog.rs:272
 msgid "Could not start the dataset extraction"
 msgstr "Nie udało się rozpocząć tworzenia zbioru danych"
 
-#: app/src/dataset_dialog.rs:283
+#: app/src/dataset_dialog.rs:284
 msgid "Finding slides…"
 msgstr "Wyszukiwanie preparatów…"
 
-#: app/src/dataset_dialog.rs:284
+#: app/src/dataset_dialog.rs:285
 msgid "Planning…"
 msgstr "Planowanie…"
 
 #. Translators: the dataset extraction is computing the identity of
 #. slide {current} of {total}.
-#: app/src/dataset_dialog.rs:288
+#: app/src/dataset_dialog.rs:289
 msgid "Hashing {current}/{total}"
 msgstr "Obliczanie skrótu {current}/{total}"
 
 #. Translators: the dataset extraction is at slide {current} of
 #. {total}.
-#: app/src/dataset_dialog.rs:295
+#: app/src/dataset_dialog.rs:296
 msgid "Slide {current}/{total}"
 msgstr "Preparat {current}/{total}"
 
-#: app/src/dataset_dialog.rs:297
+#: app/src/dataset_dialog.rs:298
 msgid "Finishing…"
 msgstr "Kończenie…"
 
 #. Translators: patches written so far (as are "kept", "skipped" and
 #. "failed" below).
-#: app/src/dataset_dialog.rs:302
+#: app/src/dataset_dialog.rs:303
 msgid "{n} written"
 msgid_plural "{n} written"
 msgstr[0] "zapisano {n}"
@@ -322,21 +320,21 @@ msgstr[1] "zapisano {n}"
 msgstr[2] "zapisano {n}"
 
 #. Translators: patches already there from an earlier run.
-#: app/src/dataset_dialog.rs:305
+#: app/src/dataset_dialog.rs:306
 msgid "{n} kept"
 msgid_plural "{n} kept"
 msgstr[0] "zachowano {n}"
 msgstr[1] "zachowano {n}"
 msgstr[2] "zachowano {n}"
 
-#: app/src/dataset_dialog.rs:308
+#: app/src/dataset_dialog.rs:309
 msgid "{n} skipped"
 msgid_plural "{n} skipped"
 msgstr[0] "pominięto {n}"
 msgstr[1] "pominięto {n}"
 msgstr[2] "pominięto {n}"
 
-#: app/src/dataset_dialog.rs:311
+#: app/src/dataset_dialog.rs:312
 msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] "nieudane: {n}"
@@ -344,30 +342,30 @@ msgstr[1] "nieudane: {n}"
 msgstr[2] "nieudane: {n}"
 
 #. Translators: the time the extraction still needs ("4m 05s left").
-#: app/src/dataset_dialog.rs:315
+#: app/src/dataset_dialog.rs:316
 msgid "{} left"
 msgstr "pozostało {}"
 
 #. Translators: hours and minutes ("1h 02m").
-#: app/src/dataset_dialog.rs:338
+#: app/src/dataset_dialog.rs:339
 msgid "{hours}h {minutes}m"
 msgstr "{hours} h {minutes} min"
 
 #. Translators: minutes and seconds ("4m 05s").
-#: app/src/dataset_dialog.rs:345
+#: app/src/dataset_dialog.rs:346
 msgid "{minutes}m {seconds}s"
 msgstr "{minutes} min {seconds} s"
 
 #. Translators: seconds ("12s").
-#: app/src/dataset_dialog.rs:351
+#: app/src/dataset_dialog.rs:352
 msgid "{seconds}s"
 msgstr "{seconds} s"
 
-#: app/src/dataset_dialog.rs:367
+#: app/src/dataset_dialog.rs:368
 msgid "Dataset extraction cancelled"
 msgstr "Anulowano tworzenie zbioru danych"
 
-#: app/src/dataset_dialog.rs:369
+#: app/src/dataset_dialog.rs:370
 msgid "{n} patch was written to {folder}; run it again to resume."
 msgid_plural "{n} patches were written to {folder}; run it again to resume."
 msgstr[0] ""
@@ -377,38 +375,32 @@ msgstr[1] ""
 msgstr[2] ""
 "Zapisano {n} kafelków w folderze {folder}; uruchom ponownie, aby wznowić."
 
-#: app/src/dataset_dialog.rs:384
+#: app/src/dataset_dialog.rs:385
 msgid "Dataset extraction finished"
 msgstr "Zakończono tworzenie zbioru danych"
 
-#: app/src/dataset_dialog.rs:391
+#: app/src/dataset_dialog.rs:392
 msgid "Dataset extraction failed"
 msgstr "Tworzenie zbioru danych nie powiodło się"
 
-#: app/src/dataset_dialog.rs:402
-#, fuzzy
-#| msgid "{n} patch was written to {folder}; run it again to resume."
-#| msgid_plural "{n} patches were written to {folder}; run it again to resume."
+#: app/src/dataset_dialog.rs:403
 msgid "{n} patch written to {folder}."
 msgid_plural "{n} patches written to {folder}."
-msgstr[0] ""
-"Zapisano {n} kafelek w folderze {folder}; uruchom ponownie, aby wznowić."
-msgstr[1] ""
-"Zapisano {n} kafelki w folderze {folder}; uruchom ponownie, aby wznowić."
-msgstr[2] ""
-"Zapisano {n} kafelków w folderze {folder}; uruchom ponownie, aby wznowić."
+msgstr[0] "Zapisano {n} kafelek w folderze {folder}."
+msgstr[1] "Zapisano {n} kafelki w folderze {folder}."
+msgstr[2] "Zapisano {n} kafelków w folderze {folder}."
 
-#: app/src/dataset_dialog.rs:406
+#: app/src/dataset_dialog.rs:407
 msgid "{n} slide processed."
 msgid_plural "{n} slides processed."
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "Przetworzono {n} preparat."
+msgstr[1] "Przetworzono {n} preparaty."
+msgstr[2] "Przetworzono {n} preparatów."
 
 #. Translators: tissue QC flagged every patch the filters skipped
 #. (pen marks, possible folds or possible blur: flags for review, not
 #. certainties).
-#: app/src/dataset_dialog.rs:417
+#: app/src/dataset_dialog.rs:418
 msgid ""
 "{n} patch skipped by the filters: tissue QC flagged it (pen marks, possible "
 "folds or blur)."
@@ -416,10 +408,16 @@ msgid_plural ""
 "{n} patches skipped by the filters: tissue QC flagged them (pen marks, "
 "possible folds or blur)."
 msgstr[0] ""
+"Filtry pominęły {n} kafelek: oznaczyła go kontrola jakości tkanki (ślady "
+"pisaka, możliwe fałdy lub rozmycie)."
 msgstr[1] ""
+"Filtry pominęły {n} kafelki: oznaczyła je kontrola jakości tkanki (ślady "
+"pisaka, możliwe fałdy lub rozmycie)."
 msgstr[2] ""
+"Filtry pominęły {n} kafelków: oznaczyła je kontrola jakości tkanki (ślady "
+"pisaka, możliwe fałdy lub rozmycie)."
 
-#: app/src/dataset_dialog.rs:423
+#: app/src/dataset_dialog.rs:424
 msgid "{n} patch skipped by the filters."
 msgid_plural "{n} patches skipped by the filters."
 msgstr[0] "Filtry pominęły {n} kafelek."
@@ -429,18 +427,21 @@ msgstr[2] "Filtry pominęły {n} kafelków."
 #. Translators: follows the sentence about the patches skipped
 #. by the filters (always more than one here): how many of them
 #. tissue QC flagged (flags for review, not certainties).
-#: app/src/dataset_dialog.rs:430
-#, fuzzy
-#| msgid "{n} of them over pen marks, folds or blurred areas."
-#| msgid_plural "{n} of them over pen marks, folds or blurred areas."
+#: app/src/dataset_dialog.rs:431
 msgid "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
 msgid_plural ""
 "{n} of them flagged by tissue QC (pen marks, possible folds or blur)."
-msgstr[0] "W tym {n} na śladach pisaka, fałdach lub rozmytych obszarach."
-msgstr[1] "W tym {n} na śladach pisaka, fałdach lub rozmytych obszarach."
-msgstr[2] "W tym {n} na śladach pisaka, fałdach lub rozmytych obszarach."
+msgstr[0] ""
+"Kontrola jakości tkanki oznaczyła {n} z nich (ślady pisaka, możliwe fałdy "
+"lub rozmycie)."
+msgstr[1] ""
+"Kontrola jakości tkanki oznaczyła {n} z nich (ślady pisaka, możliwe fałdy "
+"lub rozmycie)."
+msgstr[2] ""
+"Kontrola jakości tkanki oznaczyła {n} z nich (ślady pisaka, możliwe fałdy "
+"lub rozmycie)."
 
-#: app/src/dataset_dialog.rs:437
+#: app/src/dataset_dialog.rs:438
 msgid "{n} patch was already there from an earlier run."
 msgid_plural "{n} patches were already there from an earlier run."
 msgstr[0] "{n} kafelek był już zapisany podczas wcześniejszego uruchomienia."
@@ -448,7 +449,7 @@ msgstr[1] "{n} kafelki były już zapisane podczas wcześniejszego uruchomienia.
 msgstr[2] ""
 "{n} kafelków było już zapisanych podczas wcześniejszego uruchomienia."
 
-#: app/src/dataset_dialog.rs:442
+#: app/src/dataset_dialog.rs:443
 msgid "{n} patch could not be read."
 msgid_plural "{n} patches could not be read."
 msgstr[0] "Nie udało się odczytać {n} kafelka."
@@ -457,43 +458,30 @@ msgstr[2] "Nie udało się odczytać {n} kafelków."
 
 #. Translators: every slide that was skipped failed. slides.csv is
 #. the name of a file in the dataset; keep it as it is.
-#: app/src/dataset_dialog.rs:449
-#, fuzzy
-#| msgid "{skipped} slide(s) skipped, {failed} failed (see slides.csv)."
+#: app/src/dataset_dialog.rs:450
 msgid "{n} slide failed (see slides.csv)."
 msgid_plural "{n} slides failed (see slides.csv)."
-msgstr[0] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
-msgstr[1] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
-msgstr[2] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
+msgstr[0] "Nie udało się przetworzyć {n} preparatu (zob. slides.csv)."
+msgstr[1] "Nie udało się przetworzyć {n} preparatów (zob. slides.csv)."
+msgstr[2] "Nie udało się przetworzyć {n} preparatów (zob. slides.csv)."
 
 #. Translators: slides.csv is the name of a file in the dataset;
 #. keep it as it is.
-#: app/src/dataset_dialog.rs:454
-#, fuzzy
-#| msgid "{skipped} slide(s) skipped, {failed} failed (see slides.csv)."
+#: app/src/dataset_dialog.rs:455
 msgid "{n} slide was skipped (see slides.csv)."
 msgid_plural "{n} slides were skipped (see slides.csv)."
-msgstr[0] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
-msgstr[1] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
-msgstr[2] ""
-"Pominięte preparaty: {skipped}, nieudane: {failed} (zob. slides.csv)."
+msgstr[0] "Pominięto {n} preparat (zob. slides.csv)."
+msgstr[1] "Pominięto {n} preparaty (zob. slides.csv)."
+msgstr[2] "Pominięto {n} preparatów (zob. slides.csv)."
 
 #. Translators: follows the sentence about the slides that were
 #. skipped (always more than one here): how many of them failed.
-#: app/src/dataset_dialog.rs:461
-#, fuzzy
-#| msgid "{n} failed"
-#| msgid_plural "{n} failed"
+#: app/src/dataset_dialog.rs:462
 msgid "{n} of them failed."
 msgid_plural "{n} of them failed."
-msgstr[0] "nieudane: {n}"
-msgstr[1] "nieudane: {n}"
-msgstr[2] "nieudane: {n}"
+msgstr[0] "Nie udało się przetworzyć {n} z nich."
+msgstr[1] "Nie udało się przetworzyć {n} z nich."
+msgstr[2] "Nie udało się przetworzyć {n} z nich."
 
 #. Translators: {program} is a program that opens folders; {status}
 #. is how it ended, as the system says it ("exit status: 1").
@@ -565,8 +553,14 @@ msgid_plural ""
 "These letters of the labels cannot be drawn into the image and are left "
 "blank: {letters}"
 msgstr[0] ""
+"Tego znaku z etykiet nie można narysować na obrazie, więc jego miejsce "
+"pozostanie puste: {letters}"
 msgstr[1] ""
+"Tych znaków z etykiet nie można narysować na obrazie, więc ich miejsca "
+"pozostaną puste: {letters}"
 msgstr[2] ""
+"Tych znaków z etykiet nie można narysować na obrazie, więc ich miejsca "
+"pozostaną puste: {letters}"
 
 #: app/src/export_dialog.rs:775
 msgid "No scale bar: the slide has no pixel size."
@@ -582,13 +576,6 @@ msgstr "Nie zastosowano: {}"
 #. export (the form follows {n}); {total} is the number of tiles
 #. of the image. A coarser level of the slide filled their areas.
 #: app/src/export_dialog.rs:821
-#, fuzzy
-#| msgid ""
-#| "{failed} of {n} tile could not be read; its area was filled from a lower-"
-#| "resolution level."
-#| msgid_plural ""
-#| "{failed} of {n} tiles could not be read; those areas were filled from a "
-#| "lower-resolution level."
 msgid ""
 "{n} tile of {total} could not be read; its area was filled from a lower-"
 "resolution level."
@@ -596,35 +583,31 @@ msgid_plural ""
 "{n} tiles of {total} could not be read; their areas were filled from a lower-"
 "resolution level."
 msgstr[0] ""
-"Nie udało się odczytać {failed} z {n} kafelka; jego obszar wypełniono danymi "
+"Nie udało się odczytać {n} kafelka z {total}; jego obszar wypełniono danymi "
 "z poziomu o niższej rozdzielczości."
 msgstr[1] ""
-"Nie udało się odczytać {failed} z {n} kafelków; nieodczytane obszary "
-"wypełniono danymi z poziomu o niższej rozdzielczości."
+"Nie udało się odczytać {n} kafelków z {total}; ich obszary wypełniono danymi "
+"z poziomu o niższej rozdzielczości."
 msgstr[2] ""
-"Nie udało się odczytać {failed} z {n} kafelków; nieodczytane obszary "
-"wypełniono danymi z poziomu o niższej rozdzielczości."
+"Nie udało się odczytać {n} kafelków z {total}; ich obszary wypełniono danymi "
+"z poziomu o niższej rozdzielczości."
 
 #. Translators: {n} tiles of the slide could not be read for an
 #. export (the form follows {n}); {total} is the number of tiles
 #. of the image. Their areas show the background.
 #: app/src/export_dialog.rs:831
-#, fuzzy
-#| msgid "{failed} of {n} tile could not be read and is left as background."
-#| msgid_plural ""
-#| "{failed} of {n} tiles could not be read and are left as background."
 msgid "{n} tile of {total} could not be read and is left as background."
 msgid_plural ""
 "{n} tiles of {total} could not be read and are left as background."
 msgstr[0] ""
-"Nie udało się odczytać {failed} z {n} kafelka; jego obszar pozostawiono jako "
+"Nie udało się odczytać {n} kafelka z {total}; jego obszar pozostawiono jako "
 "tło."
 msgstr[1] ""
-"Nie udało się odczytać {failed} z {n} kafelków; nieodczytane obszary "
-"pozostawiono jako tło."
+"Nie udało się odczytać {n} kafelków z {total}; ich obszary pozostawiono jako "
+"tło."
 msgstr[2] ""
-"Nie udało się odczytać {failed} z {n} kafelków; nieodczytane obszary "
-"pozostawiono jako tło."
+"Nie udało się odczytać {n} kafelków z {total}; ich obszary pozostawiono jako "
+"tło."
 
 #: app/src/export_dialog.rs:1167
 msgid "Open a slide to export an image"
@@ -663,7 +646,7 @@ msgstr "{width} × {height} px, zapisano w {path}"
 msgid "Exported {}"
 msgstr "Wyeksportowano {}"
 
-#: app/src/export_dialog.rs:1485 app/src/save_copy.rs:614
+#: app/src/export_dialog.rs:1485 app/src/save_copy.rs:618
 msgid "{} is incomplete"
 msgstr "Plik {} jest niekompletny"
 
@@ -832,108 +815,88 @@ msgstr[2] "{n} punktów czasowych: {keys}"
 #. the Type column, for example). Aperio, a maker of slide scanners,
 #. stays as it is.
 #: app/src/file_types/mod.rs:231
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "Aperio whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu Aperio"
 
 #. Translators: the name of a file type in file managers. Hamamatsu (a
 #. maker of slide scanners) and NDPI (its format) stay as they are.
 #: app/src/file_types/mod.rs:234
 msgctxt "File type"
 msgid "Hamamatsu NDPI whole-slide image"
-msgstr ""
+msgstr "Obraz całego preparatu Hamamatsu NDPI"
 
 #. Translators: the name of a file type in file managers. Hamamatsu (a
 #. maker of slide scanners) and VMS (its format) stay as they are.
 #: app/src/file_types/mod.rs:237
 msgctxt "File type"
 msgid "Hamamatsu VMS whole-slide image"
-msgstr ""
+msgstr "Obraz całego preparatu Hamamatsu VMS"
 
 #. Translators: the name of a file type in file managers. Hamamatsu (a
 #. maker of slide scanners) and VMU (its format) stay as they are.
 #: app/src/file_types/mod.rs:240
 msgctxt "File type"
 msgid "Hamamatsu VMU whole-slide image"
-msgstr ""
+msgstr "Obraz całego preparatu Hamamatsu VMU"
 
 #. Translators: the name of a file type in file managers. Leica (a
 #. maker of slide scanners) and SCN (its format) stay as they are.
 #: app/src/file_types/mod.rs:243
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "Leica SCN whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu Leica SCN"
 
 #. Translators: the name of a file type in file managers. MIRAX (the
 #. format of 3DHISTECH's slide scanners) stays as it is.
 #: app/src/file_types/mod.rs:246
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "MIRAX whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu MIRAX"
 
 #. Translators: the name of a file type in file managers. Sakura, a
 #. maker of slide scanners, stays as it is.
 #: app/src/file_types/mod.rs:249
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "Sakura whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu Sakura"
 
 #. Translators: the name of a file type in file managers. Ventana, a
 #. maker of slide scanners, stays as it is.
 #: app/src/file_types/mod.rs:252
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "Ventana whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu Ventana"
 
 #. Translators: the name of a file type in file managers. Zeiss (a
 #. maker of slide scanners) and CZI (its format) stay as they are.
 #: app/src/file_types/mod.rs:255
-#, fuzzy
-#| msgctxt "Desktop entry"
-#| msgid "Whole-slide image viewer"
 msgctxt "File type"
 msgid "Zeiss CZI whole-slide image"
-msgstr "Przeglądarka obrazów całych preparatów"
+msgstr "Obraz całego preparatu Zeiss CZI"
 
 #. Translators: the name of a file type in file managers. Akoya (a
 #. maker of slide scanners) and QPTIFF (its format) stay as they are.
 #: app/src/file_types/mod.rs:258
 msgctxt "File type"
 msgid "Akoya QPTIFF whole-slide image"
-msgstr ""
+msgstr "Obraz całego preparatu Akoya QPTIFF"
 
 #. Translators: the name of a file type in file managers. BigTIFF, the
 #. variant of TIFF for very large images, stays as it is.
 #: app/src/file_types/mod.rs:261
-#, fuzzy
-#| msgid "TIFF image"
 msgctxt "File type"
 msgid "BigTIFF image"
-msgstr "Obraz TIFF"
+msgstr "Obraz BigTIFF"
 
 #. Translators: the kind of program, under its name in application menus.
-#: app/src/file_types/mod.rs:455
+#: app/src/file_types/mod.rs:463
 msgctxt "Desktop entry"
 msgid "Whole-slide image viewer"
 msgstr "Przeglądarka obrazów całych preparatów"
 
 #. Translators: a tooltip in application menus.
-#: app/src/file_types/mod.rs:457
+#: app/src/file_types/mod.rs:465
 msgctxt "Desktop entry"
 msgid "View whole-slide images with OpenSlide-powered tile rendering"
 msgstr ""
@@ -942,7 +905,7 @@ msgstr ""
 
 #. Translators: search words for application menus, separated by
 #. semicolons; keep the English ones and add your language's.
-#: app/src/file_types/mod.rs:460
+#: app/src/file_types/mod.rs:468
 msgctxt "Desktop entry"
 msgid "whole-slide;wsi;pathology;microscopy;openslide;microbiology"
 msgstr ""
@@ -951,20 +914,23 @@ msgstr ""
 
 #. Translators: eov's one-line summary in software centres (GNOME
 #. Software, KDE Discover, Flathub), next to its name. No full stop.
-#: app/src/file_types/mod.rs:472
+#: app/src/file_types/mod.rs:480
 msgctxt "AppStream"
 msgid "Fast desktop viewer for whole-slide images"
-msgstr ""
+msgstr "Szybka przeglądarka obrazów całych preparatów na komputery"
 
 #. Translators: the description of eov in software centres (GNOME
 #. Software, KDE Discover, Flathub). eov, Rust and WSI stay as they are.
-#: app/src/file_types/mod.rs:475
+#: app/src/file_types/mod.rs:483
 msgctxt "AppStream"
 msgid ""
 "eov is a desktop viewer for whole-slide images built in Rust. It fills a "
 "niche in the WSI ecosystem: a small, high-performance workbench for quickly "
 "viewing WSI files on your local machine."
 msgstr ""
+"eov to przeglądarka obrazów całych preparatów na komputery, napisana w "
+"języku Rust. Wypełnia niszę w ekosystemie WSI: to niewielkie, wydajne "
+"narzędzie do szybkiego przeglądania plików WSI lokalnie."
 
 #: app/src/gpu.rs:915
 msgid "GPU error: {}"
@@ -1220,7 +1186,7 @@ msgstr ""
 
 #. Translators: a percentage ("12.5 %").
 #: app/src/host_ui/bookmarks.rs:63 app/src/host_ui/qc.rs:65
-#: app/src/plugin_runtime/usage.rs:246 app/src/quantify_panel.rs:301
+#: app/src/plugin_runtime/usage.rs:251 app/src/quantify_panel.rs:301
 msgid "{} %"
 msgstr "{}%"
 
@@ -1341,10 +1307,8 @@ msgstr "Nie udało się otworzyć folderu dzienników"
 #. of a plugin's job as the plugin wrote it ("Detecting
 #. nuclei").
 #: app/src/host_ui/commands.rs:164
-#, fuzzy
-#| msgid "Failed: {}"
 msgid "Failed: {title}"
-msgstr "Błąd: {}"
+msgstr "Niepowodzenie: {title}"
 
 #: app/src/host_ui/heatmaps.rs:208
 msgid "Heat map"
@@ -1420,16 +1384,13 @@ msgstr "obraz kolorowy, rysowany bez zmian"
 #. between 0 and 1 and are shown as they are.
 #: app/src/host_ui/heatmaps.rs:734
 msgid "values 0–1"
-msgstr ""
+msgstr "wartości 0–1"
 
 #. Translators: how a heat map's values are shown: it holds no
 #. number at all (every pixel is empty).
 #: app/src/host_ui/heatmaps.rs:737
-#, fuzzy
-#| msgctxt "SlideInfoPanel"
-#| msgid "Copies the value"
 msgid "no finite values"
-msgstr "Kopiuje wartość"
+msgstr "brak wartości skończonych"
 
 #: app/src/host_ui/heatmaps.rs:745
 msgid "values {min} to {max} shown as 0–1"
@@ -1536,20 +1497,20 @@ msgid "No tissue was found; showing the whole slide"
 msgstr "Nie znaleziono tkanki; wyświetlany jest cały preparat"
 
 #. Translators: a key a plugin uses while it is held down.
-#: app/src/host_ui/key_help.rs:66
+#: app/src/host_ui/key_help.rs:69
 msgid "{} (hold)"
 msgstr "{} (przytrzymaj)"
 
 #. Translators: a heading of the Keyboard Shortcuts panel: the
 #. keys of the plugin named {}.
-#: app/src/host_ui/key_help.rs:76
+#: app/src/host_ui/key_help.rs:80
 msgid "{} (plugin)"
 msgstr "{} (wtyczka)"
 
 #. Translators: [shortcuts], the grey names, the keys and the
 #. examples are what users write in config.toml: keep them as
 #. they are.
-#: app/src/host_ui/key_help.rs:89
+#: app/src/host_ui/key_help.rs:93
 msgid ""
 "To change keys, add a [shortcuts] table to {} with the grey names: bookmark-"
 "add = \"Ctrl+D\", zoom-in = [\"+\", \"=\"], or [] for no key. \"Ctrl\" means "
@@ -1562,12 +1523,12 @@ msgstr ""
 "klawiszy programu eov."
 
 #. Translators: {} names what was copied.
-#: app/src/host_ui/key_help.rs:108 app/src/host_ui/measurements_panel.rs:231
+#: app/src/host_ui/key_help.rs:112 app/src/host_ui/measurements_panel.rs:231
 #: app/src/host_ui/menus.rs:538 app/src/slide_info.rs:326
 msgid "Copied {}"
 msgstr "Skopiowano: {}"
 
-#: app/src/host_ui/key_help.rs:120
+#: app/src/host_ui/key_help.rs:124
 msgid "Some keyboard shortcuts in config.toml were not used"
 msgstr "Niektóre skróty klawiaturowe z pliku config.toml nie zostały użyte"
 
@@ -1766,16 +1727,12 @@ msgstr "Nie udało się wczytać wtyczek"
 #. Translators: {requirement} is a range of Slint versions
 #. (">=1.20"), {slint} a version of Slint ("1.19.0").
 #: app/src/host_ui/mod.rs:393
-#, fuzzy
-#| msgid ""
-#| "needs Slint {requirement} but this eov uses {slint}; its panels may not "
-#| "display"
 msgid ""
 "This plugin needs Slint {requirement}, but this eov uses Slint {slint}; its "
 "panels may not display."
 msgstr ""
-"wymaga Slint {requirement}, ale ta wersja eov używa {slint}; panele wtyczki "
-"mogą się nie wyświetlać"
+"Ta wtyczka wymaga Slint {requirement}, ale ta wersja eov używa Slint "
+"{slint}; jej panele mogą się nie wyświetlać."
 
 #: app/src/host_ui/mod.rs:502
 msgid "Plugin {} could not be started"
@@ -1813,20 +1770,15 @@ msgstr "Filtr {} został wyłączony po powtarzających się błędach"
 
 #. Translators: a size in bytes ("512 bytes"), below 1 KiB.
 #: app/src/host_ui/models.rs:32
-#, fuzzy
-#| msgid "{n} item"
-#| msgid_plural "{n} items"
 msgid "{n} byte"
 msgid_plural "{n} bytes"
-msgstr[0] "{n} element"
-msgstr[1] "{n} elementy"
-msgstr[2] "{n} elementów"
+msgstr[0] "{n} bajt"
+msgstr[1] "{n} bajty"
+msgstr[2] "{n} bajtów"
 
 #: app/src/host_ui/models.rs:98
-#, fuzzy
-#| msgid "Could not download {}"
 msgid "Cannot download {}"
-msgstr "Nie udało się pobrać {}"
+msgstr "Nie można pobrać {}"
 
 #: app/src/host_ui/models.rs:125
 msgid ""
@@ -1889,7 +1841,7 @@ msgid "Could not download {}"
 msgstr "Nie udało się pobrać {}"
 
 #. Translators: a toast with the name of the plugin that sent it.
-#: app/src/host_ui/notices.rs:127
+#: app/src/host_ui/notices.rs:142
 msgid "{source}: {message}"
 msgstr "{source}: {message}"
 
@@ -1902,12 +1854,9 @@ msgstr "oficjalna"
 #. Translators: a plugin installed from a GitHub repository; {} is the
 #. repository (owner/name).
 #: app/src/host_ui/panel.rs:24
-#, fuzzy
-#| msgctxt "Plugin origin"
-#| msgid "github ({})"
 msgctxt "Plugin origin"
 msgid "GitHub ({})"
-msgstr "github ({})"
+msgstr "GitHub ({})"
 
 #. Translators: a plugin installed from a file on this computer.
 #: app/src/host_ui/panel.rs:28
@@ -2081,9 +2030,9 @@ msgstr "{} mm² tkanki"
 #: app/src/host_ui/qc.rs:72
 msgid "{n} grid square with tissue"
 msgid_plural "{n} grid squares with tissue"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "{n} pole siatki z tkanką"
+msgstr[1] "{n} pola siatki z tkanką"
+msgstr[2] "{n} pól siatki z tkanką"
 
 #: app/src/host_ui/qc.rs:78
 msgid ""
@@ -2224,16 +2173,14 @@ msgstr ""
 #. Translators: Slint is the name of a toolkit; {file} is a file of
 #. a plugin; {error} is what Slint said (in English).
 #: app/src/host_ui/surfaces.rs:313
-#, fuzzy
-#| msgid "the ICC profile was not copied: {error}"
 msgid "the Slint compiler failed on {file}: {error}"
-msgstr "nie skopiowano profilu ICC: {error}"
+msgstr "kompilator Slint nie zdołał przetworzyć pliku {file}: {error}"
 
 #. Translators: {component} is the name of a part of a plugin's
 #. window, {file} the plugin's file that should offer it.
 #: app/src/host_ui/surfaces.rs:330
 msgid "component '{component}' is not exported by {file}"
-msgstr ""
+msgstr "plik {file} nie eksportuje komponentu „{component}”"
 
 #: app/src/host_ui/surfaces.rs:462
 msgid "Cannot show {}"
@@ -2261,176 +2208,174 @@ msgstr ""
 "Nieznany język „{value}” podany w opcji --language: nie należy do języków "
 "programu eov ({languages}). Język interfejsu: {current}."
 
-#: app/src/i18n.rs:238
+#: app/src/i18n.rs:242
 msgctxt "Language name"
 msgid "English"
 msgstr "Angielski"
 
-#: app/src/i18n.rs:239
+#: app/src/i18n.rs:243
 msgctxt "Language name"
 msgid "Arabic"
 msgstr "Arabski"
 
-#: app/src/i18n.rs:240
+#: app/src/i18n.rs:244
 msgctxt "Language name"
 msgid "Czech"
 msgstr "Czeski"
 
-#: app/src/i18n.rs:241
+#: app/src/i18n.rs:245
 msgctxt "Language name"
 msgid "Danish"
 msgstr "Duński"
 
-#: app/src/i18n.rs:242
+#: app/src/i18n.rs:246
 msgctxt "Language name"
 msgid "German"
 msgstr "Niemiecki"
 
-#: app/src/i18n.rs:243
+#: app/src/i18n.rs:247
 msgctxt "Language name"
 msgid "Greek"
 msgstr "Grecki"
 
-#: app/src/i18n.rs:244
+#: app/src/i18n.rs:248
 msgctxt "Language name"
 msgid "Spanish"
 msgstr "Hiszpański"
 
-#: app/src/i18n.rs:245
+#: app/src/i18n.rs:249
 msgctxt "Language name"
 msgid "Persian"
 msgstr "Perski"
 
-#: app/src/i18n.rs:246
+#: app/src/i18n.rs:250
 msgctxt "Language name"
 msgid "Finnish"
 msgstr "Fiński"
 
-#: app/src/i18n.rs:247
+#: app/src/i18n.rs:251
 msgctxt "Language name"
 msgid "French"
 msgstr "Francuski"
 
-#: app/src/i18n.rs:248
+#: app/src/i18n.rs:252
 msgctxt "Language name"
 msgid "Hebrew"
 msgstr "Hebrajski"
 
-#: app/src/i18n.rs:249
+#: app/src/i18n.rs:253
 msgctxt "Language name"
 msgid "Hindi"
 msgstr "Hindi"
 
-#: app/src/i18n.rs:250
+#: app/src/i18n.rs:254
 msgctxt "Language name"
 msgid "Hungarian"
 msgstr "Węgierski"
 
-#: app/src/i18n.rs:251
+#: app/src/i18n.rs:255
 msgctxt "Language name"
 msgid "Indonesian"
 msgstr "Indonezyjski"
 
-#: app/src/i18n.rs:252
+#: app/src/i18n.rs:256
 msgctxt "Language name"
 msgid "Italian"
 msgstr "Włoski"
 
-#: app/src/i18n.rs:253
+#: app/src/i18n.rs:257
 msgctxt "Language name"
 msgid "Japanese"
 msgstr "Japoński"
 
-#: app/src/i18n.rs:254
+#: app/src/i18n.rs:258
 msgctxt "Language name"
 msgid "Korean"
 msgstr "Koreański"
 
-#: app/src/i18n.rs:255
+#: app/src/i18n.rs:259
 msgctxt "Language name"
 msgid "Norwegian Bokmål"
 msgstr "Norweski (bokmål)"
 
-#: app/src/i18n.rs:256
+#: app/src/i18n.rs:260
 msgctxt "Language name"
 msgid "Dutch"
 msgstr "Niderlandzki"
 
-#: app/src/i18n.rs:257
+#: app/src/i18n.rs:261
 msgctxt "Language name"
 msgid "Polish"
 msgstr "Polski"
 
-#: app/src/i18n.rs:258
+#: app/src/i18n.rs:262
 msgctxt "Language name"
 msgid "Portuguese (Brazil)"
 msgstr "Portugalski (Brazylia)"
 
-#: app/src/i18n.rs:259
+#: app/src/i18n.rs:263
 msgctxt "Language name"
 msgid "Romanian"
 msgstr "Rumuński"
 
-#: app/src/i18n.rs:260
+#: app/src/i18n.rs:264
 msgctxt "Language name"
 msgid "Russian"
 msgstr "Rosyjski"
 
-#: app/src/i18n.rs:261
+#: app/src/i18n.rs:265
 msgctxt "Language name"
 msgid "Slovenian"
 msgstr "Słoweński"
 
-#: app/src/i18n.rs:262
+#: app/src/i18n.rs:266
 msgctxt "Language name"
 msgid "Swedish"
 msgstr "Szwedzki"
 
-#: app/src/i18n.rs:263
+#: app/src/i18n.rs:267
 msgctxt "Language name"
 msgid "Thai"
 msgstr "Tajski"
 
-#: app/src/i18n.rs:264
+#: app/src/i18n.rs:268
 msgctxt "Language name"
 msgid "Turkish"
 msgstr "Turecki"
 
-#: app/src/i18n.rs:265
+#: app/src/i18n.rs:269
 msgctxt "Language name"
 msgid "Ukrainian"
 msgstr "Ukraiński"
 
-#: app/src/i18n.rs:266
+#: app/src/i18n.rs:270
 msgctxt "Language name"
 msgid "Vietnamese"
 msgstr "Wietnamski"
 
-#: app/src/i18n.rs:267
+#: app/src/i18n.rs:271
 msgctxt "Language name"
 msgid "Chinese (Simplified)"
 msgstr "Chiński (uproszczony)"
 
-#: app/src/i18n.rs:268
+#: app/src/i18n.rs:272
 msgctxt "Language name"
 msgid "Chinese (Traditional)"
 msgstr "Chiński (tradycyjny)"
 
-#: app/src/i18n.rs:288
+#: app/src/i18n.rs:292
 msgid "Automatic (System Default)"
 msgstr "Automatycznie (ustawienie systemowe)"
 
-#: app/src/i18n.rs:292
-#, fuzzy
-#| msgid "Currently {native} — {name}"
+#: app/src/i18n.rs:296
 msgid "Currently {native}"
-msgstr "Obecnie {native} — {name}"
+msgstr "Obecnie {native}"
 
-#: app/src/i18n.rs:295
+#: app/src/i18n.rs:299
 msgid "Currently {native} — {name}"
 msgstr "Obecnie {native} — {name}"
 
-#: app/src/i18n.rs:330
+#: app/src/i18n.rs:334
 msgid ""
 "This run shows {language} because eov was started with --language. Choosing "
 "a language here applies it now and from the next start."
@@ -2439,9 +2384,15 @@ msgstr ""
 "uruchomiono z opcją --language. Wybór języka w tym miejscu zastosuje go od "
 "razu i przy kolejnych uruchomieniach."
 
-#: app/src/i18n.rs:386
+#: app/src/i18n.rs:390
 msgid "The language could not be saved for the next start: {}"
 msgstr "Nie udało się zapisać języka na potrzeby kolejnych uruchomień: {}"
+
+#. Translators: the status bar's text when there is nothing to report.
+#: app/src/i18n.rs:414 app/ui/app-window.slint:90
+msgctxt "AppWindow"
+msgid "Ready"
+msgstr "Gotowe"
 
 #. Translators: a length in inches ("1.00 in").
 #: app/src/interaction/measure.rs:238 app/src/ui_update.rs:864
@@ -2592,33 +2543,28 @@ msgstr[2] "Nie udało się otworzyć {n} spośród podanych plików"
 #. then why.
 #: app/src/launch.rs:974
 msgid "{file}: {reason}"
-msgstr ""
+msgstr "{file}: {reason}"
 
-#: app/src/main.rs:399
+#: app/src/main.rs:400
 msgid "GPU renderer unavailable; slides are drawn by the CPU renderer"
 msgstr ""
 "Renderer GPU jest niedostępny; preparaty są rysowane przez renderer CPU"
 
-#: app/src/main.rs:458
+#: app/src/main.rs:459
 msgid "Unknown language"
 msgstr "Nieznany język"
 
 #. Translators: model_urls, policy.toml and `eov model import`
 #. are names: keep them as they are.
 #: app/src/model_store/fetch.rs:72
-#, fuzzy
-#| msgid ""
-#| "no download address is set for {}: give its URL, ask your administrator "
-#| "to add the site's copy to model_urls in policy.toml, or import the file "
-#| "with `eov model import`"
 msgid ""
 "no download address is set for {}: give its URL, ask your administrator to "
 "add a download address for it to model_urls in policy.toml, or import the "
 "file with `eov model import`"
 msgstr ""
 "nie ustawiono adresu pobierania dla {}: podaj jego adres URL, poproś "
-"administratora o dodanie kopii udostępnionej w placówce do model_urls w "
-"pliku policy.toml lub zaimportuj plik poleceniem `eov model import`"
+"administratora o dodanie dla niego adresu pobierania do model_urls w pliku "
+"policy.toml lub zaimportuj plik poleceniem `eov model import`"
 
 #: app/src/model_store/fetch.rs:76
 msgid "{url} answered HTTP {status}"
@@ -2853,7 +2799,7 @@ msgstr "brak zgodności z tą wersją eov"
 #. thread, how many events they handled, that time's share
 #. of the time since the plugin started, and the slowest
 #. handler with its event (an id such as view_changed).
-#: app/src/plugin_runtime/usage.rs:143
+#: app/src/plugin_runtime/usage.rs:145
 msgid "UI thread {time} in {count} event ({share}; slowest {slowest}, {event})"
 msgid_plural ""
 "UI thread {time} in {count} events ({share}; slowest {slowest}, {event})"
@@ -2870,26 +2816,26 @@ msgstr[2] ""
 #. Translators: the time a plugin's handlers took on the UI
 #. thread, how many events they handled, and that time's
 #. share of the time since the plugin started.
-#: app/src/plugin_runtime/usage.rs:156
+#: app/src/plugin_runtime/usage.rs:158
 msgid "UI thread {time} in {count} event ({share})"
 msgid_plural "UI thread {time} in {count} events ({share})"
 msgstr[0] "Wątek interfejsu: {time} w {count} zdarzeniu ({share})"
 msgstr[1] "Wątek interfejsu: {time} w {count} zdarzeniach ({share})"
 msgstr[2] "Wątek interfejsu: {time} w {count} zdarzeniach ({share})"
 
-#: app/src/plugin_runtime/usage.rs:166
+#: app/src/plugin_runtime/usage.rs:168
 msgid "filters {time} over {count} frame"
 msgid_plural "filters {time} over {count} frames"
 msgstr[0] "filtry: {time} w {count} klatce"
 msgstr[1] "filtry: {time} w {count} klatkach"
 msgstr[2] "filtry: {time} w {count} klatkach"
 
-#: app/src/plugin_runtime/usage.rs:173
+#: app/src/plugin_runtime/usage.rs:176
 msgid "read {} of slide pixels"
 msgstr "odczytano {} danych pikseli preparatu"
 
 #. Translators: inserted into "{count} objects in {layers}".
-#: app/src/plugin_runtime/usage.rs:178
+#: app/src/plugin_runtime/usage.rs:183
 msgctxt "Plugin usage"
 msgid "{count} layer"
 msgid_plural "{count} layers"
@@ -2897,7 +2843,7 @@ msgstr[0] "{count} warstwie"
 msgstr[1] "{count} warstwach"
 msgstr[2] "{count} warstwach"
 
-#: app/src/plugin_runtime/usage.rs:182
+#: app/src/plugin_runtime/usage.rs:187
 msgid "{count} object in {layers}"
 msgid_plural "{count} objects in {layers}"
 msgstr[0] "{count} obiekt w {layers}"
@@ -2906,15 +2852,15 @@ msgstr[2] "{count} obiektów w {layers}"
 
 #. Translators: what a plugin's overlays hold, then the
 #. memory of their images.
-#: app/src/plugin_runtime/usage.rs:190
+#: app/src/plugin_runtime/usage.rs:195
 msgid "{objects}, {bytes} of rasters"
 msgstr "{objects}, rastry: {bytes}"
 
 #. Translators: in the Plugins panel: no resource use of the plugin
 #. (memory, overlays) has been recorded yet.
-#: app/src/plugin_runtime/usage.rs:201
+#: app/src/plugin_runtime/usage.rs:206
 msgid "No usage recorded yet"
-msgstr ""
+msgstr "Nie zarejestrowano jeszcze użycia zasobów"
 
 #: app/src/plugins/discovery.rs:45
 msgid "plugin package must have a .eop extension: {}"
@@ -3137,10 +3083,8 @@ msgstr "Normalizacja kolorów w toku ({})"
 #. generic H&E stain vectors were used instead (a fallback); {} is
 #. the method (Macenko or Vahadane).
 #: app/src/processing_text.rs:151
-#, fuzzy
-#| msgid "Colour-normalised ({}, reference vectors)"
 msgid "Colour-normalised ({}, fallback stain vectors)"
-msgstr "Kolory znormalizowane ({}, wektory referencyjne)"
+msgstr "Kolory znormalizowane ({}, zastępcze wektory barwników)"
 
 #. Translators: {} is the method (Macenko or Vahadane).
 #: app/src/processing_text.rs:154
@@ -3208,15 +3152,18 @@ msgstr[2] "wyodrębnianie barwnika {stain} (model barwienia ma {n} barwników)"
 #. adjustments are not in the stain model; {n} is how many stains
 #. the stain model has.
 #: app/src/processing_text.rs:234
-#, fuzzy
-#| msgid "isolating stain {stain} (the stain model has {n} stain)"
-#| msgid_plural "isolating stain {stain} (the stain model has {n} stains)"
 msgid "adjusting stains the stain model does not have (it has {n} stain)"
 msgid_plural ""
 "adjusting stains the stain model does not have (it has {n} stains)"
-msgstr[0] "wyodrębnianie barwnika {stain} (model barwienia ma {n} barwnik)"
-msgstr[1] "wyodrębnianie barwnika {stain} (model barwienia ma {n} barwniki)"
-msgstr[2] "wyodrębnianie barwnika {stain} (model barwienia ma {n} barwników)"
+msgstr[0] ""
+"korygowanie barwników, których nie ma w modelu barwienia (model ma {n} "
+"barwnik)"
+msgstr[1] ""
+"korygowanie barwników, których nie ma w modelu barwienia (model ma {n} "
+"barwniki)"
+msgstr[2] ""
+"korygowanie barwników, których nie ma w modelu barwienia (model ma {n} "
+"barwników)"
 
 #. Translators: the stain normalisation's target has another
 #. number of stains ({n}) than the slide's fit ("the source").
@@ -3460,16 +3407,12 @@ msgstr "Skopiowano wyniki"
 #. ("0,15" in German): keep a separator between them that cannot
 #. be taken for it (not a comma).
 #: app/src/quantify_panel.rs:762
-#, fuzzy
-#| msgid ""
-#| "{name}: {stain} in the region of interest ({model} model; thresholds "
-#| "{weak}, {moderate}, {strong})"
 msgid ""
 "{name}: {stain} in the region of interest ({model} model; thresholds "
 "{weak} / {moderate} / {strong})"
 msgstr ""
-"{name}: {stain} w obszarze zainteresowania (model {model}; progi {weak}, "
-"{moderate}, {strong})"
+"{name}: {stain} w obszarze zainteresowania (model {model}; progi {weak} / "
+"{moderate} / {strong})"
 
 #: app/src/render.rs:957
 msgid "The GPU renderer failed; slides are drawn by the CPU renderer"
@@ -3477,7 +3420,7 @@ msgstr "Renderer GPU uległ awarii; preparaty są rysowane przez renderer CPU"
 
 #. Translators: the size of the copy, its pyramid levels, the size of
 #. its tiles and its pixel size.
-#: app/src/save_copy.rs:162
+#: app/src/save_copy.rs:164
 msgid "{width} × {height} px in {n} level of {tile}-px tiles at {mpp} µm/px."
 msgid_plural ""
 "{width} × {height} px in {n} levels of {tile}-px tiles at {mpp} µm/px."
@@ -3488,7 +3431,7 @@ msgstr[1] ""
 msgstr[2] ""
 "{width} × {height} px, {n} poziomów z kafelkami {tile} px, {mpp} µm/px."
 
-#: app/src/save_copy.rs:170
+#: app/src/save_copy.rs:174
 msgid ""
 "{width} × {height} px in {n} level of {tile}-px tiles; the slide records no "
 "pixel size."
@@ -3507,13 +3450,7 @@ msgstr[2] ""
 
 #. Translators: the slide's {n} channels are copied as one colour
 #. image, the composite the window shows.
-#: app/src/save_copy.rs:184
-#, fuzzy
-#| msgid ""
-#| "The {n} channel is copied as the colour composite shown, not as channels."
-#| msgid_plural ""
-#| "The {n} channels are copied as the colour composite shown, not as "
-#| "channels."
+#: app/src/save_copy.rs:188
 msgid ""
 "The {n} channel is copied as the colour composite shown, not as a separate "
 "channel."
@@ -3532,92 +3469,72 @@ msgstr[2] ""
 
 #. Translators: shown as a sentence on its own; {} is the path of a
 #. file.
-#: app/src/save_copy.rs:216
-#, fuzzy
-#| msgid "{} already exists"
+#: app/src/save_copy.rs:220
 msgid "{} already exists."
-msgstr "Plik {} już istnieje"
+msgstr "Plik {} już istnieje."
 
 #. Translators: shown as a sentence on its own: the region of
 #. interest chosen for a copy of the slide is empty.
-#: app/src/save_copy.rs:227
-#, fuzzy
-#| msgid "the region is empty"
+#: app/src/save_copy.rs:231
 msgid "The region is empty."
-msgstr "obszar jest pusty"
+msgstr "Obszar jest pusty."
 
 #. Translators: shown as a sentence on its own: the region of
 #. interest (its position and size in pixels) is outside the
 #. slide (its size in pixels).
-#: app/src/save_copy.rs:237
-#, fuzzy
-#| msgid ""
-#| "the region {x},{y},{width},{height} is outside the slide ({slide_width} × "
-#| "{slide_height} pixels)"
+#: app/src/save_copy.rs:241
 msgid ""
 "The region {x},{y},{width},{height} is outside the slide ({slide_width} × "
 "{slide_height} pixels)"
 msgstr ""
-"obszar {x},{y},{width},{height} leży poza preparatem ({slide_width} × "
+"Obszar {x},{y},{width},{height} leży poza preparatem ({slide_width} × "
 "{slide_height} pikseli)"
 
 #. Translators: shown as a sentence on its own: the size of the copy
 #. of a slide, and the largest it can be.
-#: app/src/save_copy.rs:249
-#, fuzzy
-#| msgid "the copy would be {width} × {height} pixels; at most {max} per side"
+#: app/src/save_copy.rs:253
 msgid "The copy would be {width} × {height} pixels; at most {max} per side."
 msgstr ""
-"kopia miałaby {width} × {height} pikseli; dozwolone jest najwyżej {max} na "
-"bok"
+"Kopia miałaby {width} × {height} pikseli; dozwolone jest najwyżej {max} na "
+"bok."
 
 #. Translators: shown as a sentence on its own: the size of the copy
 #. of a slide, and the smallest it can be.
-#: app/src/save_copy.rs:257
-#, fuzzy
-#| msgid ""
-#| "the copy would be {width} × {height} pixels; it must be at least {min} × "
-#| "{min} (choose a larger region or a finer resolution)"
+#: app/src/save_copy.rs:261
 msgid ""
 "The copy would be {width} × {height} pixels; it must be at least {min} × "
 "{min} (choose a larger region or a finer resolution)"
 msgstr ""
-"kopia miałaby {width} × {height} pikseli; musi mieć co najmniej {min} × "
+"Kopia miałaby {width} × {height} pikseli; musi mieć co najmniej {min} × "
 "{min} (wybierz większy obszar lub wyższą rozdzielczość)"
 
 #. Translators: shown as a sentence on its own; {} is a path the
 #. copy of a slide was to be saved to.
-#: app/src/save_copy.rs:265
-#, fuzzy
-#| msgid "{} is not a file name"
+#: app/src/save_copy.rs:269
 msgid "{} is not a file name."
-msgstr "{} nie jest nazwą pliku"
+msgstr "{} nie jest nazwą pliku."
 
 #. Translators: shown as a sentence on its own; {} is a path the copy
 #. of a slide was to be saved to.
-#: app/src/save_copy.rs:269
-#, fuzzy
-#| msgid "{} is a folder"
+#: app/src/save_copy.rs:273
 msgid "{} is a folder."
-msgstr "{} jest folderem"
+msgstr "{} jest folderem."
 
 #. Translators: shown as a sentence on its own; {} is the folder
 #. the copy of a slide was to be saved in.
-#: app/src/save_copy.rs:273
-#, fuzzy
-#| msgid "the folder {} does not exist"
+#: app/src/save_copy.rs:277
 msgid "The folder {} does not exist."
-msgstr "folder {} nie istnieje"
+msgstr "Folder {} nie istnieje."
 
 #. Translators: shown as a sentence on its own; {} is a path the copy
 #. of a slide was to be saved to.
-#: app/src/save_copy.rs:278
+#: app/src/save_copy.rs:282
 msgid "{} is the slide being copied (or one of its files)"
 msgstr "{} to kopiowany preparat (lub jeden z jego plików)"
 
 #. Translators: shown as a sentence on its own; {} is the temporary
 #. file of a copy of a slide.
-#: app/src/save_copy.rs:284
+#: app/src/save_copy.rs:288
 msgid ""
 "{} exists: another conversion is writing this file, or an interrupted one "
 "left it behind (delete it and try again)"
@@ -3627,22 +3544,22 @@ msgstr ""
 
 #. Translators: the size of the region of interest, then the position
 #. of its top-left corner on the slide.
-#: app/src/save_copy.rs:362
+#: app/src/save_copy.rs:366
 msgid "{width} × {height} px at {x}, {y}"
 msgstr "{width} × {height} px w punkcie {x}, {y}"
 
-#: app/src/save_copy.rs:485
+#: app/src/save_copy.rs:489
 msgid "Saving {}"
 msgstr "Zapisywanie {}"
 
-#: app/src/save_copy.rs:497
+#: app/src/save_copy.rs:501
 msgid "{done} of {n} tile"
 msgid_plural "{done} of {n} tiles"
 msgstr[0] "{done} z {n} kafelka"
 msgstr[1] "{done} z {n} kafelków"
 msgstr[2] "{done} z {n} kafelków"
 
-#: app/src/save_copy.rs:588 app/src/slide_info.rs:127
+#: app/src/save_copy.rs:592 app/src/slide_info.rs:127
 msgid "{n} level"
 msgid_plural "{n} levels"
 msgstr[0] "{n} poziom"
@@ -3653,39 +3570,32 @@ msgstr[2] "{n} poziomów"
 #. macro and thumbnail images and with no properties but the
 #. pixel size, objective power and stain; text or marks
 #. inside the scanned tissue image are kept.
-#: app/src/save_copy.rs:596
+#: app/src/save_copy.rs:600
 msgid "de-identified"
 msgstr "bez danych identyfikujących"
 
 #. Translators: facts about the copy ("1024 × 768 px, 3
 #. levels, 12 MB"), then where it was saved.
-#: app/src/save_copy.rs:601
+#: app/src/save_copy.rs:605
 msgid "{facts}, saved to {path}"
 msgstr "{facts}, zapisano w {path}"
 
-#: app/src/save_copy.rs:607
+#: app/src/save_copy.rs:611
 msgid "Saved {}"
 msgstr "Zapisano {}"
 
-#: app/src/save_copy.rs:623
+#: app/src/save_copy.rs:627
 msgid "Copy cancelled; nothing was saved"
 msgstr "Anulowano kopiowanie; nic nie zostało zapisane"
 
-#: app/src/save_copy.rs:626
+#: app/src/save_copy.rs:630
 msgid "Could not save {}"
 msgstr "Nie udało się zapisać {}"
 
 #. Translators: {n} tiles of the slide could not be read for a copy
 #. of it (the form follows {n}); {total} is the number of tiles of
 #. the copy. The copy shows the slide's background colour there.
-#: app/src/save_copy.rs:644
-#, fuzzy
-#| msgid ""
-#| "{unreadable} of {n} tile could not be read from the slide and shows its "
-#| "background colour"
-#| msgid_plural ""
-#| "{unreadable} of {n} tiles could not be read from the slide and show its "
-#| "background colour"
+#: app/src/save_copy.rs:648
 msgid ""
 "{n} tile of {total} could not be read from the slide and shows its "
 "background colour."
@@ -3693,54 +3603,46 @@ msgid_plural ""
 "{n} tiles of {total} could not be read from the slide and show its "
 "background colour."
 msgstr[0] ""
-"Nie udało się odczytać z preparatu {unreadable} z {n} kafelka; w jego "
-"miejscu widoczny jest kolor tła preparatu"
+"Nie udało się odczytać z preparatu {n} kafelka z {total}; w jego miejscu "
+"widoczny jest kolor tła preparatu."
 msgstr[1] ""
-"Nie udało się odczytać z preparatu {unreadable} z {n} kafelków; w "
-"nieodczytanych miejscach widoczny jest kolor tła preparatu"
+"Nie udało się odczytać z preparatu {n} kafelków z {total}; w ich miejscu "
+"widoczny jest kolor tła preparatu."
 msgstr[2] ""
-"Nie udało się odczytać z preparatu {unreadable} z {n} kafelków; w "
-"nieodczytanych miejscach widoczny jest kolor tła preparatu"
+"Nie udało się odczytać z preparatu {n} kafelków z {total}; w ich miejscu "
+"widoczny jest kolor tła preparatu."
 
 #. Translators: {error} says why the slide's label image was not copied.
-#: app/src/save_copy.rs:664
-#, fuzzy
-#| msgid "the {name} image was not copied: {error}"
+#: app/src/save_copy.rs:668
 msgid "the label image was not copied: {error}"
-msgstr "nie skopiowano obrazu {name}: {error}"
+msgstr "nie skopiowano obrazu etykiety: {error}"
 
 #. Translators: {error} says why the slide's macro image (a photo of
 #. the whole glass) was not copied.
-#: app/src/save_copy.rs:667
-#, fuzzy
-#| msgid "the {name} image was not copied: {error}"
+#: app/src/save_copy.rs:671
 msgid "the macro image was not copied: {error}"
-msgstr "nie skopiowano obrazu {name}: {error}"
+msgstr "nie skopiowano obrazu makro: {error}"
 
 #. Translators: {error} says why the slide's thumbnail image was not copied.
-#: app/src/save_copy.rs:669
-#, fuzzy
-#| msgid "the {name} image was not copied: {error}"
+#: app/src/save_copy.rs:673
 msgid "the thumbnail image was not copied: {error}"
-msgstr "nie skopiowano obrazu {name}: {error}"
+msgstr "nie skopiowano miniatury: {error}"
 
 #. Translators: an extra image of the slide, by the name the file
 #. gives it ({name}, not translated), was not copied; {error} says why.
-#: app/src/save_copy.rs:673
-#, fuzzy
-#| msgid "the {name} image was not copied: {error}"
+#: app/src/save_copy.rs:677
 msgid "the extra image {name} was not copied: {error}"
-msgstr "nie skopiowano obrazu {name}: {error}"
+msgstr "nie skopiowano dodatkowego obrazu {name}: {error}"
 
 #. Translators: {error} says why the slide's colour profile
 #. was not copied.
-#: app/src/save_copy.rs:681
+#: app/src/save_copy.rs:685
 msgid "the ICC profile was not copied: {error}"
 msgstr "nie skopiowano profilu ICC: {error}"
 
 #. Translators: a file type: a TIFF file holding the slide at
 #. several resolutions.
-#: app/src/save_copy.rs:692
+#: app/src/save_copy.rs:696
 msgid "Pyramidal TIFF"
 msgstr "Piramidalny TIFF"
 
@@ -4065,26 +3967,20 @@ msgstr[2] "Skopiowano {n} właściwości"
 #. Translators: {} is the pixel size with its unit ("0.25 µm/px"),
 #. which the user set.
 #: app/src/slide_info.rs:343
-#, fuzzy
-#| msgid "{} µm/px (set by you)"
 msgid "{} (set by you)"
-msgstr "{} µm/px (ustawione ręcznie)"
+msgstr "{} (ustawiono ręcznie)"
 
 #. Translators: {} is the pixel size with its unit ("0.25 × 0.25
 #. µm/px"), as the slide file records it.
 #: app/src/slide_info.rs:347
-#, fuzzy
-#| msgid "{x} × {y} µm/px (from the file)"
 msgid "{} (from the file)"
-msgstr "{x} × {y} µm/px (z pliku)"
+msgstr "{} (z pliku)"
 
 #. Translators: {} is the pixel size with its unit ("0.25 µm/px");
 #. the slide file records it for one axis only.
 #: app/src/slide_info.rs:353
-#, fuzzy
-#| msgid "{} µm/px (one axis in the file)"
 msgid "{} (one axis in the file)"
-msgstr "{} µm/px (jedna oś w pliku)"
+msgstr "{} (w pliku tylko dla jednej osi)"
 
 #: app/src/slide_info.rs:355
 msgid "not recorded — measurements are in pixels"
@@ -4172,6 +4068,24 @@ msgstr[0] "eov wyświetla obok siebie najwyżej {n} okienko"
 msgstr[1] "eov wyświetla obok siebie najwyżej {n} okienka"
 msgstr[2] "eov wyświetla obok siebie najwyżej {n} okienek"
 
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:34 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "Dark"
+msgstr "Ciemny"
+
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:35 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "Light"
+msgstr "Jasny"
+
+#. The current theme ("Theme: Dark"), named as in the theme menu.
+#: app/src/theme.rs:36 app/ui/window-toolbar.slint:365
+msgctxt "Theme"
+msgid "High Contrast"
+msgstr "Wysoki kontrast"
+
 #. Translators: the slide's pyramid: how many levels it has, and the
 #. level shown now ("L0" is full resolution).
 #: app/src/ui_update.rs:192
@@ -4246,11 +4160,8 @@ msgstr[1] "{shown} z {n} elementów"
 msgstr[2] "{shown} z {n} elementów"
 
 #: app/src/ui_update.rs:686 app/src/ui_update.rs:747
-#, fuzzy
-#| msgctxt "SeriesBar"
-#| msgid "Open Folder"
 msgid "Open Folder…"
-msgstr "Otwórz folder"
+msgstr "Otwórz folder…"
 
 #: app/src/ui_update.rs:696
 msgid "No recent files"
@@ -4270,8 +4181,6 @@ msgstr "nie można znaleźć pliku wykonywalnego eov"
 
 #. Translators: how eov is updated; {} is the AppImage file. --rollback is an option of eov update: keep it as it is.
 #: app/src/update/app.rs:206
-#, fuzzy
-#| msgid "replace {} in place (the previous image is kept for --rollback)"
 msgid "replace {} in place (the previous AppImage is kept for --rollback)"
 msgstr ""
 "zastąpienie pliku {} na miejscu (poprzedni plik AppImage zostaje zachowany "
@@ -4285,15 +4194,12 @@ msgstr ""
 
 #. Translators: how eov is updated; {cask} is the name of a Homebrew package (a cask), {app} the eov application. "brew update" is a command: keep it as it is.
 #: app/src/update/app.rs:220
-#, fuzzy
-#| msgid ""
-#| "Homebrew ({cask} owns {app}); brew update, then brew changes the cask"
 msgid ""
 "Homebrew ({cask} owns {app}); brew update, then brew upgrades or replaces "
 "the cask"
 msgstr ""
 "Homebrew ({app} należy do pakietu {cask}); brew update, a następnie brew "
-"zmienia pakiet cask"
+"aktualizuje lub zastępuje pakiet cask"
 
 #. Translators: how eov is updated; {} is the folder of eov. eov-update-helper is a program and --rollback an option of eov update: keep them as they are.
 #: app/src/update/app.rs:226
@@ -4364,10 +4270,8 @@ msgstr ""
 "przez eov update ({reason}). Pobierz ją z {url}."
 
 #: app/src/update/app.rs:563
-#, fuzzy
-#| msgid "eov {} is available"
 msgid "eov {version} is available."
-msgstr "Dostępna jest wersja eov {}"
+msgstr "Dostępna jest wersja eov {version}."
 
 #. Translators: --release is an option of eov update: keep it as it is.
 #: app/src/update/app.rs:571
@@ -4394,12 +4298,9 @@ msgid "managed by {}"
 msgstr "instalacja zarządzana przez {}"
 
 #: app/src/update/app.rs:637
-#, fuzzy
-#| msgid "Application self-update is disabled by the administrator policy {}."
 msgid "Self-update is disabled by the administrator policy."
 msgstr ""
-"Aktualizacja z poziomu aplikacji jest wyłączona przez zasady administratora "
-"{}."
+"Aktualizacja z poziomu aplikacji jest wyłączona przez zasady administratora."
 
 #: app/src/update/app.rs:651
 msgid "the AppImage has no parent directory"
@@ -4861,10 +4762,8 @@ msgstr "nieprawidłowy wpis „{}” w oficjalnym katalogu wtyczek"
 
 #. Translators: [{key}] is a table of release.toml, such as [platform.linux.x86_64].
 #: app/src/update/manifest.rs:170
-#, fuzzy
-#| msgid "release.toml has no artifact [{}]"
 msgid "release.toml has no artifact [{key}]"
-msgstr "release.toml nie zawiera artefaktu [{}]"
+msgstr "release.toml nie zawiera artefaktu [{key}]"
 
 #: app/src/update/manifest.rs:183
 msgid "invalid version {}"
@@ -5083,13 +4982,11 @@ msgstr ""
 "SSL_CERT_FILE."
 
 #: app/src/update/network.rs:131
-#, fuzzy
-#| msgid "{url} is larger than the {limit}-byte limit"
 msgid "{url} is larger than the limit of {n} byte"
 msgid_plural "{url} is larger than the limit of {n} bytes"
-msgstr[0] "{url} przekracza limit rozmiaru ({limit} B)"
-msgstr[1] "{url} przekracza limit rozmiaru ({limit} B)"
-msgstr[2] "{url} przekracza limit rozmiaru ({limit} B)"
+msgstr[0] "{url} przekracza limit rozmiaru wynoszący {n} bajt"
+msgstr[1] "{url} przekracza limit rozmiaru wynoszący {n} bajty"
+msgstr[2] "{url} przekracza limit rozmiaru wynoszący {n} bajtów"
 
 #. Translators: {reason} says why eov does not download from {url}.
 #: app/src/update/network.rs:137
@@ -5271,10 +5168,8 @@ msgstr ""
 
 #. Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0").
 #: app/src/update/plugins.rs:993
-#, fuzzy
-#| msgid "plugin {id} {version} {reason}"
 msgid "plugin {id} {version} does not run with this eov: {reason}"
-msgstr "wtyczka {id} {version} {reason}"
+msgstr "wtyczka {id} {version} nie działa z tą wersją eov: {reason}"
 
 #. Translators: {file} is a plugin package; {other} and {id} are plugin ids.
 #: app/src/update/plugins.rs:1039
@@ -5303,29 +5198,21 @@ msgstr "wtyczka „{}” nie jest zainstalowana"
 
 #. Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0"). "eov update" is a command, on a line of its own: keep it as it is.
 #: app/src/update/plugins.rs:1323
-#, fuzzy
-#| msgid ""
-#| "Plugin {id} {version} {reason}.\n"
-#| "\n"
-#| "Update eov first:\n"
-#| "    eov update"
 msgid ""
 "Plugin {id} {version} does not run with this eov: {reason}.\n"
 "\n"
 "Update eov first:\n"
 "    eov update"
 msgstr ""
-"Wtyczka {id} {version} {reason}.\n"
+"Wtyczka {id} {version} nie działa z tą wersją eov: {reason}.\n"
 "\n"
 "Najpierw zaktualizuj eov:\n"
 "    eov update"
 
 #. Translators: {reason} says why, as it does after "Failed:" ("requires eov >=2.0.0; this is eov 1.2.0").
 #: app/src/update/plugins.rs:1331
-#, fuzzy
-#| msgid "Plugin {id} {version} {reason}."
 msgid "Plugin {id} {version} does not run with this eov: {reason}."
-msgstr "Wtyczka {id} {version} {reason}."
+msgstr "Wtyczka {id} {version} nie działa z tą wersją eov: {reason}."
 
 #. Translators: {} are warnings, one per line. --force is an option of eov plugin install: keep it as it is.
 #: app/src/update/plugins.rs:1362
@@ -5474,68 +5361,48 @@ msgstr ""
 
 #. Translators: {policy} is the policy file.
 #: app/src/update/policy.rs:432
-#, fuzzy
-#| msgid ""
-#| "{what} is not allowed: the administrator policy {policy} only permits "
-#| "official eov plugins."
 msgid ""
 "Loading this plugin is not allowed: the administrator policy {policy} only "
 "permits official eov plugins."
 msgstr ""
-"{what} jest niedozwolone: zasady administratora {policy} zezwalają tylko na "
-"oficjalne wtyczki eov."
+"Wczytywanie tej wtyczki jest niedozwolone: zasady administratora {policy} "
+"zezwalają tylko na oficjalne wtyczki eov."
 
 #. Translators: {policy} is the policy file.
 #: app/src/update/policy.rs:437
-#, fuzzy
-#| msgid ""
-#| "{what} is not allowed: the administrator policy {policy} only permits "
-#| "official eov plugins."
 msgid ""
 "Running this plugin is not allowed: the administrator policy {policy} only "
 "permits official eov plugins."
 msgstr ""
-"{what} jest niedozwolone: zasady administratora {policy} zezwalają tylko na "
-"oficjalne wtyczki eov."
+"Uruchamianie tej wtyczki jest niedozwolone: zasady administratora {policy} "
+"zezwalają tylko na oficjalne wtyczki eov."
 
 #. Translators: {policy} is the policy file.
 #: app/src/update/policy.rs:442
-#, fuzzy
-#| msgid ""
-#| "{what} is not allowed: the administrator policy {policy} only permits "
-#| "official eov plugins."
 msgid ""
 "Installing plugins from GitHub repositories is not allowed: the "
 "administrator policy {policy} only permits official eov plugins."
 msgstr ""
-"{what} jest niedozwolone: zasady administratora {policy} zezwalają tylko na "
-"oficjalne wtyczki eov."
+"Instalowanie wtyczek z repozytoriów GitHub jest niedozwolone: zasady "
+"administratora {policy} zezwalają tylko na oficjalne wtyczki eov."
 
 #. Translators: {policy} is the policy file.
 #: app/src/update/policy.rs:447
-#, fuzzy
-#| msgid ""
-#| "{what} is not allowed: the administrator policy {policy} only permits "
-#| "official eov plugins."
 msgid ""
 "Installing local plugin packages is not allowed: the administrator policy "
 "{policy} only permits official eov plugins."
 msgstr ""
-"{what} jest niedozwolone: zasady administratora {policy} zezwalają tylko na "
-"oficjalne wtyczki eov."
+"Instalowanie lokalnych pakietów wtyczek jest niedozwolone: zasady "
+"administratora {policy} zezwalają tylko na oficjalne wtyczki eov."
 
 #. Translators: {id} is a plugin id, {source} where the lock file says it comes from; {policy} is the policy file.
 #: app/src/update/policy.rs:452
-#, fuzzy
-#| msgid ""
-#| "{what} is not allowed: the administrator policy {policy} only permits "
-#| "official eov plugins."
 msgid ""
 "Plugin '{id}' ({source}) is not allowed: the administrator policy {policy} "
 "only permits official eov plugins."
 msgstr ""
-"{what} jest niedozwolone: zasady administratora {policy} zezwalają tylko na "
-"oficjalne wtyczki eov."
+"Wtyczka „{id}” ({source}) jest niedozwolona: zasady administratora {policy} "
+"zezwalają tylko na oficjalne wtyczki eov."
 
 #: app/src/update/registry.rs:119
 msgid "could not read plugin registry {}"
@@ -5661,10 +5528,8 @@ msgstr "podpis manifestu wydania {kind} {version} należy do innego wydania"
 #. Translators: the trusted comment is the signed text of a minisign
 #. signature; {} is the name of one of its fields: keep it as it is.
 #: app/src/update/signature.rs:230
-#, fuzzy
-#| msgid "the signed comment has no '{}' field"
 msgid "the signature's trusted comment has no '{}' field"
-msgstr "podpisany komentarz nie zawiera pola „{}”"
+msgstr "zaufany komentarz podpisu nie zawiera pola „{}”"
 
 #. Translators: "it" is a signature; {signed} and {expected} are kinds of release manifest ("eov" or a plugin).
 #: app/src/update/signature.rs:237
@@ -5690,6 +5555,8 @@ msgstr "wydanie GitHub {}"
 #: app/src/update/transaction.rs:385
 msgid "The previous version is kept at {path} for `eov update --rollback`."
 msgstr ""
+"Poprzednia wersja została zachowana w {path} na potrzeby polecenia `eov "
+"update --rollback`."
 
 #. Translators: after "The last eov update failed and could not be fully rolled back."; {new} and {previous} are folders.
 #: app/src/update/transaction.rs:399
@@ -5698,6 +5565,9 @@ msgid ""
 "Close every program that uses eov, then move {new} away and rename "
 "{previous} to {new}."
 msgstr ""
+"Nowa wersja nadal znajduje się w {new}, a poprzednia w {previous}. Zamknij "
+"wszystkie programy korzystające z eov, a następnie przenieś {new} w inne "
+"miejsce i zmień nazwę {previous} na {new}."
 
 #. Translators: after "The last eov update failed and could not be fully rolled back."; {path} is the folder the previous version is in, {folder} the folder eov was installed in.
 #: app/src/update/transaction.rs:418
@@ -5705,6 +5575,8 @@ msgid ""
 "eov could not be restored automatically. Your previous installation is at "
 "{path}; rename it to {folder}."
 msgstr ""
+"Nie udało się automatycznie przywrócić programu eov. Poprzednia instalacja "
+"znajduje się w {path}; zmień jej nazwę na {folder}."
 
 #. Translators: after "The last eov update failed and could not be fully rolled back."; {path} is a folder.
 #: app/src/update/transaction.rs:437
@@ -5712,66 +5584,49 @@ msgid ""
 "eov could not be restored automatically. Your previous installation is at "
 "{path}; rename it back to the folder eov was installed in."
 msgstr ""
+"Nie udało się automatycznie przywrócić programu eov. Poprzednia instalacja "
+"znajduje się w {path}; zmień jej nazwę z powrotem na nazwę folderu, w którym "
+"był zainstalowany eov."
 
 #. Translators: followed by what the update helper wrote, in English (it has no translations).
 #: app/src/update/transaction.rs:455
-#, fuzzy
-#| msgid "the update helper cannot run from {}"
 msgid "The update helper reported: {}"
-msgstr "program pomocniczy aktualizacji nie może zostać uruchomiony z {}"
+msgstr "Program pomocniczy aktualizacji zgłosił: {}"
 
 #. Translators: {from} and {to} are eov versions ("1.0.0", "1.1.0").
 #: app/src/update/transaction.rs:466
-#, fuzzy
-#| msgid "The last eov update{versions} completed. {message}"
 msgid "The last eov update ({from} -> {to}) completed."
-msgstr "Ostatnia aktualizacja eov{versions} została zakończona. {message}"
+msgstr "Ostatnia aktualizacja eov ({from} -> {to}) została ukończona."
 
 #: app/src/update/transaction.rs:470
-#, fuzzy
-#| msgid "The last eov update{versions} completed. {message}"
 msgid "The last eov update completed."
-msgstr "Ostatnia aktualizacja eov{versions} została zakończona. {message}"
+msgstr "Ostatnia aktualizacja eov została ukończona."
 
 #. Translators: {from} and {to} are eov versions ("1.0.0", "1.1.0").
 #: app/src/update/transaction.rs:473
-#, fuzzy
-#| msgid "The last eov update{versions} failed and was rolled back: {message}"
 msgid "The last eov update ({from} -> {to}) failed and was rolled back."
 msgstr ""
-"Ostatnia aktualizacja eov{versions} nie powiodła się i została wycofana: "
-"{message}"
+"Ostatnia aktualizacja eov ({from} -> {to}) nie powiodła się i została "
+"wycofana."
 
 #: app/src/update/transaction.rs:477
-#, fuzzy
-#| msgid "The last eov update{versions} failed and was rolled back: {message}"
 msgid "The last eov update failed and was rolled back."
-msgstr ""
-"Ostatnia aktualizacja eov{versions} nie powiodła się i została wycofana: "
-"{message}"
+msgstr "Ostatnia aktualizacja eov nie powiodła się i została wycofana."
 
 #. Translators: {from} and {to} are eov versions ("1.0.0", "1.1.0").
 #: app/src/update/transaction.rs:480
-#, fuzzy
-#| msgid ""
-#| "The last eov update{versions} failed and could not be fully rolled back: "
-#| "{message}"
 msgid ""
 "The last eov update ({from} -> {to}) failed and could not be fully rolled "
 "back."
 msgstr ""
-"Ostatnia aktualizacja eov{versions} nie powiodła się i nie udało się jej w "
-"pełni wycofać: {message}"
+"Ostatnia aktualizacja eov ({from} -> {to}) nie powiodła się i nie udało się "
+"jej w pełni wycofać."
 
 #: app/src/update/transaction.rs:485
-#, fuzzy
-#| msgid ""
-#| "The last eov update{versions} failed and could not be fully rolled back: "
-#| "{message}"
 msgid "The last eov update failed and could not be fully rolled back."
 msgstr ""
-"Ostatnia aktualizacja eov{versions} nie powiodła się i nie udało się jej w "
-"pełni wycofać: {message}"
+"Ostatnia aktualizacja eov nie powiodła się i nie udało się jej w pełni "
+"wycofać."
 
 #: app/src/win_console.rs:204
 msgid "eov stopped unexpectedly"
@@ -5790,32 +5645,23 @@ msgstr ""
 #. Translators: "20×" is a magnification (as by a
 #. microscope objective); the digital zoom is a percentage.
 #: app/src/zoom_display.rs:39
-#, fuzzy
-#| msgid ""
-#| "{optical}x optical-equivalent zoom; objective power {objective}x; digital "
-#| "zoom {digital}"
 msgid ""
 "{optical}× optical-equivalent zoom; objective power {objective}×; digital "
 "zoom {digital}"
 msgstr ""
-"Powiększenie odpowiadające optycznemu: {optical}x; powiększenie obiektywu: "
-"{objective}x; powiększenie cyfrowe: {digital}"
+"Powiększenie odpowiadające optycznemu: {optical}×; powiększenie obiektywu: "
+"{objective}×; powiększenie cyfrowe: {digital}"
 
 #: app/src/zoom_display.rs:51
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 piksel obrazu na 1 piksel ekranu"
 
-#: app/ui/app-window.slint:90
-msgctxt "AppWindow"
-msgid "Ready"
-msgstr "Gotowe"
-
-#: app/ui/app-window.slint:159 app/ui/app-window.slint:2046
+#: app/ui/app-window.slint:159 app/ui/app-window.slint:2064
 msgctxt "AppWindow"
 msgid "Confirm"
 msgstr "Potwierdź"
 
-#: app/ui/app-window.slint:160 app/ui/app-window.slint:1982
+#: app/ui/app-window.slint:160 app/ui/app-window.slint:2000
 msgctxt "AppWindow"
 msgid "Cancel"
 msgstr "Anuluj"
@@ -5886,43 +5732,43 @@ msgid "Open in New Tab"
 msgstr "Otwórz w nowej karcie"
 
 #. The border's colour, for assistive technology.
-#: app/ui/app-window.slint:1368
+#: app/ui/app-window.slint:1376
 msgctxt "AppWindow"
 msgid "Error"
 msgstr "Błąd"
 
 #. The border's colour, for assistive technology.
-#: app/ui/app-window.slint:1368
+#: app/ui/app-window.slint:1376
 msgctxt "AppWindow"
 msgid "Warning"
 msgstr "Ostrzeżenie"
 
-#: app/ui/app-window.slint:1415 app/ui/app-window.slint:1433
+#: app/ui/app-window.slint:1425 app/ui/app-window.slint:1444
 msgctxt "AppWindow"
 msgid "Bilinear (Low Quality)"
 msgstr "Dwuliniowe (niska jakość)"
 
-#: app/ui/app-window.slint:1448 app/ui/app-window.slint:1466
+#: app/ui/app-window.slint:1460 app/ui/app-window.slint:1479
 msgctxt "AppWindow"
 msgid "Trilinear (Balanced)"
 msgstr "Trójliniowe (zrównoważone)"
 
-#: app/ui/app-window.slint:1481 app/ui/app-window.slint:1499
+#: app/ui/app-window.slint:1495 app/ui/app-window.slint:1514
 msgctxt "AppWindow"
 msgid "Lanczos-3 (High Quality)"
 msgstr "Lanczos-3 (wysoka jakość)"
 
-#: app/ui/app-window.slint:1521 app/ui/app-window.slint:1539
+#: app/ui/app-window.slint:1537 app/ui/app-window.slint:1556
 msgctxt "AppWindow"
 msgid "Show Pixels Above 100%"
 msgstr "Pokaż piksele powyżej 100%"
 
-#: app/ui/app-window.slint:1920 app/ui/app-window.slint:1950
+#: app/ui/app-window.slint:1938 app/ui/app-window.slint:1968
 msgctxt "AppWindow"
 msgid "Lanczos Filtering (CPU)"
 msgstr "Filtrowanie Lanczos (CPU)"
 
-#: app/ui/app-window.slint:1958
+#: app/ui/app-window.slint:1976
 msgctxt "AppWindow"
 msgid ""
 "Lanczos-3 filtering on the CPU renderer is very slow and will significantly "
@@ -5937,7 +5783,7 @@ msgstr ""
 "\n"
 "Czy na pewno chcesz je włączyć?"
 
-#: app/ui/app-window.slint:2015 app/ui/app-window.slint:2031
+#: app/ui/app-window.slint:2033 app/ui/app-window.slint:2049
 msgctxt "AppWindow"
 msgid "Use Trilinear"
 msgstr "Użyj trójliniowego"
@@ -6071,13 +5917,6 @@ msgid "Colour {} of {}"
 msgstr "Kolor {} z {}"
 
 #: app/ui/channels-panel.slint:701
-#, fuzzy
-#| msgctxt "ChannelsPanel"
-#| msgid ""
-#| "Windows are in the file's sample values: at the lower end a channel is "
-#| "black, at the upper end its full colour. γ above 1 brightens dim signal. "
-#| "Settings are kept for this slide; exports and plugins see the same "
-#| "picture."
 msgctxt "ChannelsPanel"
 msgid ""
 "Minimum and maximum are in the file's sample values: at the minimum a "
@@ -6085,681 +5924,654 @@ msgid ""
 "signal. Settings are kept for this slide; exports and plugins see the same "
 "picture."
 msgstr ""
-"Okna są wyrażone w wartościach próbek z pliku: na dolnej granicy kanał jest "
-"czarny, na górnej ma pełny kolor. γ powyżej 1 rozjaśnia słaby sygnał. "
-"Ustawienia są zapamiętywane dla tego preparatu; eksport i wtyczki widzą ten "
-"sam obraz."
+"Minimum i maksimum są wyrażone w wartościach próbek z pliku: przy minimum "
+"kanał jest czarny, przy maksimum ma pełny kolor. γ powyżej 1 rozjaśnia słaby "
+"sygnał. Ustawienia są zapamiętywane dla tego preparatu; eksport i wtyczki "
+"widzą ten sam obraz."
 
-#: app/ui/dataset-export-dialog.slint:42 app/ui/dataset-export-dialog.slint:69
+#: app/ui/dataset-export-dialog.slint:107
 msgctxt "DatasetExportDialog"
 msgid "Export Dataset"
 msgstr "Eksport zbioru danych"
 
-#: app/ui/dataset-export-dialog.slint:78
+#: app/ui/dataset-export-dialog.slint:153
 msgctxt "DatasetExportDialog"
 msgid "Inputs"
 msgstr "Dane wejściowe"
 
-#: app/ui/dataset-export-dialog.slint:155
+#: app/ui/dataset-export-dialog.slint:230
 msgctxt "DatasetExportDialog"
 msgid "Add slides or folders"
 msgstr "Dodaj preparaty lub foldery"
 
-#: app/ui/dataset-export-dialog.slint:184
+#: app/ui/dataset-export-dialog.slint:259
 msgctxt "DatasetExportDialog"
 msgid "Remove the selected input"
 msgstr "Usuń zaznaczoną pozycję"
 
-#: app/ui/dataset-export-dialog.slint:214
+#: app/ui/dataset-export-dialog.slint:289
 msgctxt "DatasetExportDialog"
 msgid "Output"
 msgstr "Dane wyjściowe"
 
-#: app/ui/dataset-export-dialog.slint:241
+#: app/ui/dataset-export-dialog.slint:316
 msgctxt "DatasetExportDialog"
 msgid "Output folder: {}"
 msgstr "Folder wyjściowy: {}"
 
-#: app/ui/dataset-export-dialog.slint:255
+#: app/ui/dataset-export-dialog.slint:330
 msgctxt "DatasetExportDialog"
 msgid "Change the output folder"
 msgstr "Zmień folder wyjściowy"
 
-#: app/ui/dataset-export-dialog.slint:267
+#: app/ui/dataset-export-dialog.slint:342
 msgctxt "DatasetExportDialog"
 msgid "Change"
 msgstr "Zmień"
 
-#: app/ui/dataset-export-dialog.slint:286
-#, fuzzy
-#| msgctxt "ExportDialog"
-#| msgid "Font Size"
+#: app/ui/dataset-export-dialog.slint:361
 msgctxt "DatasetExportDialog"
 msgid "Patch Size"
-msgstr "Rozmiar czcionki"
+msgstr "Rozmiar kafelka"
 
-#: app/ui/dataset-export-dialog.slint:302
+#: app/ui/dataset-export-dialog.slint:377
 msgctxt "DatasetExportDialog"
 msgid "Patch size"
-msgstr ""
+msgstr "Rozmiar kafelka"
 
-#: app/ui/dataset-export-dialog.slint:336
+#: app/ui/dataset-export-dialog.slint:413
 msgctxt "DatasetExportDialog"
 msgid "Stride"
 msgstr "Krok"
 
-#: app/ui/dataset-export-dialog.slint:382
+#: app/ui/dataset-export-dialog.slint:459
 msgctxt "DatasetExportDialog"
 msgid "Threads"
 msgstr "Wątki"
 
-#: app/ui/dataset-export-dialog.slint:426
+#: app/ui/dataset-export-dialog.slint:503
 msgctxt "DatasetExportDialog"
 msgid "White Threshold"
 msgstr "Próg bieli"
 
-#: app/ui/dataset-export-dialog.slint:440
+#: app/ui/dataset-export-dialog.slint:517
 msgctxt "DatasetExportDialog"
 msgid "White threshold"
 msgstr "Próg bieli"
 
-#: app/ui/dataset-export-dialog.slint:513
+#: app/ui/dataset-export-dialog.slint:590
 msgctxt "DatasetExportDialog"
 msgid "White threshold (%)"
 msgstr "Próg bieli (%)"
 
-#: app/ui/dataset-export-dialog.slint:551
+#: app/ui/dataset-export-dialog.slint:625
 msgctxt "DatasetExportDialog"
 msgid "Tissue only (skip patches that are mostly background)"
 msgstr "Tylko tkanka (pomijaj kafelki, w których przeważa tło)"
 
 #. Translators: leaves out the patches that tissue QC flags (pen marks,
 #. possible folds, possible blur); flags for review, not certainties.
-#: app/ui/dataset-export-dialog.slint:599
-#, fuzzy
-#| msgctxt "DatasetExportDialog"
-#| msgid "Leave out pen marks, folds and blurred areas (tissue QC)"
+#: app/ui/dataset-export-dialog.slint:636
 msgctxt "DatasetExportDialog"
 msgid "Leave out pen marks, possible folds and blur (tissue QC)"
 msgstr ""
-"Pomijaj ślady pisaka, fałdy i rozmyte obszary (kontrola jakości tkanki)"
+"Pomijaj ślady pisaka, możliwe fałdy i rozmycie (kontrola jakości tkanki)"
 
-#: app/ui/dataset-export-dialog.slint:648
+#: app/ui/dataset-export-dialog.slint:646
 msgctxt "DatasetExportDialog"
 msgid "De-identify (name slides by ids; write no file names or paths)"
 msgstr ""
 "Usuń dane identyfikujące (nazywaj preparaty identyfikatorami; nie zapisuj "
 "nazw plików ani ścieżek)"
 
-#: app/ui/dataset-export-dialog.slint:717
+#: app/ui/dataset-export-dialog.slint:685
 msgctxt "DatasetExportDialog"
 msgid "Cancel"
 msgstr "Anuluj"
 
-#: app/ui/dataset-export-dialog.slint:744
-#, fuzzy
-#| msgctxt "ExportDialog"
-#| msgid "Export"
+#: app/ui/dataset-export-dialog.slint:712
 msgctxt "DatasetExportDialog"
 msgid "Export"
 msgstr "Eksportuj"
 
-#: app/ui/dataset-export-dialog.slint:745
+#: app/ui/dataset-export-dialog.slint:713
 msgctxt "DatasetExportDialog"
 msgid "Starts the export"
 msgstr "Rozpoczyna eksport"
 
-#: app/ui/export-dialog.slint:243
+#: app/ui/export-dialog.slint:249
 msgctxt "SegmentButton"
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: app/ui/export-dialog.slint:279
+#: app/ui/export-dialog.slint:285
 msgctxt "DpiChip"
 msgid "{} DPI"
 msgstr "{} DPI"
 
-#: app/ui/export-dialog.slint:431
+#: app/ui/export-dialog.slint:454
 msgctxt "ColorField"
 msgid "Colour"
 msgstr "Kolor"
 
-#: app/ui/export-dialog.slint:432
+#: app/ui/export-dialog.slint:455
 msgctxt "ColorField"
 msgid "Opens the colours to choose from"
 msgstr "Otwiera paletę kolorów do wyboru"
 
-#: app/ui/export-dialog.slint:445
+#: app/ui/export-dialog.slint:468
 msgctxt "ColorField"
 msgid "Opacity"
 msgstr "Krycie"
 
-#: app/ui/export-dialog.slint:469
+#: app/ui/export-dialog.slint:492
 msgctxt "ColorField"
 msgid "Opacity (%)"
 msgstr "Krycie (%)"
 
-#: app/ui/export-dialog.slint:514
-#, fuzzy
-#| msgctxt "ColorField"
-#| msgid "Pick a Color"
+#: app/ui/export-dialog.slint:537
 msgctxt "ColorField"
 msgid "Pick a Colour"
 msgstr "Wybierz kolor"
 
-#: app/ui/export-dialog.slint:525
+#: app/ui/export-dialog.slint:549
 msgctxt "ColorField"
 msgid "Red"
 msgstr "Czerwony"
 
-#: app/ui/export-dialog.slint:537
+#: app/ui/export-dialog.slint:561
 msgctxt "ColorField"
 msgid "Orange"
 msgstr "Pomarańczowy"
 
-#: app/ui/export-dialog.slint:549
+#: app/ui/export-dialog.slint:573
 msgctxt "ColorField"
 msgid "Yellow"
 msgstr "Żółty"
 
-#: app/ui/export-dialog.slint:561
+#: app/ui/export-dialog.slint:585
 msgctxt "ColorField"
 msgid "Green"
 msgstr "Zielony"
 
-#: app/ui/export-dialog.slint:573
+#: app/ui/export-dialog.slint:597
 msgctxt "ColorField"
 msgid "Turquoise"
 msgstr "Turkusowy"
 
-#: app/ui/export-dialog.slint:585
+#: app/ui/export-dialog.slint:609
 msgctxt "ColorField"
 msgid "Blue"
 msgstr "Niebieski"
 
-#: app/ui/export-dialog.slint:601
+#: app/ui/export-dialog.slint:625
 msgctxt "ColorField"
 msgid "Purple"
 msgstr "Fioletowy"
 
-#: app/ui/export-dialog.slint:613
+#: app/ui/export-dialog.slint:637
 msgctxt "ColorField"
 msgid "Pink"
 msgstr "Różowy"
 
-#: app/ui/export-dialog.slint:625
+#: app/ui/export-dialog.slint:649
 msgctxt "ColorField"
 msgid "Dark red"
 msgstr "Ciemnoczerwony"
 
-#: app/ui/export-dialog.slint:637
+#: app/ui/export-dialog.slint:661
 msgctxt "ColorField"
 msgid "Dark green"
 msgstr "Ciemnozielony"
 
 #. Translators: the swatch #2980B9, a strong medium-dark blue; keep it
 #. distinct from "Blue" (#3498DB) and "Navy" (#2C3E50).
-#: app/ui/export-dialog.slint:650
+#: app/ui/export-dialog.slint:674
 msgctxt "ColorField"
 msgid "Dark blue"
 msgstr "Ciemnoniebieski"
 
-#: app/ui/export-dialog.slint:662
+#: app/ui/export-dialog.slint:686
 msgctxt "ColorField"
 msgid "Dark purple"
 msgstr "Ciemnofioletowy"
 
-#: app/ui/export-dialog.slint:678
+#: app/ui/export-dialog.slint:702
 msgctxt "ColorField"
 msgid "White"
 msgstr "Biały"
 
-#: app/ui/export-dialog.slint:690
+#: app/ui/export-dialog.slint:714
 msgctxt "ColorField"
 msgid "Light grey"
 msgstr "Jasnoszary"
 
-#: app/ui/export-dialog.slint:702
+#: app/ui/export-dialog.slint:726
 msgctxt "ColorField"
 msgid "Grey"
 msgstr "Szary"
 
-#: app/ui/export-dialog.slint:714
+#: app/ui/export-dialog.slint:738
 msgctxt "ColorField"
 msgid "Dark grey"
 msgstr "Ciemnoszary"
 
 #. Translators: the swatch #2C3E50, a very dark greyish blue; keep it
 #. distinct from "Dark blue" (#2980B9).
-#: app/ui/export-dialog.slint:727
+#: app/ui/export-dialog.slint:751
 msgctxt "ColorField"
 msgid "Navy"
 msgstr "Granatowy"
 
-#: app/ui/export-dialog.slint:739
+#: app/ui/export-dialog.slint:763
 msgctxt "ColorField"
 msgid "Black"
 msgstr "Czarny"
 
-#: app/ui/export-dialog.slint:756
+#: app/ui/export-dialog.slint:780
 msgctxt "Red, as one letter"
 msgid "R"
 msgstr "R"
 
-#: app/ui/export-dialog.slint:774
+#: app/ui/export-dialog.slint:798
 msgctxt "ColorField"
 msgid "Red (0–255)"
 msgstr "Czerwony (0–255)"
 
-#: app/ui/export-dialog.slint:797
+#: app/ui/export-dialog.slint:828
 msgctxt "Green, as one letter"
 msgid "G"
 msgstr "G"
 
-#: app/ui/export-dialog.slint:815
+#: app/ui/export-dialog.slint:846
 msgctxt "ColorField"
 msgid "Green (0–255)"
 msgstr "Zielony (0–255)"
 
-#: app/ui/export-dialog.slint:838
+#: app/ui/export-dialog.slint:870
 msgctxt "Blue, as one letter"
 msgid "B"
 msgstr "B"
 
-#: app/ui/export-dialog.slint:856
+#: app/ui/export-dialog.slint:888
 msgctxt "ColorField"
 msgid "Blue (0–255)"
 msgstr "Niebieski (0–255)"
 
-#: app/ui/export-dialog.slint:949 app/ui/export-dialog.slint:959
-#: app/ui/export-dialog.slint:981
+#: app/ui/export-dialog.slint:994 app/ui/export-dialog.slint:1005
+#: app/ui/export-dialog.slint:1027
 msgctxt "StrokeStyleSelector"
 msgid "Stroke"
 msgstr "Linia"
 
-#: app/ui/export-dialog.slint:958
+#: app/ui/export-dialog.slint:1004
 msgctxt "StrokeStyleSelector"
 msgid "Solid"
 msgstr "Ciągła"
 
-#: app/ui/export-dialog.slint:969
+#: app/ui/export-dialog.slint:1015
 msgctxt "StrokeStyleSelector"
 msgid "Dashed"
 msgstr "Kreskowa"
 
-#: app/ui/export-dialog.slint:980
+#: app/ui/export-dialog.slint:1026
 msgctxt "StrokeStyleSelector"
 msgid "Dotted"
 msgstr "Kropkowa"
 
-#: app/ui/export-dialog.slint:990
+#: app/ui/export-dialog.slint:1036
 msgctxt "Dash length, as one letter"
 msgid "L"
 msgstr "D"
 
-#: app/ui/export-dialog.slint:991
+#: app/ui/export-dialog.slint:1037
 msgctxt "StrokeStyleSelector"
 msgid "Dash length"
 msgstr "Długość kreski"
 
-#: app/ui/export-dialog.slint:1002
+#: app/ui/export-dialog.slint:1048
 msgctxt "Gap between dashes, as one letter"
 msgid "G"
 msgstr "O"
 
-#: app/ui/export-dialog.slint:1003
+#: app/ui/export-dialog.slint:1049
 msgctxt "StrokeStyleSelector"
 msgid "Gap between dashes"
 msgstr "Odstęp między kreskami"
 
-#: app/ui/export-dialog.slint:1014
+#: app/ui/export-dialog.slint:1060
 msgctxt "Spacing of dots, as one letter"
 msgid "S"
 msgstr "O"
 
-#: app/ui/export-dialog.slint:1015
+#: app/ui/export-dialog.slint:1061
 msgctxt "StrokeStyleSelector"
 msgid "Spacing of the dots"
 msgstr "Odstęp między kropkami"
 
-#: app/ui/export-dialog.slint:1040 app/ui/export-dialog.slint:1050
-#: app/ui/export-dialog.slint:1072
+#: app/ui/export-dialog.slint:1095 app/ui/export-dialog.slint:1106
+#: app/ui/export-dialog.slint:1128
 msgctxt "CapStyleSelector"
 msgid "Caps"
 msgstr "Zakończenia"
 
-#: app/ui/export-dialog.slint:1049
+#: app/ui/export-dialog.slint:1105
 msgctxt "CapStyleSelector"
 msgid "Round"
 msgstr "Zaokrąglone"
 
-#: app/ui/export-dialog.slint:1060
+#: app/ui/export-dialog.slint:1116
 msgctxt "CapStyleSelector"
 msgid "Square"
 msgstr "Kwadratowe"
 
-#: app/ui/export-dialog.slint:1071
+#: app/ui/export-dialog.slint:1127
 msgctxt "CapStyleSelector"
 msgid "Flat"
 msgstr "Płaskie"
 
-#: app/ui/export-dialog.slint:1144
+#: app/ui/export-dialog.slint:1200
 msgctxt "ExportDialog"
 msgid "Export Image"
 msgstr "Eksport obrazu"
 
-#: app/ui/export-dialog.slint:1187
+#: app/ui/export-dialog.slint:1243
 msgctxt "ExportDialog"
 msgid "Export Preview"
 msgstr "Podgląd eksportu"
 
-#: app/ui/export-dialog.slint:1220
+#: app/ui/export-dialog.slint:1276
 msgctxt "ExportDialog"
 msgid "Export preview"
 msgstr "Podgląd eksportu"
 
-#: app/ui/export-dialog.slint:1229
+#: app/ui/export-dialog.slint:1287
 msgctxt "ExportDialog"
 msgid "Estimated Size: {} MB"
 msgstr "Szacowany rozmiar: {} MB"
 
-#: app/ui/export-dialog.slint:1235
+#: app/ui/export-dialog.slint:1293
 msgctxt "ExportDialog"
 msgid "{} × {} px"
 msgstr "{} × {} px"
 
-#: app/ui/export-dialog.slint:1241
+#: app/ui/export-dialog.slint:1299
 msgctxt "ExportDialog"
 msgid "Rendering preview…"
 msgstr "Renderowanie podglądu…"
 
-#: app/ui/export-dialog.slint:1290 app/ui/export-dialog.slint:1299
+#: app/ui/export-dialog.slint:1348 app/ui/export-dialog.slint:1357
 msgctxt "ExportDialog"
 msgid "Resolution (DPI)"
 msgstr "Rozdzielczość (DPI)"
 
-#: app/ui/export-dialog.slint:1364
+#: app/ui/export-dialog.slint:1422
 msgctxt "ExportDialog"
 msgid "Filtering Mode"
 msgstr "Tryb filtrowania"
 
-#: app/ui/export-dialog.slint:1374
+#: app/ui/export-dialog.slint:1432
 msgctxt "ExportDialog"
 msgid "Bilinear"
 msgstr "Dwuliniowe"
 
-#: app/ui/export-dialog.slint:1375 app/ui/export-dialog.slint:1386
+#: app/ui/export-dialog.slint:1433 app/ui/export-dialog.slint:1444
 msgctxt "ExportDialog"
 msgid "Filtering mode"
 msgstr "Tryb filtrowania"
 
-#: app/ui/export-dialog.slint:1385
+#: app/ui/export-dialog.slint:1443
 msgctxt "ExportDialog"
 msgid "Trilinear"
 msgstr "Trójliniowe"
 
-#: app/ui/export-dialog.slint:1396
+#: app/ui/export-dialog.slint:1454
 msgctxt "ExportDialog"
 msgid "Lanczos"
 msgstr "Lanczos"
 
-#: app/ui/export-dialog.slint:1410
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Image Adjustments"
+#: app/ui/export-dialog.slint:1468
 msgctxt "ExportDialog"
 msgid "Image Adjustments"
 msgstr "Korekty obrazu"
 
-#: app/ui/export-dialog.slint:1417
+#: app/ui/export-dialog.slint:1475
 msgctxt "ExportDialog"
 msgid "Convert to sRGB (ICC profile)"
 msgstr "Konwertuj do sRGB (profil ICC)"
 
-#: app/ui/export-dialog.slint:1426 app/ui/export-dialog.slint:1430
+#: app/ui/export-dialog.slint:1484 app/ui/export-dialog.slint:1488
 msgctxt "ExportDialog"
 msgid "Sharpness"
 msgstr "Ostrość"
 
-#: app/ui/export-dialog.slint:1446 app/ui/export-dialog.slint:1450
+#: app/ui/export-dialog.slint:1504 app/ui/export-dialog.slint:1508
 msgctxt "ExportDialog"
 msgid "Gamma"
 msgstr "Gamma"
 
-#: app/ui/export-dialog.slint:1467 app/ui/export-dialog.slint:1471
+#: app/ui/export-dialog.slint:1525 app/ui/export-dialog.slint:1529
 msgctxt "ExportDialog"
 msgid "Brightness"
 msgstr "Jasność"
 
-#: app/ui/export-dialog.slint:1487 app/ui/export-dialog.slint:1491
+#: app/ui/export-dialog.slint:1545 app/ui/export-dialog.slint:1549
 msgctxt "ExportDialog"
 msgid "Contrast"
 msgstr "Kontrast"
 
-#: app/ui/export-dialog.slint:1511
-#, fuzzy
-#| msgctxt "ExportDialog"
-#| msgid "Stain Normalization"
+#: app/ui/export-dialog.slint:1569
 msgctxt "ExportDialog"
 msgid "Stain Normalisation"
 msgstr "Normalizacja barwienia"
 
-#: app/ui/export-dialog.slint:1521 app/ui/hud-settings.slint:427
+#: app/ui/export-dialog.slint:1579 app/ui/hud-settings.slint:445
 msgctxt "Stain normalization"
 msgid "None"
 msgstr "Brak"
 
-#: app/ui/export-dialog.slint:1522 app/ui/export-dialog.slint:1533
-#, fuzzy
-#| msgctxt "ExportDialog"
-#| msgid "Stain normalization"
+#: app/ui/export-dialog.slint:1580 app/ui/export-dialog.slint:1591
 msgctxt "ExportDialog"
 msgid "Stain normalisation"
 msgstr "Normalizacja barwienia"
 
-#: app/ui/export-dialog.slint:1532
+#: app/ui/export-dialog.slint:1590
 msgctxt "ExportDialog"
 msgid "Macenko"
 msgstr "Macenko"
 
-#: app/ui/export-dialog.slint:1543
+#: app/ui/export-dialog.slint:1601
 msgctxt "ExportDialog"
 msgid "Vahadane"
 msgstr "Vahadane"
 
-#: app/ui/export-dialog.slint:1557
-#, fuzzy
-#| msgctxt "ExportDialog"
-#| msgid "Color Deconvolution"
+#: app/ui/export-dialog.slint:1615
 msgctxt "ExportDialog"
 msgid "Colour Deconvolution"
 msgstr "Dekonwolucja barw"
 
-#: app/ui/export-dialog.slint:1567 app/ui/export-dialog.slint:1654
+#: app/ui/export-dialog.slint:1625 app/ui/export-dialog.slint:1712
 msgctxt "ExportDialog"
 msgid "Hematoxylin"
 msgstr "Hematoksylina"
 
-#: app/ui/export-dialog.slint:1577
+#: app/ui/export-dialog.slint:1635
 msgctxt "ExportDialog"
 msgid "H Intensity"
 msgstr "Intensywność H"
 
-#: app/ui/export-dialog.slint:1581
+#: app/ui/export-dialog.slint:1639
 msgctxt "ExportDialog"
 msgid "Hematoxylin intensity"
 msgstr "Intensywność hematoksyliny"
 
-#: app/ui/export-dialog.slint:1603 app/ui/export-dialog.slint:1665
+#: app/ui/export-dialog.slint:1661 app/ui/export-dialog.slint:1723
 msgctxt "ExportDialog"
 msgid "Eosin"
 msgstr "Eozyna"
 
-#: app/ui/export-dialog.slint:1613
+#: app/ui/export-dialog.slint:1671
 msgctxt "ExportDialog"
 msgid "E Intensity"
 msgstr "Intensywność E"
 
-#: app/ui/export-dialog.slint:1617
+#: app/ui/export-dialog.slint:1675
 msgctxt "ExportDialog"
 msgid "Eosin intensity"
 msgstr "Intensywność eozyny"
 
-#: app/ui/export-dialog.slint:1634
+#: app/ui/export-dialog.slint:1692
 msgctxt "ExportDialog"
 msgid "Isolated Channel"
 msgstr "Wyodrębniony kanał"
 
-#: app/ui/export-dialog.slint:1643
+#: app/ui/export-dialog.slint:1701
 msgctxt "Isolated channel"
 msgid "None"
 msgstr "Brak"
 
-#: app/ui/export-dialog.slint:1644 app/ui/export-dialog.slint:1655
+#: app/ui/export-dialog.slint:1702 app/ui/export-dialog.slint:1713
 msgctxt "ExportDialog"
 msgid "Isolated channel"
 msgstr "Wyodrębniony kanał"
 
-#: app/ui/export-dialog.slint:1679
+#: app/ui/export-dialog.slint:1737
 msgctxt "ExportDialog"
 msgid "Measurement"
 msgstr "Pomiar"
 
-#: app/ui/export-dialog.slint:1688
+#: app/ui/export-dialog.slint:1746
 msgctxt "ExportDialog"
 msgid "Measure a distance in the viewport to enable these settings."
 msgstr "Zmierz odległość na preparacie, aby włączyć te ustawienia."
 
-#: app/ui/export-dialog.slint:1698
+#: app/ui/export-dialog.slint:1756
 msgctxt "ExportDialog"
 msgid "Show Measurement"
 msgstr "Pokaż pomiar"
 
-#: app/ui/export-dialog.slint:1711 app/ui/export-dialog.slint:1841
-#, fuzzy
-#| msgctxt "ColorField"
-#| msgid "Colour"
+#: app/ui/export-dialog.slint:1769 app/ui/export-dialog.slint:1903
 msgctxt "ExportDialog"
 msgid "Colour"
 msgstr "Kolor"
 
-#: app/ui/export-dialog.slint:1730 app/ui/export-dialog.slint:1860
+#: app/ui/export-dialog.slint:1788 app/ui/export-dialog.slint:1922
 msgctxt "ExportDialog"
 msgid "Thickness"
 msgstr "Grubość"
 
-#: app/ui/export-dialog.slint:1734
+#: app/ui/export-dialog.slint:1792
 msgctxt "ExportDialog"
 msgid "Measurement line thickness"
 msgstr "Grubość linii pomiaru"
 
-#: app/ui/export-dialog.slint:1783
+#: app/ui/export-dialog.slint:1845
 msgctxt "ExportDialog"
 msgid "Font Size"
 msgstr "Rozmiar czcionki"
 
-#: app/ui/export-dialog.slint:1787
+#: app/ui/export-dialog.slint:1849
 msgctxt "ExportDialog"
 msgid "Measurement font size"
 msgstr "Rozmiar czcionki pomiaru"
 
-#: app/ui/export-dialog.slint:1808
+#: app/ui/export-dialog.slint:1870
 msgctxt "ExportDialog"
 msgid "Region of Interest"
 msgstr "Obszar zainteresowania"
 
-#: app/ui/export-dialog.slint:1818
+#: app/ui/export-dialog.slint:1880
 msgctxt "ExportDialog"
 msgid "Select a region of interest in the viewport to enable these settings."
 msgstr ""
 "Zaznacz obszar zainteresowania na preparacie, aby włączyć te ustawienia."
 
-#: app/ui/export-dialog.slint:1828
+#: app/ui/export-dialog.slint:1890
 msgctxt "ExportDialog"
 msgid "Show Outline"
 msgstr "Pokaż kontur"
 
-#: app/ui/export-dialog.slint:1864
+#: app/ui/export-dialog.slint:1926
 msgctxt "ExportDialog"
 msgid "Region outline thickness"
 msgstr "Grubość konturu obszaru"
 
 #. Translators: a tint drawn over the exported image outside the region of
 #. interest.
-#: app/ui/export-dialog.slint:1922
+#: app/ui/export-dialog.slint:1988
 msgctxt "ExportDialog"
 msgid "Outside Overlay"
 msgstr "Nakładka poza obszarem"
 
-#: app/ui/export-dialog.slint:1926
+#: app/ui/export-dialog.slint:1992
 msgctxt "ExportDialog"
 msgid "Enable Overlay"
 msgstr "Włącz nakładkę"
 
 #. Translators: heading of what is drawn onto the exported image (scale bar,
 #. colour processing note), as for a figure in a paper.
-#: app/ui/export-dialog.slint:1955
+#: app/ui/export-dialog.slint:2021
 msgctxt "ExportDialog"
 msgid "Figure"
 msgstr "Rycina"
 
-#: app/ui/export-dialog.slint:1960
+#: app/ui/export-dialog.slint:2026
 msgctxt "ExportDialog"
 msgid "Scale Bar"
 msgstr "Pasek skali"
 
-#: app/ui/export-dialog.slint:1969
+#: app/ui/export-dialog.slint:2035
 msgctxt "ExportDialog"
 msgid "Colour Processing Note"
 msgstr "Informacja o przetwarzaniu kolorów"
 
-#: app/ui/export-dialog.slint:1981 app/ui/export-dialog.slint:1992
-#: app/ui/export-dialog.slint:2014
+#: app/ui/export-dialog.slint:2047 app/ui/export-dialog.slint:2058
+#: app/ui/export-dialog.slint:2080
 msgctxt "ExportDialog"
 msgid "Format"
 msgstr "Format"
 
-#: app/ui/export-dialog.slint:1991
+#: app/ui/export-dialog.slint:2057
 msgctxt "ExportDialog"
 msgid "JPEG (Smaller)"
 msgstr "JPEG (mniejszy)"
 
-#: app/ui/export-dialog.slint:2002
+#: app/ui/export-dialog.slint:2068
 msgctxt "ExportDialog"
 msgid "PNG (Lossless)"
 msgstr "PNG (bezstratny)"
 
-#: app/ui/export-dialog.slint:2013
+#: app/ui/export-dialog.slint:2079
 msgctxt "ExportDialog"
 msgid "TIFF (Lossless)"
 msgstr "TIFF (bezstratny)"
 
-#: app/ui/export-dialog.slint:2027
+#: app/ui/export-dialog.slint:2093
 msgctxt "ExportDialog"
 msgid "Quality"
 msgstr "Jakość"
 
-#: app/ui/export-dialog.slint:2032
+#: app/ui/export-dialog.slint:2098
 msgctxt "ExportDialog"
 msgid "JPEG quality"
 msgstr "Jakość JPEG"
 
-#: app/ui/export-dialog.slint:2083 app/ui/export-dialog.slint:2096
+#: app/ui/export-dialog.slint:2149 app/ui/export-dialog.slint:2162
 msgctxt "ExportDialog"
 msgid "Reset"
 msgstr "Resetuj"
 
-#: app/ui/export-dialog.slint:2084
+#: app/ui/export-dialog.slint:2150
 msgctxt "ExportDialog"
 msgid "Restores the default export settings"
 msgstr "Przywraca domyślne ustawienia eksportu"
 
-#: app/ui/export-dialog.slint:2120 app/ui/export-dialog.slint:2132
+#: app/ui/export-dialog.slint:2186 app/ui/export-dialog.slint:2198
 msgctxt "ExportDialog"
 msgid "Cancel"
 msgstr "Anuluj"
 
-#: app/ui/export-dialog.slint:2148 app/ui/export-dialog.slint:2176
+#: app/ui/export-dialog.slint:2214 app/ui/export-dialog.slint:2242
 msgctxt "ExportDialog"
 msgid "Export"
 msgstr "Eksportuj"
@@ -6829,22 +6641,22 @@ msgctxt "HeatMapPanelView"
 msgid "Done"
 msgstr "Gotowe"
 
-#: app/ui/home-screen.slint:42
+#: app/ui/home-screen.slint:46
 msgctxt "HomeScreen"
 msgid "Whole Slide Image Viewer"
 msgstr "Przeglądarka obrazów całych preparatów"
 
-#: app/ui/home-screen.slint:61 app/ui/home-screen.slint:91
+#: app/ui/home-screen.slint:66 app/ui/home-screen.slint:96
 msgctxt "HomeScreen"
 msgid "Open File"
 msgstr "Otwórz plik"
 
-#: app/ui/home-screen.slint:107
+#: app/ui/home-screen.slint:112
 msgctxt "HomeScreen"
 msgid "or drag and drop WSI files or folders"
 msgstr "lub przeciągnij i upuść pliki WSI albo foldery"
 
-#: app/ui/home-screen.slint:121
+#: app/ui/home-screen.slint:127
 msgctxt "HomeScreen"
 msgid "Recently Opened"
 msgstr "Ostatnio otwierane"
@@ -6852,7 +6664,7 @@ msgstr "Ostatnio otwierane"
 #. Translators: "not for primary diagnosis" is the regulatory wording: eov
 #. must not be used to make a diagnosis from the slide; do not translate it
 #. as the "principal diagnosis" of hospital coding.
-#: app/ui/home-screen.slint:215
+#: app/ui/home-screen.slint:221
 msgctxt "HomeScreen"
 msgid ""
 "For research and education. Not a medical device; not for primary diagnosis."
@@ -6860,173 +6672,155 @@ msgstr ""
 "Do celów badawczych i edukacyjnych. Nie jest wyrobem medycznym; nie jest "
 "przeznaczony do diagnostyki pierwotnej."
 
-#: app/ui/home-screen.slint:244
+#: app/ui/home-screen.slint:250
 msgctxt "HomeScreen"
 msgid "Language: {}"
 msgstr "Język: {}"
 
-#: app/ui/home-screen.slint:281
+#: app/ui/home-screen.slint:287
 msgctxt "HomeScreen"
 msgid "Check for Updates…"
 msgstr "Sprawdź aktualizacje…"
 
-#: app/ui/home-screen.slint:285
+#: app/ui/home-screen.slint:291
 msgctxt "HomeScreen"
 msgid "Check for eov updates"
 msgstr "Sprawdź aktualizacje programu eov"
 
-#: app/ui/hud-settings.slint:171 app/ui/hud-settings.slint:188
+#: app/ui/hud-settings.slint:185 app/ui/hud-settings.slint:203
 msgctxt "HudSettingsPanel"
 msgid "Image Adjustments"
 msgstr "Korekty obrazu"
 
-#: app/ui/hud-settings.slint:202
+#: app/ui/hud-settings.slint:218
 msgctxt "HudSettingsPanel"
 msgid "Sharpness"
 msgstr "Ostrość"
 
-#: app/ui/hud-settings.slint:219
+#: app/ui/hud-settings.slint:235
 msgctxt "HudSettingsPanel"
 msgid "Gamma"
 msgstr "Gamma"
 
-#: app/ui/hud-settings.slint:232
+#: app/ui/hud-settings.slint:248
 msgctxt "HudSettingsPanel"
 msgid "Brightness"
 msgstr "Jasność"
 
-#: app/ui/hud-settings.slint:244
+#: app/ui/hud-settings.slint:260
 msgctxt "HudSettingsPanel"
 msgid "Contrast"
 msgstr "Kontrast"
 
-#: app/ui/hud-settings.slint:268
+#: app/ui/hud-settings.slint:284
 msgctxt "HudSettingsPanel"
 msgid "Units"
 msgstr "Jednostki"
 
-#: app/ui/hud-settings.slint:290
+#: app/ui/hud-settings.slint:307
 msgctxt "HudSettingsPanel"
 msgid "Micrometres (µm)"
 msgstr "Mikrometry (µm)"
 
-#: app/ui/hud-settings.slint:321
+#: app/ui/hud-settings.slint:338
 msgctxt "HudSettingsPanel"
 msgid "Millimetres (mm)"
 msgstr "Milimetry (mm)"
 
-#: app/ui/hud-settings.slint:335
+#: app/ui/hud-settings.slint:352
 msgctxt "HudSettingsPanel"
 msgid "mm"
 msgstr "mm"
 
-#: app/ui/hud-settings.slint:352
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Inches and mils"
+#: app/ui/hud-settings.slint:369
 msgctxt "HudSettingsPanel"
 msgid "Inches (in)"
-msgstr "Cale i tysięczne cala"
+msgstr "Cale (in)"
 
 #. Translators: the unit symbol of inches, as in "1.00 in".
-#: app/ui/hud-settings.slint:367
-#, fuzzy
-#| msgctxt "ColorField"
-#| msgid "Pink"
+#: app/ui/hud-settings.slint:384
 msgctxt "HudSettingsPanel"
 msgid "in"
-msgstr "Różowy"
+msgstr "in"
 
-#. Translators: row label for stain normalisation, at most 68 px wide (about
-#. 11 characters): abbreviate as needed.
-#: app/ui/hud-settings.slint:391
+#. Translators: row label for stain normalisation; its column grows to fit
+#. it, up to 150 px (about 25 characters).
+#: app/ui/hud-settings.slint:408
 msgctxt "HudSettingsPanel"
 msgid "Stain Norm"
 msgstr "Normalizacja"
 
-#: app/ui/hud-settings.slint:413
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Stain normalization: none"
+#: app/ui/hud-settings.slint:431
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: none"
 msgstr "Normalizacja barwienia: brak"
 
-#: app/ui/hud-settings.slint:444
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Stain normalization: Macenko"
+#: app/ui/hud-settings.slint:462
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: Macenko"
 msgstr "Normalizacja barwienia: Macenko"
 
-#: app/ui/hud-settings.slint:458
+#: app/ui/hud-settings.slint:476
 msgctxt "HudSettingsPanel"
 msgid "Macenko"
 msgstr "Macenko"
 
-#: app/ui/hud-settings.slint:475
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Stain normalization: Vahadane"
+#: app/ui/hud-settings.slint:493
 msgctxt "HudSettingsPanel"
 msgid "Stain normalisation: Vahadane"
 msgstr "Normalizacja barwienia: Vahadane"
 
-#: app/ui/hud-settings.slint:489
+#: app/ui/hud-settings.slint:507
 msgctxt "HudSettingsPanel"
 msgid "Vahadane"
 msgstr "Vahadane"
 
-#: app/ui/hud-settings.slint:511
-#, fuzzy
-#| msgctxt "HudSettingsPanel"
-#| msgid "Color Deconvolution"
+#: app/ui/hud-settings.slint:530
 msgctxt "HudSettingsPanel"
 msgid "Colour Deconvolution"
 msgstr "Dekonwolucja barw"
 
-#: app/ui/hud-settings.slint:530
+#: app/ui/hud-settings.slint:550
 msgctxt "HudSettingsPanel"
 msgid "Hematoxylin intensity"
 msgstr "Intensywność hematoksyliny"
 
-#: app/ui/hud-settings.slint:616
+#: app/ui/hud-settings.slint:636
 msgctxt "HudSettingsPanel"
 msgid "View hematoxylin alone"
 msgstr "Pokaż tylko hematoksylinę"
 
-#: app/ui/hud-settings.slint:640
+#: app/ui/hud-settings.slint:660
 msgctxt "HudSettingsPanel"
 msgid "Show hematoxylin"
 msgstr "Pokaż hematoksylinę"
 
-#: app/ui/hud-settings.slint:648
+#: app/ui/hud-settings.slint:668
 msgctxt "Hematoxylin, as one letter"
 msgid "H"
 msgstr "H"
 
-#: app/ui/hud-settings.slint:685
+#: app/ui/hud-settings.slint:705
 msgctxt "HudSettingsPanel"
 msgid "Eosin intensity"
 msgstr "Intensywność eozyny"
 
-#: app/ui/hud-settings.slint:771
+#: app/ui/hud-settings.slint:791
 msgctxt "HudSettingsPanel"
 msgid "View eosin alone"
 msgstr "Pokaż tylko eozynę"
 
-#: app/ui/hud-settings.slint:795
+#: app/ui/hud-settings.slint:815
 msgctxt "HudSettingsPanel"
 msgid "Show eosin"
 msgstr "Pokaż eozynę"
 
-#: app/ui/hud-settings.slint:803
+#: app/ui/hud-settings.slint:823
 msgctxt "Eosin, as one letter"
 msgid "E"
 msgstr "E"
 
-#: app/ui/hud-settings.slint:849 app/ui/hud-settings.slint:861
+#: app/ui/hud-settings.slint:869 app/ui/hud-settings.slint:881
 msgctxt "HudSettingsPanel"
 msgid "Reset to Defaults"
 msgstr "Przywróć domyślne"
@@ -7036,107 +6830,107 @@ msgctxt "HudToolbar"
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 piksel obrazu na 1 piksel ekranu"
 
-#: app/ui/hud-toolbar.slint:196
+#: app/ui/hud-toolbar.slint:200
 msgctxt "HudToolbar"
 msgid "Rotation: click to type an angle"
 msgstr "Obrót: kliknij, aby wpisać kąt"
 
-#: app/ui/hud-toolbar.slint:257
+#: app/ui/hud-toolbar.slint:261
 msgctxt "HudToolbar"
 msgid "Zoom out"
 msgstr "Pomniejsz"
 
-#: app/ui/hud-toolbar.slint:270
+#: app/ui/hud-toolbar.slint:274
 msgctxt "HudToolbar"
 msgid "Zoom"
 msgstr "Powiększenie"
 
-#: app/ui/hud-toolbar.slint:360
+#: app/ui/hud-toolbar.slint:364
 msgctxt "HudToolbar"
 msgid "Zoom in"
 msgstr "Powiększ"
 
-#: app/ui/hud-toolbar.slint:370
+#: app/ui/hud-toolbar.slint:374
 msgctxt "HudToolbar"
 msgid "Rotate left 90°"
 msgstr "Obróć w lewo o 90°"
 
-#: app/ui/hud-toolbar.slint:378
+#: app/ui/hud-toolbar.slint:382
 msgctxt "HudToolbar"
 msgid "Rotate right 90°"
 msgstr "Obróć w prawo o 90°"
 
-#: app/ui/hud-toolbar.slint:386
+#: app/ui/hud-toolbar.slint:390
 msgctxt "HudToolbar"
 msgid "Flip horizontally"
 msgstr "Odbij w poziomie"
 
-#: app/ui/hud-toolbar.slint:386
+#: app/ui/hud-toolbar.slint:390
 msgctxt "HudToolbar"
 msgid "Unflip"
 msgstr "Cofnij odbicie"
 
-#: app/ui/hud-toolbar.slint:400
+#: app/ui/hud-toolbar.slint:404
 msgctxt "HudToolbar"
 msgid "Rotation"
 msgstr "Obrót"
 
-#: app/ui/hud-toolbar.slint:433
+#: app/ui/hud-toolbar.slint:437
 msgctxt "HudToolbar"
 msgid "Rotation in degrees"
 msgstr "Obrót w stopniach"
 
-#: app/ui/hud-toolbar.slint:493
+#: app/ui/hud-toolbar.slint:497
 msgctxt "HudToolbar"
 msgid "Focal plane"
 msgstr "Płaszczyzna ogniskowa"
 
-#: app/ui/hud-toolbar.slint:498
+#: app/ui/hud-toolbar.slint:502
 msgctxt "HudToolbar"
 msgid "Previous focal plane"
 msgstr "Poprzednia płaszczyzna ogniskowa"
 
-#: app/ui/hud-toolbar.slint:499
+#: app/ui/hud-toolbar.slint:503
 msgctxt "HudToolbar"
 msgid "Next focal plane"
 msgstr "Następna płaszczyzna ogniskowa"
 
-#: app/ui/hud-toolbar.slint:509
+#: app/ui/hud-toolbar.slint:513
 msgctxt "HudToolbar"
 msgid "Time point"
 msgstr "Punkt czasowy"
 
-#: app/ui/hud-toolbar.slint:514
+#: app/ui/hud-toolbar.slint:518
 msgctxt "HudToolbar"
 msgid "Previous time point"
 msgstr "Poprzedni punkt czasowy"
 
-#: app/ui/hud-toolbar.slint:515
+#: app/ui/hud-toolbar.slint:519
 msgctxt "HudToolbar"
 msgid "Next time point"
 msgstr "Następny punkt czasowy"
 
-#: app/ui/hud-toolbar.slint:529
+#: app/ui/hud-toolbar.slint:533
 msgctxt "HudToolbar"
 msgid "Colour management"
 msgstr "Zarządzanie kolorami"
 
-#: app/ui/hud-toolbar.slint:541
+#: app/ui/hud-toolbar.slint:545
 msgctxt "HudToolbar"
 msgid "ICC"
 msgstr "ICC"
 
-#: app/ui/hud-toolbar.slint:612
+#: app/ui/hud-toolbar.slint:625
 msgctxt "HudToolbar"
 msgid "Adjustments"
 msgstr "Korekty"
 
-#: app/ui/hud-toolbar.slint:616
+#: app/ui/hud-toolbar.slint:629
 msgctxt "HudToolbar"
 msgid "The colours are adjusted"
 msgstr "Kolory są skorygowane"
 
-#: app/ui/hud-toolbar.slint:658
+#: app/ui/hud-toolbar.slint:677
 msgctxt "HudToolbar"
 msgid "Menu"
 msgstr "Menu"
@@ -7164,13 +6958,6 @@ msgstr "Języki"
 
 #. Translators: keep github.com/eosin-platform/eov/issues as it is.
 #: app/ui/language-dialog.slint:208
-#, fuzzy
-#| msgctxt "LanguageDialog"
-#| msgid ""
-#| "Translations other than English were drafted with machine translation and "
-#| "have not all been reviewed by native speakers. Wording that is unclear, "
-#| "inaccurate or just awkward can be reported at github.com/eosin-platform/"
-#| "eov/issues — corrections are welcome."
 msgctxt "LanguageDialog"
 msgid ""
 "Translations other than English were drafted with machine translation and "
@@ -7179,7 +6966,7 @@ msgid ""
 "issues — corrections are welcome."
 msgstr ""
 "Tłumaczenia na języki inne niż angielski przygotowano za pomocą tłumaczenia "
-"maszynowego i nie wszystkie zostały sprawdzone przez rodzimych użytkowników "
+"maszynowego i nie zostały jeszcze sprawdzone przez rodzimych użytkowników "
 "języka. Niejasne, nieścisłe lub po prostu niezręczne sformułowania można "
 "zgłaszać na stronie github.com/eosin-platform/eov/issues — poprawki są mile "
 "widziane."
@@ -7223,38 +7010,36 @@ msgid "Copy All (CSV)"
 msgstr "Kopiuj wszystko (CSV)"
 
 #: app/ui/measurements-panel.slint:277
-#, fuzzy
-#| msgid "Clear All Measurements"
 msgctxt "MeasurementsPanel"
 msgid "Clear All Measurements"
 msgstr "Wyczyść wszystkie pomiary"
 
-#: app/ui/metadata-hud.slint:31
+#: app/ui/metadata-hud.slint:38
 msgctxt "MetadataHud"
 msgid "Slide Metadata"
 msgstr "Metadane preparatu"
 
-#: app/ui/minimap.slint:37
+#: app/ui/minimap.slint:38
 msgctxt "Minimap"
 msgid "Minimap"
 msgstr "Minimapa"
 
-#: app/ui/minimap.slint:38
+#: app/ui/minimap.slint:39
 msgctxt "Minimap"
 msgid "The whole slide; click or drag to move the view there"
 msgstr "Cały preparat; kliknij lub przeciągnij, aby przenieść tam widok"
 
-#: app/ui/minimap.slint:120
+#: app/ui/minimap.slint:121
 msgctxt "ZoomSlider"
 msgid "Zoom"
 msgstr "Powiększenie"
 
-#: app/ui/minimap.slint:146
+#: app/ui/minimap.slint:147
 msgctxt "ZoomSlider"
 msgid "Zoom in"
 msgstr "Powiększ"
 
-#: app/ui/minimap.slint:210
+#: app/ui/minimap.slint:211
 msgctxt "ZoomSlider"
 msgid "Zoom out"
 msgstr "Pomniejsz"
@@ -7316,13 +7101,10 @@ msgstr "Nie zainstalowano żadnych wtyczek."
 
 #. Translators: the plugin's version, then the version of eov's plugin API it
 #. was built for.
-#: app/ui/plugins-panel.slint:231
-#, fuzzy
-#| msgctxt "PluginsPanel"
-#| msgid "{}  (plugin API {})"
+#: app/ui/plugins-panel.slint:234
 msgctxt "PluginsPanel"
 msgid "{} (plugin API {})"
-msgstr "{}  (API wtyczek {})"
+msgstr "{} (API wtyczek {})"
 
 #: app/ui/plugins-panel.slint:253
 msgctxt "PluginsPanel"
@@ -7334,42 +7116,42 @@ msgctxt "PluginsPanel"
 msgid "Resources used since the plugin started"
 msgstr "Zasoby użyte od uruchomienia wtyczki"
 
-#: app/ui/plugins-panel.slint:303
+#: app/ui/plugins-panel.slint:304
 msgctxt "PluginsPanel"
 msgid "Update {}"
 msgstr "Aktualizuj {}"
 
-#: app/ui/plugins-panel.slint:310
+#: app/ui/plugins-panel.slint:311
 msgctxt "PluginsPanel"
 msgid "Update"
 msgstr "Aktualizuj"
 
-#: app/ui/plugins-panel.slint:333
+#: app/ui/plugins-panel.slint:334
 msgctxt "PluginsPanel"
 msgid "Disable {}"
 msgstr "Wyłącz {}"
 
-#: app/ui/plugins-panel.slint:333
+#: app/ui/plugins-panel.slint:334
 msgctxt "PluginsPanel"
 msgid "Enable {}"
 msgstr "Włącz {}"
 
-#: app/ui/plugins-panel.slint:339
+#: app/ui/plugins-panel.slint:340
 msgctxt "PluginsPanel"
 msgid "Disable"
 msgstr "Wyłącz"
 
-#: app/ui/plugins-panel.slint:339
+#: app/ui/plugins-panel.slint:340
 msgctxt "PluginsPanel"
 msgid "Enable"
 msgstr "Włącz"
 
-#: app/ui/plugins-panel.slint:362
+#: app/ui/plugins-panel.slint:363
 msgctxt "PluginsPanel"
 msgid "Remove {}"
 msgstr "Usuń {}"
 
-#: app/ui/plugins-panel.slint:368
+#: app/ui/plugins-panel.slint:369
 msgctxt "PluginsPanel"
 msgid "Remove"
 msgstr "Usuń"
@@ -7434,54 +7216,54 @@ msgctxt "QuantifyPanel"
 msgid "Quantify"
 msgstr "Analizuj"
 
-#: app/ui/save-copy-dialog.slint:163 app/ui/save-copy-dialog.slint:190
+#: app/ui/save-copy-dialog.slint:237 app/ui/save-copy-dialog.slint:264
 msgctxt "SaveCopyDialog"
 msgid "Save a Copy of the Slide"
 msgstr "Zapisywanie kopii preparatu"
 
 #. Translators: heading of the choice of what to copy (the whole slide or the
 #. region of interest), not a measured area.
-#: app/ui/save-copy-dialog.slint:207
+#: app/ui/save-copy-dialog.slint:288
 msgctxt "SaveCopyDialog"
 msgid "Area"
 msgstr "Obszar"
 
-#: app/ui/save-copy-dialog.slint:211
+#: app/ui/save-copy-dialog.slint:292
 msgctxt "SaveCopyDialog"
 msgid "Whole slide"
 msgstr "Cały preparat"
 
-#: app/ui/save-copy-dialog.slint:221
+#: app/ui/save-copy-dialog.slint:302
 msgctxt "SaveCopyDialog"
 msgid "Region of interest"
 msgstr "Obszar zainteresowania"
 
-#: app/ui/save-copy-dialog.slint:222
+#: app/ui/save-copy-dialog.slint:303
 msgctxt "SaveCopyDialog"
 msgid "Draw one with the region tool first"
 msgstr "Najpierw narysuj go narzędziem obszaru zainteresowania"
 
-#: app/ui/save-copy-dialog.slint:232
+#: app/ui/save-copy-dialog.slint:313
 msgctxt "SaveCopyDialog"
 msgid "Format"
 msgstr "Format"
 
-#: app/ui/save-copy-dialog.slint:236
+#: app/ui/save-copy-dialog.slint:317
 msgctxt "SaveCopyDialog"
 msgid "Pyramidal TIFF"
 msgstr "Piramidalny TIFF"
 
-#: app/ui/save-copy-dialog.slint:237
+#: app/ui/save-copy-dialog.slint:318
 msgctxt "SaveCopyDialog"
 msgid "Opens in eov, QuPath, OpenSlide and most WSI tools"
 msgstr "Otwiera się w eov, QuPath, OpenSlide i większości narzędzi WSI"
 
-#: app/ui/save-copy-dialog.slint:246
+#: app/ui/save-copy-dialog.slint:327
 msgctxt "SaveCopyDialog"
 msgid "OME-TIFF"
 msgstr "OME-TIFF"
 
-#: app/ui/save-copy-dialog.slint:247
+#: app/ui/save-copy-dialog.slint:328
 msgctxt "SaveCopyDialog"
 msgid ""
 "For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution "
@@ -7490,37 +7272,37 @@ msgstr ""
 "Dla eov, QuPath, Bio-Formats i OMERO (OpenSlide widzi tylko pełną "
 "rozdzielczość)"
 
-#: app/ui/save-copy-dialog.slint:256
+#: app/ui/save-copy-dialog.slint:337
 msgctxt "SaveCopyDialog"
 msgid "Compression"
 msgstr "Kompresja"
 
-#: app/ui/save-copy-dialog.slint:260
+#: app/ui/save-copy-dialog.slint:341
 msgctxt "SaveCopyDialog"
 msgid "JPEG, high quality (90)"
 msgstr "JPEG, wysoka jakość (90)"
 
-#: app/ui/save-copy-dialog.slint:269
+#: app/ui/save-copy-dialog.slint:350
 msgctxt "SaveCopyDialog"
 msgid "JPEG, smaller files (80)"
 msgstr "JPEG, mniejsze pliki (80)"
 
-#: app/ui/save-copy-dialog.slint:278
+#: app/ui/save-copy-dialog.slint:359
 msgctxt "SaveCopyDialog"
 msgid "Lossless (Deflate)"
 msgstr "Bezstratna (Deflate)"
 
-#: app/ui/save-copy-dialog.slint:279
+#: app/ui/save-copy-dialog.slint:360
 msgctxt "SaveCopyDialog"
 msgid "Exact pixels; several times larger"
 msgstr "Dokładne piksele; kilkakrotnie większy plik"
 
-#: app/ui/save-copy-dialog.slint:292 app/ui/save-copy-dialog.slint:320
+#: app/ui/save-copy-dialog.slint:370
 msgctxt "SaveCopyDialog"
 msgid "De-identify"
 msgstr "Usuń dane identyfikujące"
 
-#: app/ui/save-copy-dialog.slint:337
+#: app/ui/save-copy-dialog.slint:380
 msgctxt "SaveCopyDialog"
 msgid ""
 "No label, macro or thumbnail image, and no properties but the pixel size, "
@@ -7531,26 +7313,21 @@ msgstr ""
 "rozmiarem piksela, powiększeniem obiektywu i barwieniem. Tekst lub "
 "oznaczenia na zeskanowanym obrazie tkanki nie są usuwane."
 
-#: app/ui/save-copy-dialog.slint:338
-#, fuzzy
-#| msgctxt "SaveCopyDialog"
-#| msgid ""
-#| "The copy keeps the label and macro images and every property of the "
-#| "slide, which can identify the patient."
+#: app/ui/save-copy-dialog.slint:381
 msgctxt "SaveCopyDialog"
 msgid ""
 "The copy keeps the label and macro images and every property of the slide; "
 "any of these can identify the patient."
 msgstr ""
 "Kopia zachowuje obraz etykiety, obraz makro i wszystkie właściwości "
-"preparatu, które mogą umożliwić identyfikację pacjenta."
+"preparatu; każdy z tych elementów może umożliwić identyfikację pacjenta."
 
-#: app/ui/save-copy-dialog.slint:366
+#: app/ui/save-copy-dialog.slint:411
 msgctxt "SaveCopyDialog"
 msgid "Cancel"
 msgstr "Anuluj"
 
-#: app/ui/save-copy-dialog.slint:373
+#: app/ui/save-copy-dialog.slint:418
 msgctxt "SaveCopyDialog"
 msgid "Save…"
 msgstr "Zapisz…"
@@ -7654,12 +7431,12 @@ msgctxt "ShortcutsPanel"
 msgid "Close"
 msgstr "Zamknij"
 
-#: app/ui/shortcuts-panel.slint:142
+#: app/ui/shortcuts-panel.slint:137
 msgctxt "ShortcutsPanel"
 msgid "no key"
 msgstr "brak klawisza"
 
-#: app/ui/shortcuts-panel.slint:176 app/ui/shortcuts-panel.slint:182
+#: app/ui/shortcuts-panel.slint:171 app/ui/shortcuts-panel.slint:177
 msgctxt "ShortcutsPanel"
 msgid "Copy Config Path"
 msgstr "Kopiuj ścieżkę konfiguracji"
@@ -7717,12 +7494,9 @@ msgstr "Makro"
 #. Translators: on the macro photo of the glass, hidden because the slide
 #. label (patient data) is visible in it.
 #: app/ui/slide-info-panel.slint:249
-#, fuzzy
-#| msgctxt "SlideInfoPanel"
-#| msgid "Hidden (shows the label)"
 msgctxt "SlideInfoPanel"
 msgid "Hidden because it shows the label"
-msgstr "Ukryty (widać na nim etykietę)"
+msgstr "Ukryty, ponieważ widać na nim etykietę"
 
 #: app/ui/slide-info-panel.slint:254
 msgctxt "SlideInfoPanel"
@@ -7767,46 +7541,43 @@ msgstr "Użyj rozmiaru piksela z pliku"
 #. Translators: button in the pixel-size row: drops the pixel size you set
 #. and uses the one the file records.
 #: app/ui/slide-info-panel.slint:390
-#, fuzzy
-#| msgctxt "SlideInfoPanel"
-#| msgid "Use the file's"
 msgctxt "SlideInfoPanel"
 msgid "Use the file's value"
-msgstr "Użyj z pliku"
+msgstr "Użyj wartości z pliku"
 
-#: app/ui/slide-info-panel.slint:424 app/ui/slide-info-panel.slint:425
+#: app/ui/slide-info-panel.slint:427 app/ui/slide-info-panel.slint:428
 msgctxt "SlideInfoPanel"
 msgid "Filter properties"
 msgstr "Filtruj właściwości"
 
 #. Translators: how many rows the filter shows, of all rows ("12 of 40"). To
 #. swap the numbers, write {1} for the second and {0} for the first.
-#: app/ui/slide-info-panel.slint:443
+#: app/ui/slide-info-panel.slint:448
 msgctxt "SlideInfoPanel"
 msgid "{} of {}"
 msgstr "{} z {}"
 
-#: app/ui/slide-info-panel.slint:454
+#: app/ui/slide-info-panel.slint:459
 msgctxt "SlideInfoPanel"
 msgid "Copy all properties"
 msgstr "Kopiuj wszystkie właściwości"
 
-#: app/ui/slide-info-panel.slint:462
+#: app/ui/slide-info-panel.slint:467
 msgctxt "SlideInfoPanel"
 msgid "Copy all"
 msgstr "Kopiuj wszystko"
 
-#: app/ui/slide-info-panel.slint:489
+#: app/ui/slide-info-panel.slint:494
 msgctxt "SlideInfoPanel"
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: app/ui/slide-info-panel.slint:490
+#: app/ui/slide-info-panel.slint:495
 msgctxt "SlideInfoPanel"
 msgid "Copies the value"
 msgstr "Kopiuje wartość"
 
-#: app/ui/slide-info-panel.slint:533
+#: app/ui/slide-info-panel.slint:538
 msgctxt "SlideInfoPanel"
 msgid ""
 "Click a row to copy its value. Properties are shown as the scanner wrote "
@@ -7818,9 +7589,6 @@ msgstr ""
 #. Translators: the accessible name of the × button that cancels a job; {}
 #. is the job's title ("Exporting region").
 #: app/ui/status-bar.slint:83
-#, fuzzy
-#| msgctxt "StatusBar"
-#| msgid "Cancel {}"
 msgctxt "StatusBar"
 msgid "Cancel: {}"
 msgstr "Anuluj: {}"
@@ -7917,20 +7685,17 @@ msgctxt "TabBar"
 msgid "New tab"
 msgstr "Nowa karta"
 
-#: app/ui/viewport.slint:26
+#: app/ui/viewport.slint:27
 msgctxt "Viewport"
 msgid "100% = 1 image pixel per display pixel"
 msgstr "100% = 1 piksel obrazu na 1 piksel ekranu"
 
-#: app/ui/viewport.slint:113
+#: app/ui/viewport.slint:114
 msgctxt "Viewport"
 msgid "Slide view"
 msgstr "Widok preparatu"
 
-#: app/ui/viewport.slint:160
-#, fuzzy
-#| msgctxt "Viewport"
-#| msgid "Loading..."
+#: app/ui/viewport.slint:161
 msgctxt "Viewport"
 msgid "Loading…"
 msgstr "Wczytywanie…"
@@ -7942,212 +7707,194 @@ msgstr "Odległość"
 
 #. Translators: tooltip of Undo; {} names the edit it reverts ("Add
 #. measurement", or a plugin's own wording).
-#: app/ui/window-toolbar.slint:79
+#: app/ui/window-toolbar.slint:83
 msgctxt "WindowToolbar"
 msgid "Undo {}"
 msgstr "Cofnij: {}"
 
-#: app/ui/window-toolbar.slint:80
+#: app/ui/window-toolbar.slint:84
 msgctxt "WindowToolbar"
 msgid "Undo"
 msgstr "Cofnij"
 
 #. Translators: tooltip of Redo; {} names the edit it repeats ("Add
 #. measurement", or a plugin's own wording).
-#: app/ui/window-toolbar.slint:82
+#: app/ui/window-toolbar.slint:86
 msgctxt "WindowToolbar"
 msgid "Redo {}"
 msgstr "Ponów: {}"
 
-#: app/ui/window-toolbar.slint:83
+#: app/ui/window-toolbar.slint:87
 msgctxt "WindowToolbar"
 msgid "Redo"
 msgstr "Ponów"
 
 #. A tooltip and the key of its shortcut ("Undo (Ctrl+Z)").
-#: app/ui/window-toolbar.slint:86 app/ui/window-toolbar.slint:89
-#: app/ui/window-toolbar.slint:307
+#: app/ui/window-toolbar.slint:90 app/ui/window-toolbar.slint:93
+#: app/ui/window-toolbar.slint:311
 msgctxt "WindowToolbar"
 msgid "{} ({})"
 msgstr "{} ({})"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:617
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:661
 msgctxt "WindowToolbar"
 msgid "Close window"
 msgstr "Zamknij okno"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:588
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:632
 msgctxt "WindowToolbar"
 msgid "Maximize window"
 msgstr "Maksymalizuj okno"
 
-#: app/ui/window-toolbar.slint:125 app/ui/window-toolbar.slint:558
+#: app/ui/window-toolbar.slint:129 app/ui/window-toolbar.slint:602
 msgctxt "WindowToolbar"
 msgid "Minimize window"
 msgstr "Minimalizuj okno"
 
-#: app/ui/window-toolbar.slint:197
+#: app/ui/window-toolbar.slint:201
 msgctxt "WindowToolbar"
 msgid "Open file (right-click for folder or recent)"
 msgstr ""
 "Otwórz plik (kliknij prawym przyciskiem, aby wybrać folder lub ostatnie "
 "pliki)"
 
-#: app/ui/window-toolbar.slint:230
+#: app/ui/window-toolbar.slint:234
 msgctxt "WindowToolbar"
 msgid "Hide Series Bar"
 msgstr "Ukryj pasek serii"
 
-#: app/ui/window-toolbar.slint:230
+#: app/ui/window-toolbar.slint:234
 msgctxt "WindowToolbar"
 msgid "Show Series Bar"
 msgstr "Pokaż pasek serii"
 
-#: app/ui/window-toolbar.slint:239
+#: app/ui/window-toolbar.slint:243
 msgctxt "WindowToolbar"
 msgid "Toggle minimap"
 msgstr "Pokaż/ukryj minimapę"
 
-#: app/ui/window-toolbar.slint:249
+#: app/ui/window-toolbar.slint:253
 msgctxt "WindowToolbar"
 msgid "Link the views of panes that show the same slide"
-msgstr ""
+msgstr "Połącz widoki okienek z tym samym preparatem"
 
-#: app/ui/window-toolbar.slint:259
+#: app/ui/window-toolbar.slint:263
 msgctxt "WindowToolbar"
 msgid "Link panes with different slides"
 msgstr "Połącz okienka z różnymi preparatami"
 
-#: app/ui/window-toolbar.slint:259
+#: app/ui/window-toolbar.slint:263
 msgctxt "WindowToolbar"
 msgid "Unlink panes"
 msgstr "Rozłącz okienka"
 
-#: app/ui/window-toolbar.slint:273
+#: app/ui/window-toolbar.slint:277
 msgctxt "WindowToolbar"
 msgid "Done adjusting (saves the alignment)"
 msgstr "Zakończ korygowanie (zapisuje wyrównanie)"
 
-#: app/ui/window-toolbar.slint:274
+#: app/ui/window-toolbar.slint:278
 msgctxt "WindowToolbar"
 msgid "Adjust alignment: move one pane alone"
 msgstr "Koryguj wyrównanie: przesuwaj jedno okienko niezależnie"
 
-#: app/ui/window-toolbar.slint:292
+#: app/ui/window-toolbar.slint:296
 msgctxt "WindowToolbar"
 msgid "Navigate"
 msgstr "Nawigacja"
 
-#: app/ui/window-toolbar.slint:304
+#: app/ui/window-toolbar.slint:308
 msgctxt "WindowToolbar"
 msgid "Region of interest"
 msgstr "Obszar zainteresowania"
 
-#: app/ui/window-toolbar.slint:318
+#: app/ui/window-toolbar.slint:322
 msgctxt "WindowToolbar"
 msgid "Measure: {} ({}; right-click for more)"
 msgstr "Pomiar: {} ({}; kliknij prawym przyciskiem, aby zobaczyć więcej)"
 
-#: app/ui/window-toolbar.slint:319
+#: app/ui/window-toolbar.slint:323
 msgctxt "WindowToolbar"
 msgid "Measure: {} (right-click for more)"
 msgstr "Pomiar: {} (kliknij prawym przyciskiem, aby zobaczyć więcej)"
 
-#: app/ui/window-toolbar.slint:339
+#: app/ui/window-toolbar.slint:343
 msgctxt "WindowToolbar"
 msgid "Toggle metadata HUD"
 msgstr "Pokaż/ukryj pływający panel metadanych"
 
-#: app/ui/window-toolbar.slint:349
+#: app/ui/window-toolbar.slint:353
 msgctxt "WindowToolbar"
 msgid "Toggle scale bar"
 msgstr "Pokaż/ukryj pasek skali"
 
 #. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "Dark"
-msgstr "Ciemny"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "High Contrast"
-msgstr "Wysoki kontrast"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
-msgctxt "Theme"
-msgid "Light"
-msgstr "Jasny"
-
-#. The current theme ("Theme: Dark"), named as in the theme menu.
-#: app/ui/window-toolbar.slint:361
+#: app/ui/window-toolbar.slint:365
 msgctxt "WindowToolbar"
 msgid "Theme: {}"
 msgstr "Motyw: {}"
 
-#: app/ui/window-toolbar.slint:372
+#: app/ui/window-toolbar.slint:376
 msgctxt "WindowToolbar"
 msgid "Language"
 msgstr "Język"
 
-#: app/ui/window-toolbar.slint:380
+#: app/ui/window-toolbar.slint:384
 msgctxt "WindowToolbar"
 msgid "Export Dataset"
 msgstr "Eksportuj zbiór danych"
 
-#: app/ui/window-toolbar.slint:396
+#: app/ui/window-toolbar.slint:400
 msgctxt "WindowToolbar"
 msgid "CPU"
 msgstr "CPU"
 
-#: app/ui/window-toolbar.slint:397
+#: app/ui/window-toolbar.slint:401
 msgctxt "WindowToolbar"
 msgid "Use CPU renderer"
 msgstr "Użyj renderera CPU"
 
-#: app/ui/window-toolbar.slint:410
+#: app/ui/window-toolbar.slint:414
 msgctxt "WindowToolbar"
 msgid "GPU"
 msgstr "GPU"
 
-#: app/ui/window-toolbar.slint:411
+#: app/ui/window-toolbar.slint:415
 msgctxt "WindowToolbar"
 msgid "GPU renderer unavailable"
 msgstr "Renderer GPU jest niedostępny"
 
-#: app/ui/window-toolbar.slint:411
+#: app/ui/window-toolbar.slint:415
 msgctxt "WindowToolbar"
 msgid "Use GPU renderer"
 msgstr "Użyj renderera GPU"
 
-#: app/ui/window-toolbar.slint:433
+#: app/ui/window-toolbar.slint:440
 msgctxt "WindowToolbar"
 msgid "Filtering mode"
 msgstr "Tryb filtrowania"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:490
 msgctxt "WindowToolbar"
 msgid "Bilinear"
 msgstr "Dwuliniowe"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:502
 msgctxt "WindowToolbar"
 msgid "Lanczos-3"
 msgstr "Lanczos-3"
 
-#: app/ui/window-toolbar.slint:456
+#: app/ui/window-toolbar.slint:463 app/ui/window-toolbar.slint:496
 msgctxt "WindowToolbar"
 msgid "Trilinear"
 msgstr "Trójliniowe"
 
-#: app/ui/window-toolbar.slint:521
+#: app/ui/window-toolbar.slint:565
 msgctxt "WindowToolbar"
 msgid "Plugins (some could not be started)"
 msgstr "Wtyczki (niektórych nie udało się uruchomić)"
 
-#: app/ui/window-toolbar.slint:521
+#: app/ui/window-toolbar.slint:565
 msgctxt "WindowToolbar"
 msgid "Plugins ({})"
 msgstr "Wtyczki ({})"

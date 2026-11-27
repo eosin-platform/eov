@@ -38,7 +38,7 @@ tile	타일	한 번에 읽는 정사각형 이미지 조각.
 patch	패치	데이터셋용 작은 이미지.
 cache	캐시	
 region of interest (ROI)	관심 영역(ROI)	약어 ROI는 그대로.
-measurement	측정	측정한 항목 하나. 측정한 값은 '측정값'.
+measurement	측정	측정한 항목 하나. 측정한 값은 '측정값'. 실제 측정에만 씀(eov 측정 도구, 측정한 IF). Cellaris의 영역 분석(예측값의 통계)은 측정이 아님.
 measure (tool)	측정 (도구)	
 distance / path length / area / angle	거리 / 경로 길이 / 면적 / 각도	측정 모드. Polygon area = 다각형 면적, Rectangle area = 사각형 면적, Ellipse area = 타원 면적.
 annotation	주석	의미가 있는 표시(점·영역·선·텍스트). 자유 텍스트 메모가 아님.
@@ -236,7 +236,8 @@ level-0 pixels	레벨 0 픽셀
 predicted marker, prediction	예측 마커, 예측값	Cellaris. 측정값이 아님.
 PREDICTED — research use only, not for diagnosis	예측값 — 연구용으로만 사용, 진단에 사용할 수 없음	안전 문구: 생략·완화·축약 금지.
 Research use only; not for diagnosis.	연구용으로만 사용하며, 진단에 사용할 수 없습니다.	안전 문구: 생략·완화·축약 금지.
-readout, region readout (Cellaris)	분석 결과, 영역 분석	'판독'은 진단 판독으로 읽히므로 쓰지 않음. Measure = 측정.
+readout, region readout (Cellaris)	분석 결과, 영역 분석	모델의 예측값에서 계산한 영역 통계(평균·산포·밀도 r²)이며 측정이 아님: '측정', '측정값', '판독', '판독값', '계측', '신호'를 쓰지 않음('판독'은 진단 판독으로도 읽힘). 계산된 값은 '분석 결과'(분석 결과를 계산하시겠습니까?, 분석 결과를 탭으로 구분된 텍스트로 복사했습니다), 계산 과정은 '분석'(분석은 취소할 수 있습니다, 영역 분석을 시작할 때). 도구 이름 Cellaris region readout = Cellaris 영역 분석, 제목 REGION READOUT = 영역 분석, readout region = 분석 영역. 측정을 뜻하는 말은 원문이 measured/measurements일 때만 씀(측정한 IF, 예측값은 측정값이 아님).
+compute (predictions, a readout)	계산	Cellaris: Compute(버튼) = 계산, Computing: … = 계산 중: …, {} % computed = {}% 계산됨, could not be computed = 계산할 수 없습니다. 예측값·분석 결과에는 '측정'을 쓰지 않음.
 cell (Cellaris grid square)	셀	한 번에 예측하는 슬라이드의 작은 정사각형. 생물학적 세포(세포)와 구별.
 window (model input square)	윈도우	모델이 예측하는 정사각형 입력 이미지.
 display window (marker)	표시 범위	마커 색을 그리는 값 범위. Black / White 끝 = 검은색 / 흰색.

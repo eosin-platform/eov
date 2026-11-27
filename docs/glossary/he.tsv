@@ -4,8 +4,8 @@ term	translation	note
 (questions)	לשמור את השינויים?	Yes/no questions as infinitive questions.
 (progress)	בטעינה… / מתבצעת שמירה…	Not the masculine participle (טוען…). Use the Hebrew ellipsis character … as in English.
 (quotation marks)	"…"	Straight double quotes around inserted names; no gershayim abbreviations (write words in full).
-(right-to-left order)	התוסף {name} מבקש…	Start every text with a Hebrew word where natural: Slint takes a paragraph's direction from its first strong letter, so a text that starts with eov, a Latin term or a non-isolated placeholder is laid out left to right.
-(LRM before neutral-led Latin)	סיומת ‎.eop, עם ‎--language	Put U+200E (LEFT-TO-RIGHT MARK) before a Latin token that begins with punctuation (.eop, --option, ~/.cargo), or it is drawn as eop. or language--.
+(right-to-left order)	התוסף {name} מבקש…	Start every text with a Hebrew word where natural: Slint takes a paragraph's direction from its first strong letter, so a text that starts with eov, a Latin term or a placeholder is laid out left to right. Where a text must start that way, it starts with U+200F (RIGHT-TO-LEFT MARK); `import` adds it and `check` requires it (docs/translating.md, "Right-to-left languages").
+(left-to-right fragments)	סיומת .eop, עם --language	Wrap a left-to-right fragment that contains punctuation (an extension such as .eop, an option such as --language, a path such as ~/.cargo, a number with its unit, a range, w × h, a config example) in U+2068 (FIRST STRONG ISOLATE) … U+2069 (POP DIRECTIONAL ISOLATE), or it is drawn as eop. or language--. Not U+200E: a mark stops protecting the fragment once eov isolates the value inside it.
 (numbers and units)	40×, 0.25 µm, 512 px, 50%	Units, ×, keys and Latin-script names as written; eov isolates inserted values in right-to-left text. Percent sign directly after the number (50%), as in Hebrew typesetting; a space before it would put it on the wrong side.
 For research and education. Not a medical device; not for primary diagnosis.	למחקר ולהוראה. אינו מכשיר רפואי; אין להשתמש בו לאבחון ראשוני.	Legal/clinical text: translate completely; never shorten or soften.
 research use only (RUO)	לשימוש מחקרי בלבד (RUO)	The phrase printed on RUO reagents in Israel; keep RUO.
@@ -243,7 +243,7 @@ About	אודות
 Language	שפה	
 Could not …	לא ניתן היה ל…	Error texts: impersonal.
 (plugins) menu paths	נתונים ← קורא שני ← עותק סמוי	Write menu and settings paths with ← (U+2190) in right-to-left text; → and › would point backwards.
-(plugins) bracket keys [ and ]	המקשים ‎]‎ ו-‎[‎	Key glyphs [ ] get mirrored in right-to-left text: surround each with U+200E and name ] first, so the two never form a bracket pair.
+(plugins) bracket keys [ and ]	המקשים ] ו-[	Key glyphs [ ] are drawn mirrored in right-to-left text: wrap each key in U+2068 … U+2069, so that it is drawn as the key itself and never pairs with the other.
 (plugins) durations	3:05 דקות, 1:02 שעות, כ-{n} שניות	No geresh abbreviations (דק', שנ'); m/s pairs become m:ss דקות.
 Shift+click, Alt+click, Ctrl+click	לחיצה עם Shift, לחיצה עם Alt, לחיצה עם Ctrl	Also as short labels, so they start with a Hebrew word.
 hotkey	מקש קיצור	Of a class or tool.
@@ -268,7 +268,7 @@ index (Ki-67+ index)	מדד	מדד {class}.
 tumour cells, immune cells	תאי גידול, תאי מערכת החיסון	PD-L1-positive = חיוביים ל-PD-L1.
 even-odd rule	כלל זוגי-אי-זוגי	
 predict, prediction	לחזות, חיזוי	pl. חיזויים; PREDICTED banner = חזוי — לשימוש מחקרי בלבד, אין להשתמש לאבחון.
-region readout (Cellaris)	ערכי אזור	The tool Cellaris region readout = ערכי אזור של Cellaris; measure/measuring stays מדידה.
+readout, region readout (Cellaris)	סיכום, סיכום אזור	Statistics computed from a model's predicted values, not a measurement: never מדידה, נמדד, מדד or קריאה. Tool Cellaris region readout = סיכום אזור של Cellaris; REGION READOUT = סיכום אזור; readout region = אזור הסיכום. מדידה/נמדד only where the English says measured (IF שנמדד בפועל) or measurements (החיזויים אינם מדידות).
 window (square image a model predicts from)	חלון	pl. חלונות; a display window is חלון תצוגה.
 cell (Cellaris: square of the slide predicted at once)	משבצת	pl. משבצות; never תא, which reads as a biological cell.
 tissue block (Cellaris: 5 µm square of tissue)	ריבוע רקמה	pl. ריבועי רקמה; not a paraffin block.
@@ -301,6 +301,6 @@ hex digits	ספרות הקסדצימליות	SHA-256 (64 hex digits) = תקצי�
 worker thread	תהליכון עבודה	A background thread of eov or a plugin: לא ניתן היה להפעיל תהליכון עבודה.
 host (the application that runs a plugin)	תוכנת eov	In plugin error texts the host is eov: תוכנת eov החזירה {n} בתים…
 flagged (by tissue QC)	סומן על ידי בקרת איכות הרקמה	Flags for review, not certainties: possible folds = חשד לקפלים; blur = טשטוש.
-compute, computing (predictions, a readout)	חישוב, מתבצע חישוב	Compute a readout = חישוב ערכי אזור; never מדידה.
+compute, computing (predictions, a readout)	חישוב, מתבצע חישוב	Compute a readout of a large region? = לחשב סיכום של אזור גדול?; computing a region readout = מתבצע חישוב של סיכום אזור; never מדידה.
 {maker} whole-slide image (file type)	תמונת שקופית שלמה של Aperio / בפורמט Hamamatsu NDPI	File-type names in file managers: של + scanner maker alone; בפורמט + maker and format.
 versions ({from} -> {to})	מגרסה {from} לגרסה {to}	Words, not an arrow, in right-to-left text.

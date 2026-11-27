@@ -256,7 +256,7 @@ DICOM bulk annotations	DICOM-joukkoannotaatiot	The IOD name Microscopy Bulk Simp
 combined positive score (CPS)	yhdistetty positiivisuuspistemäärä (CPS)	PD-L1; tumour cells = kasvainsolut, immune cells = immuunisolut.
 {class} index (Ki-67 index)	{class} -indeksi	Space before the hyphen because the class name may be several words or end in a symbol.
 eov before 1.0, pre-1.0	eov:n alle 1.0 -versiot	pre-1.0 format = alle 1.0 -versioiden muoto.
-readout (Cellaris)	lukema; aluelukema	Region readout = aluelukema. Not "mittaus", so as not to contradict "predictions are not measurements".
+readout (Cellaris)	yhteenveto; alueyhteenveto	Statistics (mean, spread, density r²) computed from the model's predicted values over a region, not a measurement: never "lukema" (an instrument reading) or "mittaus"/"mitata"/"mitattu" ("mittaustulos"/"mitattu" only where the English says measurements/measured: predictions are not measurements = ennusteet eivät ole mittaustuloksia; measured IF = mitattu IF). Region readout = alueyhteenveto; REGION READOUT = ALUEYHTEENVETO; tool and job title Cellaris region readout = Cellaris-alueyhteenveto (in text: Cellaris-alueyhteenvetotyökalulla); readout region (layer) = yhteenvedon alue; a readout of the predicted values = yhteenveto ennustetuista arvoista; Compute a readout of a large region? = Lasketaanko suuren alueen yhteenveto?; computing a readout = yhteenvedon laskenta; readouts = yhteenvedot.
 cell (Cellaris grid square)	ruutu	A small square of the slide predicted at once; never "solu" (biological cell) in Cellaris texts.
 tissue block (Cellaris, 5 µm square)	kudosneliö; neliö	Not "lohko" (lobe) or "blokki" (paraffin block).
 window (model input)	ikkuna, ennusteikkuna	{seconds} s per window = {seconds} s/ikkuna.

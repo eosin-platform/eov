@@ -212,7 +212,8 @@ fit (stain fit, model fit)	illesztés	"Macenko fit" → "Macenko-illesztés".
 density (cells per area)	sűrűség	"sejtsűrűség"; optical density → "optikai denzitás".
 tumour	tumor	"tumour cells" → "tumorsejtek".
 second reader, blinded copy	második értékelő, vakosított másolat	Independent second read of annotations.
-readout (region readout)	kiértékelés	"region readout" → "területi kiértékelés".
+readout, region readout (Cellaris)	kiértékelés, területi kiértékelés	Statistics computed from a model's predicted values, not a measurement: never "mérés", "mért", "leolvasás" or "jel". Tool "Cellaris region readout" → "Cellaris területi kiértékelés"; REGION READOUT → TERÜLETI KIÉRTÉKELÉS; "readout region" → "kiértékelési terület". "mérés"/"mért" only where the English says "measurements"/"measured IF".
+compute (predictions, a readout)	kiszámítás, számítás	Never "mérés": button "Compute" → "Kiszámítás"; "Computing: …" → "Számítás: …"; "{} % computed" → "{}% kiszámítva"; "Compute a readout of a large region?" → "Kiszámítja egy nagy terület kiértékelését?".
 merge	egyesítés	
 database	adatbázis	
 coordinates	koordináták	

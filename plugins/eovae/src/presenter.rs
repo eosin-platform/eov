@@ -381,9 +381,11 @@ fn refresh_status<B: Backend>(core: &Arc<Core<B>>, memo: &mut Memo) {
                 "VAE {done} / {n} tile" | "VAE {done} / {n} tiles" % job.progress.total,
                 done = job.progress.done
             )),
-            // Translators: the status bar: what the analysis is doing
+            // Translators: the status bar: what the analysis is doing, or how
+            // the inference engine is being prepared
             (Some(job), _) => Some(tr!("VAE: {}", job.phase)),
-            // Translators: the status bar: how the inference engine is being prepared
+            // Translators: the status bar: what the analysis is doing, or how
+            // the inference engine is being prepared
             (None, Some(building)) => Some(tr!("VAE: {}", building)),
             _ => None,
         }

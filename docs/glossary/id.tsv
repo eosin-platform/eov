@@ -51,7 +51,7 @@ patch (dataset)	petak	Same word as tile, as the glossary defines it.
 cache	cache	
 region of interest (ROI)	area minat (ROI)	Keep ROI as the abbreviation; “area minat” in running text.
 region (in general)	area	“area yang dipindai” (scanned region); “area minat” when the ROI is meant. A measured area is “luas”.
-measurement	pengukuran	
+measurement	pengukuran	Only real measurements (eov's Ukur tool, measured IF); Cellaris's readout of predicted values is “ringkasan”, never “pengukuran”.
 measure (tool)	Ukur	Tool name; “alat Ukur” in running text.
 distance	jarak	
 path length	panjang lintasan	
@@ -275,7 +275,8 @@ DICOM bulk annotations	anotasi massal DICOM	IOD name “Microscopy Bulk Simple A
 Bring them in (old annotations)	Masukkan	“Masukkan anotasinya ke basis data saat ini?”
 Not now	Nanti saja	
 Retry	Coba lagi	
-readout, region readout (Cellaris)	pembacaan, pembacaan area	Tool “Pembacaan area Cellaris”; section “PEMBACAAN AREA”; “hasil pembacaan” for the result.
+readout, region readout (Cellaris)	ringkasan, ringkasan area	Statistics computed from a model's predicted values, not a measurement: never “pembacaan” (a reading, as of an instrument) or words for measuring (ukur, pengukuran). Tool “Ringkasan area Cellaris”; section “RINGKASAN AREA”; layer “Cellaris — area ringkasan”; “perhitungan ringkasan” for computing it.
+compute (predictions, a readout)	hitung, menghitung, perhitungan	Button “Hitung”; “Menghitung: 3 dari 10 kotak kisi”; “Hitung ringkasan untuk area yang besar?”. Never “ukur”/“mengukur”.
 cell (Cellaris: square of the slide predicted at once)	kotak kisi	Not “sel”, which would read as a biological cell; same word as eov's “kotak kisi jaringan”.
 window (model input square)	jendela (prediksi)	“jendela prediksi” in user-facing sentences, “jendela” in technical/model-card texts. Display window stays “rentang tampilan”.
 tissue block (5 µm square, Cellaris)	blok jaringan	As the English; the translator note defines it.

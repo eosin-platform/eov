@@ -261,8 +261,8 @@ coordinates	निर्देशांक	m. pl. Level-0 pixels: स्तर-0
 DICOM bulk annotations	DICOM बल्क एनोटेशन	m. pl. DICOM study: स्टडी; attribute: एट्रिब्यूट; modality: मोडैलिटी; structured report: संरचित रिपोर्ट.
 cell (Cellaris)	कक्ष	m.; plural कक्ष. The small square of the slide Cellaris predicts at once (41.6 µm); never कोशिका.
 window (Cellaris, model input)	विंडो	f. A square image the model predicts from.
-tissue block (Cellaris)	ऊतक ब्लॉक	m. Cellaris's 5 µm measuring square of tissue; near-black block: लगभग काला ब्लॉक.
-readout, region readout	सारांश, क्षेत्र सारांश	m. A summary of predicted values, not a measurement: never माप/मापन. Cellaris region readout (tool): Cellaris क्षेत्र सारांश; REGION READOUT: क्षेत्र सारांश; Use ROI: ROI का उपयोग करें.
+tissue block (Cellaris)	ऊतक ब्लॉक	m. A 5 µm square of tissue within a Cellaris कक्ष, the unit predicted values are averaged over; not a paraffin block. Near-black block: लगभग काला ब्लॉक.
+readout, region readout (Cellaris)	सारांश, क्षेत्र सारांश	m. Statistics (mean, spread, density r²) computed from a model's predicted values over a region; a summary of predictions, not a measurement: never माप/मापन/मापा, and never रीडिंग/पठन/पाठ्यांक (an instrument reading). Compute a readout of a large region?: बड़े क्षेत्र के सारांश की गणना करें?; computing a region readout: क्षेत्र सारांश की गणना हो रही है; Readout copied: सारांश … कॉपी किया गया. Cellaris region readout (tool): Cellaris क्षेत्र सारांश (quoted as “Cellaris क्षेत्र सारांश” टूल); REGION READOUT: क्षेत्र सारांश; readout region (layer): सारांश क्षेत्र; Use ROI: ROI का उपयोग करें. माप/मापा only where the English itself says measured (मापा गया IF) or “predictions are not measurements” (पूर्वानुमान माप नहीं हैं).
 display window (marker)	प्रदर्शन विंडो	f. The value range a marker's colour is drawn over.
 mean, median, spread	माध्य, माध्यिका, फैलाव	m., f., m. Readout columns and error statistics.
 legend	लेजेंड	m. The list of markers and colours over the slide.

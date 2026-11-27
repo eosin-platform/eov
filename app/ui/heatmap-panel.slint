@@ -110,7 +110,7 @@ export component HeatMapPanelView inherits Rectangle {
             Text {
                 text: HeatMapPanel.summary;
                 color: Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 wrap: word-wrap;
                 horizontal-alignment: Locale.start;
             }
@@ -118,7 +118,7 @@ export component HeatMapPanelView inherits Rectangle {
             Text {
                 text: @tr("Placement");
                 color: Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 horizontal-alignment: Locale.start;
             }
 
@@ -147,7 +147,7 @@ export component HeatMapPanelView inherits Rectangle {
             Text {
                 text: HeatMapPanel.placement-note;
                 color: HeatMapPanel.placement-ok ? Theme.text-secondary : Theme.warning;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 wrap: word-wrap;
                 horizontal-alignment: Locale.start;
             }
@@ -155,7 +155,7 @@ export component HeatMapPanelView inherits Rectangle {
             if HeatMapPanel.scalar: Text {
                 text: @tr("Colours");
                 color: Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 horizontal-alignment: Locale.start;
             }
 
@@ -178,7 +178,7 @@ export component HeatMapPanelView inherits Rectangle {
                 Text {
                     text: "0";
                     color: Theme.text-secondary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     vertical-alignment: center;
                 }
 
@@ -194,7 +194,7 @@ export component HeatMapPanelView inherits Rectangle {
                 Text {
                     text: "1";
                     color: Theme.text-secondary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     vertical-alignment: center;
                 }
             }

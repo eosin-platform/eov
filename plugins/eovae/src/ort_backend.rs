@@ -15,7 +15,7 @@
 
 use crate::engine::{
     Backend, Device, DevicePreference, EngineError, EngineInfo, EngineOutput, EngineRequest,
-    InferenceEngine, no_cuda_support, reason_text,
+    InferenceEngine, no_cuda_support,
 };
 use crate::message::{Message, cancelled};
 use crate::model::{ModelInfo, TensorType};
@@ -149,8 +149,10 @@ fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), Message> {
     // take no arguments, and the version string is static and copied before
     // the handle is released.
     let version = unsafe {
-        let library = libloading::Library::new(&path)
-            .map_err(|e| Message::new(|| tr!("it could not be opened: {}", e)))?;
+        let library = libloading::Library::new(&path).map_err(|e| {
+            let e = e.to_string();
+            Message::new(move || tr!("it could not be opened: {}", e))
+        })?;
         let get_api_base: libloading::Symbol<
             unsafe extern "system" fn() -> *const ort::sys::OrtApiBase,
         > = library.get(b"OrtGetApiBase").map_err(|_| {
@@ -172,10 +174,11 @@ fn check_runtime(path: &Path) -> Result<(PathBuf, Option<String>), Message> {
     if let Some(version) = &version
         && runtime_too_old(version)
     {
-        return Err(Message::new(|| {
+        let version = version.clone();
+        return Err(Message::new(move || {
             tr!(
                 "it is ONNX Runtime {version}, older than {oldest}",
-                version = i18n::isolate(version),
+                version = i18n::isolate(&version),
                 oldest = i18n::isolate(format!("1.{MIN_RUNTIME_MINOR}"))
             )
         }));
@@ -280,14 +283,16 @@ impl OrtBackend {
                 match catch_unwind(AssertUnwindSafe(|| check_runtime(&candidate))) {
                     Ok(Ok(checked)) => checked,
                     Ok(Err(reason)) => {
-                        attempts.push(Message::new(|| {
+                        let candidate = candidate.clone();
+                        attempts.push(Message::new(move || {
                             format!("{}: {reason}", candidate.display())
                         }));
                         continue;
                     }
                     Err(payload) => {
                         let error = panic_text(payload.as_ref());
-                        attempts.push(Message::new(|| {
+                        let candidate = candidate.clone();
+                        attempts.push(Message::new(move || {
                             tr!(
                                 "{path}: opening it crashed ({error})",
                                 path = i18n::isolate(candidate.display()),
@@ -315,10 +320,10 @@ impl OrtBackend {
                 Ok(Err(error)) => library_reason(error),
                 Err(payload) => {
                     let error = panic_text(payload.as_ref());
-                    Message::new(|| tr!("loading it crashed ({})", error))
+                    Message::new(move || tr!("loading it crashed ({})", error))
                 }
             };
-            let reason = Message::new(|| {
+            let reason = Message::new(move || {
                 tr!(
                     "ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try again.",
                     path = i18n::isolate(path.display()),
@@ -328,7 +333,7 @@ impl OrtBackend {
             *spent = Some(reason.clone());
             return Err(reason);
         }
-        Err(Message::new(|| {
+        Err(Message::new(move || {
             let tried = attempts
                 .iter()
                 .rev()
@@ -376,7 +381,7 @@ impl OrtBackend {
                 let path = dir.join(name);
                 if path.is_file() {
                     match ort::util::preload_dylib(&path) {
-                        Ok(()) => found.push(Message::new(|| {
+                        Ok(()) => found.push(Message::new(move || {
                             // Translators: a library that was loaded, as a note after an error
                             tr!("loaded {}", i18n::isolate(path.display()))
                         })),
@@ -448,7 +453,7 @@ impl OrtBackend {
             if any_set(stop) {
                 cancelled()
             } else if e.to_ascii_lowercase().contains("cancel") {
-                Message::new(|| {
+                Message::new(move || {
                     tr!(
                         "building the session took longer than {} s",
                         timeout.as_secs()
@@ -478,24 +483,27 @@ impl OrtBackend {
             .iter()
             .any(|outlet| outlet.name() == model.input.name)
         {
-            return Err(Message::new(|| {
+            let input = model.input.name.clone();
+            return Err(Message::new(move || {
                 tr!(
                     "ONNX Runtime does not see input '{}'",
-                    i18n::isolate(&model.input.name)
+                    i18n::isolate(&input)
                 )
             }));
         }
         let output = model
             .output(&request.output)
             .ok_or_else(|| {
-                Message::new(|| tr!("unknown output '{}'", i18n::isolate(&request.output)))
+                let output = request.output.clone();
+                Message::new(move || tr!("unknown output '{}'", i18n::isolate(&output)))
             })?
             .clone();
         if !session.outputs().iter().any(|o| o.name() == output.name) {
-            return Err(Message::new(|| {
+            let output = output.name.clone();
+            return Err(Message::new(move || {
                 tr!(
                     "ONNX Runtime does not see output '{}'",
-                    i18n::isolate(&output.name)
+                    i18n::isolate(&output)
                 )
             }));
         }
@@ -557,20 +565,21 @@ impl OrtBackend {
         let probe = vec![0.25f32; batch * model.item_len()];
         engine
             .run_watched(&probe, batch, stop)
-            .map_err(|e| Message::new(|| tr!("test run failed: {}", e)))
+            .map_err(|e| Message::new(move || tr!("test run failed: {}", e)))
             .and_then(|output| {
-                if output.recon.len() == batch * model.item_len() {
+                let (returned, expected) = (output.recon.len(), batch * model.item_len());
+                if returned == expected {
                     Ok(())
                 } else {
-                    Err(Message::new(|| {
+                    Err(Message::new(move || {
                         tr!(
                             // Translators: the model's output has the wrong size;
                             // {returned} and {expected} are bare numbers of values.
                             "the model returned the wrong number of values for {n} tile: {returned} instead of {expected}"
                                 | "the model returned the wrong number of values for {n} tiles: {returned} instead of {expected}"
                                 % batch,
-                            returned = output.recon.len(),
-                            expected = batch * model.item_len()
+                            returned = returned,
+                            expected = expected
                         )
                     }))
                 }
@@ -619,7 +628,7 @@ impl Backend for OrtBackend {
                         if notes.is_empty() {
                             error
                         } else {
-                            Message::new(|| {
+                            Message::new(move || {
                                 let notes = notes
                                     .iter()
                                     .map(Message::to_string)
@@ -634,9 +643,7 @@ impl Backend for OrtBackend {
             match attempt {
                 Ok(engine) => return Ok(Box::new(engine)),
                 Err(error) if request.device == DevicePreference::Cuda => {
-                    return Err(Message::new(|| {
-                        tr!("CUDA is unavailable: {}", reason_text(&error))
-                    }));
+                    return Err(Message::new(move || tr!("CUDA is unavailable: {}", error)));
                 }
                 Err(error) if any_set(stop) => return Err(error),
                 Err(error) => fallback = Some(error),
@@ -818,7 +825,8 @@ fn collect(
     latent: Option<&(String, TensorType)>,
 ) -> Result<EngineOutput, Message> {
     let recon = outputs.get(output_name).ok_or_else(|| {
-        Message::new(|| tr!("the model produced no '{}'", i18n::isolate(output_name)))
+        let output_name = output_name.to_string();
+        Message::new(move || tr!("the model produced no '{}'", i18n::isolate(&output_name)))
     })?;
     let recon = extract(recon, output_elem)?;
     let latent = latent.and_then(|(name, elem)| {

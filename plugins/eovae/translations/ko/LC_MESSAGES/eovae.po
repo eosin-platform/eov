@@ -90,7 +90,7 @@ msgstr ""
 
 #. Translators: {} is what was typed into the SHA-256 field; it is
 #. ignored and the field keeps its previous value.
-#: src/config.rs:159
+#: src/config.rs:163
 msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
 msgstr "'{}'은(는) SHA-256(16진수 64자리)이 아니므로 저장하지 않았습니다."
 
@@ -153,12 +153,18 @@ msgstr "결과 캐시가 비활성화되어 있습니다"
 msgid "the result cache stopped"
 msgstr "결과 캐시가 중지되었습니다"
 
+#. Translators: inference device: CUDA when it works, else the CPU
+#: src/engine.rs:49 ui/eovae-sidebar.slint:747
+msgctxt "Device"
+msgid "Auto"
+msgstr "자동"
+
 #: src/engine.rs:107
 msgid "CPU · {n} thread"
 msgid_plural "CPU · {n} threads"
 msgstr[0] "CPU · 스레드 {n}개"
 
-#: src/engine.rs:121
+#: src/engine.rs:122
 msgid ""
 "this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
 msgstr ""
@@ -177,7 +183,7 @@ msgid "no inference runtime in this build"
 msgstr "이 빌드에는 추론 런타임이 없습니다"
 
 #. Translators: an error: the operation was cancelled
-#: src/message.rs:57
+#: src/message.rs:93
 msgid "cancelled"
 msgstr "취소됨"
 
@@ -257,7 +263,7 @@ msgstr ""
 
 #. Translators: about the model's input tensor; the words in
 #. parentheses name its four axes in order and may be translated.
-#: src/model.rs:304
+#: src/model.rs:305
 msgid ""
 "it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
 msgid_plural ""
@@ -265,20 +271,20 @@ msgid_plural ""
 msgstr[0] ""
 "차원이 {n}개입니다. 이미지 텐서는 4차원(배치, 채널, 높이, 너비)입니다"
 
-#: src/model.rs:326
+#: src/model.rs:327
 msgid "it has {n} channel; eovae feeds RGB (3 channels)"
 msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
 msgstr[0] "채널이 {n}개입니다. eovae는 RGB(3채널)를 입력합니다"
 
-#: src/model.rs:329
+#: src/model.rs:330
 msgid "its channel dimension is not 3 (RGB)"
 msgstr "채널 차원이 3(RGB)이 아닙니다"
 
-#: src/model.rs:372
+#: src/model.rs:373
 msgid "the model has no inputs"
 msgstr "모델에 입력이 없습니다"
 
-#: src/model.rs:381
+#: src/model.rs:383
 msgid ""
 "the model needs {n} input ({names}); eovae feeds exactly one image input"
 msgid_plural ""
@@ -286,36 +292,36 @@ msgid_plural ""
 msgstr[0] ""
 "모델에 입력 {n}개({names})가 필요하지만 eovae는 이미지 입력 하나만 제공합니다"
 
-#: src/model.rs:394
+#: src/model.rs:398
 msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
 msgstr ""
 "입력 '{name}'의 형식이 {kind}입니다. eovae는 float32 또는 float16을 입력합니"
 "다"
 
-#: src/model.rs:403
+#: src/model.rs:408
 msgid "input '{}' does not declare its shape"
 msgstr "입력 '{}'이(가) 형상을 선언하지 않았습니다"
 
-#: src/model.rs:407
+#: src/model.rs:417
 msgid "input '{name}' is not an image: {error}"
 msgstr "입력 '{name}'이(가) 이미지가 아닙니다: {error}"
 
-#: src/model.rs:418
+#: src/model.rs:428
 msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
 msgstr ""
 "입력 '{name}'이(가) {height}×{width}입니다. eovae는 정사각형 타일을 분석합니"
 "다"
 
-#: src/model.rs:437
+#: src/model.rs:447
 msgid "tiles of {} px are not supported (16–2048)"
 msgstr "{} px 타일은 지원되지 않습니다(16–2048)"
 
 #. Translators: an output of the model (its name) that declares no shape
-#: src/model.rs:465
+#: src/model.rs:476
 msgid "{} (no shape)"
 msgstr "{}(형상 없음)"
 
-#: src/model.rs:499
+#: src/model.rs:510
 msgid ""
 "the model only encodes (outputs mu and logvar); export the reconstruction "
 "model (HistoVAE: create_onnx --mode reconstruct)"
@@ -323,59 +329,58 @@ msgstr ""
 "모델이 인코딩만 합니다(mu와 logvar 출력). 재구성 모델을 내보내세요(HistoVAE: "
 "create_onnx --mode reconstruct)"
 
-#: src/model.rs:510
+#: src/model.rs:522
 msgid ""
 "no output is an RGB image matching the input {shape} (outputs: {outputs})"
 msgstr "입력 {shape}에 맞는 RGB 이미지 출력이 없습니다(출력: {outputs})"
 
-#: src/model.rs:666
+#: src/model.rs:678
 msgid "only .onnx models are supported"
 msgstr ".onnx 모델만 지원됩니다"
 
-#: src/model.rs:670
+#: src/model.rs:683
 msgid "{} does not exist"
 msgstr "{}이(가) 존재하지 않습니다"
 
-#. The detail is technical, and English like a library's.
-#: src/model.rs:676
+#: src/model.rs:691
 msgid "not a valid ONNX model: {}"
 msgstr "올바른 ONNX 모델이 아닙니다: {}"
 
-#: src/model.rs:688
+#: src/model.rs:705
 msgid "the model's weights point outside its folder ('{}')"
 msgstr "모델의 가중치가 모델 폴더 밖을 가리킵니다('{}')"
 
-#: src/model.rs:697
+#: src/model.rs:715
 msgid ""
 "the model's weights file '{}' is missing; keep it next to the .onnx file"
 msgstr ""
 "모델의 가중치 파일 '{}'이(가) 없습니다. .onnx 파일과 같은 위치에 두세요"
 
-#: src/ort_backend.rs:153
+#: src/ort_backend.rs:154
 msgid "it could not be opened: {}"
 msgstr "열 수 없습니다: {}"
 
-#: src/ort_backend.rs:157
+#: src/ort_backend.rs:159
 msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
 msgstr "ONNX Runtime이 아닙니다(OrtGetApiBase 없음)"
 
-#: src/ort_backend.rs:162
+#: src/ort_backend.rs:164
 msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
 msgstr "ONNX Runtime이 아닙니다(OrtGetApiBase가 아무것도 반환하지 않음)"
 
-#: src/ort_backend.rs:177
+#: src/ort_backend.rs:180
 msgid "it is ONNX Runtime {version}, older than {oldest}"
 msgstr "{oldest}보다 오래된 ONNX Runtime {version}입니다"
 
-#: src/ort_backend.rs:292
+#: src/ort_backend.rs:297
 msgid "{path}: opening it crashed ({error})"
 msgstr "{path}: 여는 중 충돌이 발생했습니다({error})"
 
-#: src/ort_backend.rs:318
+#: src/ort_backend.rs:323
 msgid "loading it crashed ({})"
 msgstr "불러오는 중 충돌이 발생했습니다({})"
 
-#: src/ort_backend.rs:323
+#: src/ort_backend.rs:328
 msgid ""
 "ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
 "again."
@@ -385,7 +390,7 @@ msgstr ""
 
 #. Translators: {variable} is an environment variable; "Model →
 #. Runtime" is the Runtime… button in the sidebar's Model section
-#: src/ort_backend.rs:342
+#: src/ort_backend.rs:347
 msgid ""
 "ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
 "the library, or choose it under Model → Runtime. Tried: {tried}"
@@ -394,49 +399,49 @@ msgstr ""
 "리를 지정하거나, 모델 → 런타임에서 선택하세요. 시도한 위치: {tried}"
 
 #. Translators: a library that was loaded, as a note after an error
-#: src/ort_backend.rs:381
+#: src/ort_backend.rs:386
 msgid "loaded {}"
 msgstr "불러옴: {}"
 
-#: src/ort_backend.rs:453
+#: src/ort_backend.rs:458
 msgid "building the session took longer than {} s"
 msgstr "세션 생성이 {}초를 넘었습니다"
 
-#: src/ort_backend.rs:472
+#: src/ort_backend.rs:477
 msgid "Building CPU session…"
 msgstr "CPU 세션을 만드는 중…"
 
-#: src/ort_backend.rs:473
+#: src/ort_backend.rs:478
 msgid "Building CUDA session…"
 msgstr "CUDA 세션을 만드는 중…"
 
-#: src/ort_backend.rs:483
+#: src/ort_backend.rs:489
 msgid "ONNX Runtime does not see input '{}'"
 msgstr "ONNX Runtime에서 입력 '{}'을(를) 찾을 수 없습니다"
 
-#: src/ort_backend.rs:491
+#: src/ort_backend.rs:498
 msgid "unknown output '{}'"
 msgstr "알 수 없는 출력 '{}'"
 
-#: src/ort_backend.rs:497
+#: src/ort_backend.rs:505
 msgid "ONNX Runtime does not see output '{}'"
 msgstr "ONNX Runtime에서 출력 '{}'을(를) 찾을 수 없습니다"
 
-#: src/ort_backend.rs:553
+#: src/ort_backend.rs:561
 msgid "Checking the model…"
 msgstr "모델을 확인하는 중…"
 
-#: src/ort_backend.rs:554
+#: src/ort_backend.rs:562
 msgid "Warming up CUDA…"
 msgstr "CUDA 워밍업 중…"
 
-#: src/ort_backend.rs:560
+#: src/ort_backend.rs:568
 msgid "test run failed: {}"
 msgstr "테스트 실행에 실패했습니다: {}"
 
 #. Translators: the model's output has the wrong size;
 #. {returned} and {expected} are bare numbers of values.
-#: src/ort_backend.rs:569
+#: src/ort_backend.rs:578
 msgid ""
 "the model returned the wrong number of values for {n} tile: {returned} "
 "instead of {expected}"
@@ -447,23 +452,23 @@ msgstr[0] ""
 "모델이 타일 {n}개에 대해 잘못된 개수의 값을 반환했습니다: {expected}개가 아"
 "닌 {returned}개"
 
-#: src/ort_backend.rs:598
+#: src/ort_backend.rs:607
 msgid "Loading ONNX Runtime…"
 msgstr "ONNX Runtime을 불러오는 중…"
 
-#: src/ort_backend.rs:638
+#: src/ort_backend.rs:646
 msgid "CUDA is unavailable: {}"
 msgstr "CUDA를 사용할 수 없습니다: {}"
 
-#: src/ort_backend.rs:660
+#: src/ort_backend.rs:667
 msgid "ONNX Runtime: {}"
 msgstr "ONNX Runtime: {}"
 
-#: src/ort_backend.rs:661
+#: src/ort_backend.rs:668
 msgid "ONNX Runtime is loaded with the first model."
 msgstr "ONNX Runtime은 첫 모델과 함께 불러옵니다."
 
-#: src/ort_backend.rs:821
+#: src/ort_backend.rs:829
 msgid "the model produced no '{}'"
 msgstr "모델이 '{}'을(를) 출력하지 않았습니다"
 
@@ -476,24 +481,24 @@ msgid "the host returned {n} byte for a {tile}×{tile} region"
 msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
 msgstr[0] "호스트가 {tile}×{tile} 영역에 대해 {n}바이트를 반환했습니다"
 
-#: src/pipeline.rs:335
+#: src/pipeline.rs:336
 msgid "{n} tile could not be read (level {level}); last error: {error}"
 msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
 msgstr[0] "타일 {n}개를 읽을 수 없습니다(레벨 {level}). 마지막 오류: {error}"
 
 #. Translators: why an analysis failed: it ended before every
 #. tile was done ({done} of the {total} tiles were).
-#: src/pipeline.rs:440
+#: src/pipeline.rs:441
 msgid "it stopped before every tile was done ({done} of {total})"
 msgstr "모든 타일을 처리하기 전에 중단되었습니다({total}개 중 {done}개 완료)"
 
-#: src/pipeline.rs:480
+#: src/pipeline.rs:481
 msgid "inference failed: {}"
 msgstr "추론에 실패했습니다: {}"
 
 #. Translators: the model's output has the wrong size; {returned}
 #. and {expected} are bare numbers of values.
-#: src/pipeline.rs:492
+#: src/pipeline.rs:494
 msgid ""
 "the model returned the wrong number of values for a batch of {n} tile: "
 "{returned} instead of {expected}"
@@ -508,11 +513,11 @@ msgstr[0] ""
 msgid "VAE reconstruction analysis"
 msgstr "VAE 재구성 분석"
 
-#: src/plugin.rs:61 src/presenter.rs:794
+#: src/plugin.rs:61 src/presenter.rs:796
 msgid "VAE tile grid"
 msgstr "VAE 타일 격자"
 
-#: src/plugin.rs:65 src/presenter.rs:790
+#: src/plugin.rs:65 src/presenter.rs:792
 msgid "VAE overlay"
 msgstr "VAE 오버레이"
 
@@ -536,49 +541,49 @@ msgstr "보이는 타일"
 msgid "Automatic analysis"
 msgstr "자동 분석"
 
-#: src/plugin.rs:516
+#: src/plugin.rs:518
 msgid "Load an ONNX model first."
 msgstr "먼저 ONNX 모델을 불러오세요."
 
-#: src/plugin.rs:517
+#: src/plugin.rs:519
 msgid "The model is still loading."
 msgstr "모델을 아직 불러오는 중입니다."
 
-#: src/plugin.rs:518
+#: src/plugin.rs:520
 msgid "The model could not be loaded: {}"
 msgstr "모델을 불러올 수 없습니다: {}"
 
-#: src/plugin.rs:519
+#: src/plugin.rs:521
 msgid "Preparing the inference engine…"
 msgstr "추론 엔진을 준비하는 중…"
 
 #. Translators: eovae is working out which slide file this is (its
 #. content fingerprint), to find its stored results; it does not
 #. identify a patient.
-#: src/plugin.rs:524
+#: src/plugin.rs:526
 msgid "Identifying the slide…"
 msgstr "슬라이드를 식별하는 중…"
 
-#: src/plugin.rs:525
+#: src/plugin.rs:527
 msgid "The slide reports no pyramid levels."
 msgstr "슬라이드에 피라미드 레벨 정보가 없습니다."
 
-#: src/plugin.rs:526
+#: src/plugin.rs:528
 msgid "The slide is not open."
 msgstr "슬라이드가 열려 있지 않습니다."
 
 #. Translators: eovae is this plugin's name; {} says why, in English
-#: src/plugin.rs:753
+#: src/plugin.rs:755
 msgid "eovae settings were unreadable and were reset ({})"
 msgstr "eovae 설정을 읽을 수 없어 초기화했습니다({})"
 
 #. Translators: the title of an error notification; eovae is
 #. this plugin's name
-#: src/plugin.rs:804
+#: src/plugin.rs:806
 msgid "An eovae worker thread failed unexpectedly"
 msgstr "eovae 작업 스레드에서 예기치 않은 오류가 발생했습니다"
 
-#: src/plugin.rs:1120
+#: src/plugin.rs:1122
 msgid ""
 "This eov cannot show layers in some panes only: every pane of a slide shows "
 "the same VAE overlay."
@@ -586,15 +591,15 @@ msgstr ""
 "이 eov에서는 레이어를 일부 창에만 표시할 수 없습니다. 슬라이드의 모든 창에 같"
 "은 VAE 오버레이가 표시됩니다."
 
-#: src/plugin.rs:1260
+#: src/plugin.rs:1262
 msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
 msgstr "이 슬라이드를 분석하려면 VAE 사이드바에서 ONNX 모델을 불러오세요."
 
-#: src/plugin.rs:1305
+#: src/plugin.rs:1307
 msgid "VAE analysis"
 msgstr "VAE 분석"
 
-#: src/plugin.rs:1351
+#: src/plugin.rs:1353
 msgid ""
 "The ONNX Runtime library is used from the next start of eov if a runtime is "
 "already loaded."
@@ -602,227 +607,227 @@ msgstr ""
 "이미 불러온 런타임이 있으면 이 ONNX Runtime 라이브러리는 다음에 eov를 시작할 "
 "때부터 사용됩니다."
 
-#: src/plugin.rs:1378
+#: src/plugin.rs:1380
 msgid "The VAE result cache was cleared."
 msgstr "VAE 결과 캐시를 지웠습니다."
 
-#: src/plugin.rs:1382
+#: src/plugin.rs:1384
 msgid "Could not clear the VAE result cache"
 msgstr "VAE 결과 캐시를 지울 수 없습니다"
 
-#: src/plugin.rs:1411
+#: src/plugin.rs:1413
 msgid "the model file could not be read"
 msgstr "모델 파일을 읽을 수 없습니다"
 
-#: src/plugin.rs:1440
+#: src/plugin.rs:1442
 msgid "The VAE model could not be loaded"
 msgstr "VAE 모델을 불러올 수 없습니다"
 
 #. Translators: "Load ONNX…" is the sidebar's button of that name
-#: src/plugin.rs:1496
+#: src/plugin.rs:1498
 msgid "This eov cannot download models: load the model file with Load ONNX…"
 msgstr ""
 "이 eov에서는 모델을 다운로드할 수 없습니다. ONNX 불러오기…로 모델 파일을 불러"
 "오세요."
 
-#: src/plugin.rs:1620
+#: src/plugin.rs:1626
 msgid "the inference engine failed unexpectedly"
 msgstr "추론 엔진에서 예기치 않은 오류가 발생했습니다"
 
-#: src/plugin.rs:1666
+#: src/plugin.rs:1671
 msgid "VAE inference runs on the CPU: {}"
 msgstr "VAE 추론을 CPU에서 실행합니다: {}"
 
-#: src/plugin.rs:1673
+#: src/plugin.rs:1676
 msgid "The VAE model cannot run"
 msgstr "VAE 모델을 실행할 수 없습니다"
 
-#: src/plugin.rs:1754
+#: src/plugin.rs:1757
 msgid "Starting…"
 msgstr "시작하는 중…"
 
-#: src/plugin.rs:1810
+#: src/plugin.rs:1813
 msgid "Preparing the model…"
 msgstr "모델을 준비하는 중…"
 
-#: src/plugin.rs:1865
+#: src/plugin.rs:1868
 msgid "Draw a region of interest on the slide first."
 msgstr "먼저 슬라이드에 관심 영역을 그리세요."
 
-#: src/plugin.rs:1884
+#: src/plugin.rs:1887
 msgid "The slide is not shown in a pane."
 msgstr "슬라이드가 어떤 창에도 표시되어 있지 않습니다."
 
-#: src/plugin.rs:1939
+#: src/plugin.rs:1942
 msgid "VAE: whole slide"
 msgstr "VAE: 슬라이드 전체"
 
-#: src/plugin.rs:1940
+#: src/plugin.rs:1943
 msgid "VAE: region of interest"
 msgstr "VAE: 관심 영역"
 
-#: src/plugin.rs:1941
+#: src/plugin.rs:1944
 msgid "VAE: viewport"
 msgstr "VAE: 뷰포트"
 
-#: src/plugin.rs:1951
+#: src/plugin.rs:1954
 msgid "Analysing on {}"
 msgstr "{}에서 분석 중"
 
-#: src/plugin.rs:1983
+#: src/plugin.rs:1986
 msgid "internal error while analysing tiles"
 msgstr "타일 분석 중 내부 오류가 발생했습니다"
 
-#: src/plugin.rs:2031
+#: src/plugin.rs:2034
 msgid "internal error: {}"
 msgstr "내부 오류: {}"
 
-#: src/plugin.rs:2069
+#: src/plugin.rs:2072
 msgid "VAE analysis failed"
 msgstr "VAE 분석에 실패했습니다"
 
-#: src/plugin.rs:2097
+#: src/plugin.rs:2100
 msgid "Nothing to export"
 msgstr "내보낼 항목이 없습니다"
 
-#: src/plugin.rs:2156
+#: src/plugin.rs:2159
 msgid "Exported {n} tile to {file}"
 msgid_plural "Exported {n} tiles to {file}"
 msgstr[0] "타일 {n}개를 {file}에 내보냈습니다"
 
-#: src/plugin.rs:2162
+#: src/plugin.rs:2165
 msgid "The export failed"
 msgstr "내보내기에 실패했습니다"
 
 #. Translators: eovae is this plugin's name; {} is eov's reason, in English
-#: src/plugin.rs:2180
+#: src/plugin.rs:2183
 msgid "eovae settings could not be saved: {}"
 msgstr "eovae 설정을 저장할 수 없습니다: {}"
 
 #. Translators: a duration in seconds
-#: src/plugin.rs:2232
+#: src/plugin.rs:2235
 msgid "{} s"
 msgstr "{}초"
 
 #. Translators: a duration in minutes and seconds, e.g. "3m 05s"
-#: src/plugin.rs:2235
+#: src/plugin.rs:2238
 msgid "{minutes}m {seconds}s"
 msgstr "{minutes}분 {seconds}초"
 
 #. Translators: a duration in hours and minutes, e.g. "1h 02m"
-#: src/plugin.rs:2241
+#: src/plugin.rs:2244
 msgid "{hours}h {minutes}m"
 msgstr "{hours}시간 {minutes}분"
 
-#: src/plugin.rs:2252
+#: src/plugin.rs:2255
 msgid "about {} left"
 msgstr "약 {} 남음"
 
-#: src/plugin.rs:2260
+#: src/plugin.rs:2263
 msgid "{analysed} analysed"
 msgstr "{analysed}개 분석됨"
 
-#: src/plugin.rs:2262
+#: src/plugin.rs:2265
 msgid "{analysed} analysed, {background} background"
 msgstr "{analysed}개 분석됨, 배경 {background}개"
 
-#: src/plugin.rs:2267
+#: src/plugin.rs:2270
 msgid "{analysed} analysed, {unreadable} unreadable"
 msgstr "{analysed}개 분석됨, 읽을 수 없음 {unreadable}개"
 
-#: src/plugin.rs:2272
+#: src/plugin.rs:2275
 msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
 msgstr "{analysed}개 분석됨, 배경 {background}개, 읽을 수 없음 {unreadable}개"
 
 #. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
-#: src/plugin.rs:2301
+#: src/plugin.rs:2304
 msgid "{what}: everything was already analysed."
 msgstr "{what}: 모두 이미 분석되었습니다."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2305
+#: src/plugin.rs:2308
 msgid "Whole slide finished in {duration}: {counts}."
 msgstr "슬라이드 전체 분석이 {duration} 만에 완료되었습니다({counts})."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2311
+#: src/plugin.rs:2314
 msgid "Viewport finished in {duration}: {counts}."
 msgstr "뷰포트 분석이 {duration} 만에 완료되었습니다({counts})."
 
 #. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2317
+#: src/plugin.rs:2320
 msgid "Region of interest finished in {duration}: {counts}."
 msgstr "관심 영역 분석이 {duration} 만에 완료되었습니다({counts})."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2323
+#: src/plugin.rs:2326
 msgid "Automatic analysis finished in {duration}: {counts}."
 msgstr "자동 분석이 {duration} 만에 완료되었습니다({counts})."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2329
+#: src/plugin.rs:2332
 msgid "Whole slide cancelled after {duration}: {counts}."
 msgstr "슬라이드 전체 분석이 {duration} 후 취소되었습니다({counts})."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2335
+#: src/plugin.rs:2338
 msgid "Viewport cancelled after {duration}: {counts}."
 msgstr "뷰포트 분석이 {duration} 후 취소되었습니다({counts})."
 
 #. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2341
+#: src/plugin.rs:2344
 msgid "Region of interest cancelled after {duration}: {counts}."
 msgstr "관심 영역 분석이 {duration} 후 취소되었습니다({counts})."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2347
+#: src/plugin.rs:2350
 msgid "Automatic analysis cancelled after {duration}: {counts}."
 msgstr "자동 분석이 {duration} 후 취소되었습니다({counts})."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2353
+#: src/plugin.rs:2356
 msgid "Whole slide failed ({counts}): {error}"
 msgstr "슬라이드 전체 분석에 실패했습니다({counts}): {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2357
+#: src/plugin.rs:2360
 msgid "Viewport failed ({counts}): {error}"
 msgstr "뷰포트 분석에 실패했습니다({counts}): {error}"
 
 #. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2362
+#: src/plugin.rs:2365
 msgid "Region of interest failed ({counts}): {error}"
 msgstr "관심 영역 분석에 실패했습니다({counts}): {error}"
 
 #. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2370
+#: src/plugin.rs:2373
 msgid "Automatic analysis failed ({counts}): {error}"
 msgstr "자동 분석에 실패했습니다({counts}): {error}"
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
-#: src/plugin.rs:2377
+#: src/plugin.rs:2380
 msgid "Whole slide failed: {error}"
 msgstr "슬라이드 전체 분석에 실패했습니다: {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
-#: src/plugin.rs:2381
+#: src/plugin.rs:2384
 msgid "Viewport failed: {error}"
 msgstr "뷰포트 분석에 실패했습니다: {error}"
 
 #. Translators: the analysis of the region of interest failed; {error}: why
-#: src/plugin.rs:2385
+#: src/plugin.rs:2388
 msgid "Region of interest failed: {error}"
 msgstr "관심 영역 분석에 실패했습니다: {error}"
 
 #. Translators: {error}: why
-#: src/plugin.rs:2389
+#: src/plugin.rs:2392
 msgid "Automatic analysis failed: {error}"
 msgstr "자동 분석에 실패했습니다: {error}"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave an image of another size than asked for, in
 #. pixels.
-#: src/plugin.rs:2417
+#: src/plugin.rs:2422
 msgid ""
 "the host returned {width}×{height} for a {asked_width}×{asked_height} region"
 msgstr ""
@@ -830,13 +835,13 @@ msgstr ""
 "미지를 반환했습니다"
 
 #. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
-#: src/plugin.rs:2493
+#: src/plugin.rs:2498
 msgid "{done} of {n} tile"
 msgid_plural "{done} of {n} tiles"
 msgstr[0] "타일 {n}개 중 {done}개"
 
 #. Translators: {eta} is the time left, e.g. "about 2m 05s left"
-#: src/plugin.rs:2499
+#: src/plugin.rs:2504
 msgid "{done} of {n} tile, {eta}"
 msgid_plural "{done} of {n} tiles, {eta}"
 msgstr[0] "타일 {n}개 중 {done}개, {eta}"
@@ -847,19 +852,44 @@ msgid "VAE {done} / {n} tile"
 msgid_plural "VAE {done} / {n} tiles"
 msgstr[0] "VAE 타일 {done} / {n}개"
 
-#. Translators: the status bar: how the inference engine is being prepared
-#: src/presenter.rs:385 src/presenter.rs:387
+#. Translators: the status bar: what the analysis is doing, or how
+#. the inference engine is being prepared
+#: src/presenter.rs:386 src/presenter.rs:389
 msgid "VAE: {}"
 msgstr "VAE: {}"
 
-#: src/presenter.rs:781
+#: src/presenter.rs:783
 msgid "VAE error map"
 msgstr "VAE 오차 맵"
 
 #. Translators: the outline of the region under the pointer
-#: src/presenter.rs:786
+#: src/presenter.rs:788
 msgid "VAE highlight"
 msgstr "VAE 강조 표시"
+
+#. Translators: the overlay that shows the slide as it is
+#: src/render.rs:59 ui/eovae-sidebar.slint:775
+msgctxt "Overlay"
+msgid "Original"
+msgstr "원본"
+
+#. Translators: the overlay that shows the model's reconstruction
+#: src/render.rs:61 ui/eovae-sidebar.slint:776
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "재구성"
+
+#. Translators: the overlay that shows a heat map of tile errors
+#: src/render.rs:63 ui/eovae-sidebar.slint:777
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "오차 맵"
+
+#. Translators: the overlay that shows per-pixel differences
+#: src/render.rs:65 ui/eovae-sidebar.slint:778
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "차이"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for
@@ -873,7 +903,7 @@ msgstr[0] "호스트가 {width}×{height} 영역의 행에 대해 {n}바이트�
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for a
 #. region of {width} × {height} pixels.
-#: src/resample.rs:216
+#: src/resample.rs:217
 msgid "the host returned {n} byte for a {width}×{height} region"
 msgid_plural "the host returned {n} bytes for a {width}×{height} region"
 msgstr[0] "호스트가 {width}×{height} 영역에 대해 {n}바이트를 반환했습니다"
@@ -918,6 +948,12 @@ msgstr ""
 #: src/sidebar.rs:90
 msgid "{} normalisation"
 msgstr "{} 정규화"
+
+#. Translators: ImageNet's mean and standard deviation (std) per channel
+#: src/sidebar.rs:109 ui/eovae-sidebar.slint:738
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "ImageNet 평균/표준편차"
 
 #: src/sidebar.rs:163
 msgid "Download the reference model"
@@ -970,81 +1006,81 @@ msgstr ""
 "소를 설정하세요(주소…)."
 
 #. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
-#: src/sidebar.rs:260
+#: src/sidebar.rs:268
 msgid "Changed by you (model declares: {})"
 msgstr "사용자가 변경함(모델 선언: {})"
 
-#: src/sidebar.rs:263
+#: src/sidebar.rs:271
 msgid "From HistoVAE defaults"
 msgstr "HistoVAE 기본값에서"
 
-#: src/sidebar.rs:264
+#: src/sidebar.rs:272
 msgid "From built-in model card"
 msgstr "내장 모델 카드에서"
 
-#: src/sidebar.rs:265
+#: src/sidebar.rs:273
 msgid "From model metadata"
 msgstr "모델 메타데이터에서"
 
 #. Translators: the sidecar is the model's <model>.eovae.json file
-#: src/sidebar.rs:267
+#: src/sidebar.rs:275
 msgid "From sidecar file"
 msgstr "사이드카 파일에서"
 
-#: src/sidebar.rs:289
+#: src/sidebar.rs:297
 msgid "No model loaded."
 msgstr "불러온 모델이 없습니다."
 
-#: src/sidebar.rs:295
+#: src/sidebar.rs:303
 msgid "Reading and hashing the model…"
 msgstr "모델을 읽고 해시를 계산하는 중…"
 
-#: src/sidebar.rs:348
+#: src/sidebar.rs:358
 msgid "CUDA unavailable: {}"
 msgstr "CUDA를 사용할 수 없음: {}"
 
 #. Translators: the model's fixed batch size (tiles per inference run)
-#: src/sidebar.rs:374
+#: src/sidebar.rs:384
 msgid "batch {}"
 msgstr "배치 {}"
 
 #. Translators: the model takes any number of tiles per inference run
-#: src/sidebar.rs:376
+#: src/sidebar.rs:386
 msgid "dynamic batch"
 msgstr "동적 배치"
 
-#: src/sidebar.rs:423
+#: src/sidebar.rs:433
 msgid "Embeddings from '{name}' ({n} value) are stored with results."
 msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
 msgstr[0] "'{name}'의 임베딩(값 {n}개)이 결과와 함께 저장됩니다."
 
 #. Translators: the Threads field's hint: keep "auto", the word typed there
-#: src/sidebar.rs:503
+#: src/sidebar.rs:513
 msgid "1–{}, or auto"
 msgstr "1–{} 또는 auto"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:527
+#: src/sidebar.rs:537
 msgid "Auto: the model's {mpp}, resampled from level {level}"
 msgstr "자동: 모델의 {mpp}, 레벨 {level}에서 리샘플링"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:533
+#: src/sidebar.rs:543
 msgid "Auto: the model's {mpp} = level {level}"
 msgstr "자동: 모델의 {mpp} = 레벨 {level}"
 
 #. Translators: a resolution choice
-#: src/sidebar.rs:538
+#: src/sidebar.rs:548
 msgid "Auto (level 0)"
 msgstr "자동(레벨 0)"
 
 #. Translators: a level of the slide's pyramid, in the resolution choices
-#: src/sidebar.rs:548
+#: src/sidebar.rs:558
 msgid "Level {}"
 msgstr "레벨 {}"
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:574
+#: src/sidebar.rs:589
 msgid ""
 "The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
 "are interpolated and errors will be inflated."
@@ -1053,7 +1089,7 @@ msgstr ""
 "습니다. 타일이 보간되므로 오차가 부풀려집니다."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:583
+#: src/sidebar.rs:598
 msgid ""
 "Level {level} is {mpp} but the model was trained at {model}; errors will be "
 "inflated."
@@ -1062,7 +1098,7 @@ msgstr ""
 "려집니다."
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:593
+#: src/sidebar.rs:608
 msgid ""
 "Tiles are read from level {level} ({mpp}) and resampled to the model's "
 "{model}."
@@ -1071,24 +1107,29 @@ msgstr ""
 "니다."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:604
+#: src/sidebar.rs:619
 msgid "Level {level} at {mpp} (model {model})."
 msgstr "레벨 {level}, {mpp}(모델 {model})."
 
 #. Translators: {mpp} is a resolution like "0.23 µm/px"
-#: src/sidebar.rs:611
+#: src/sidebar.rs:626
 msgid "Level {level} at {mpp}."
 msgstr "레벨 {level}, {mpp}."
 
-#: src/sidebar.rs:616
+#: src/sidebar.rs:631
 msgid "Level {} (the slide is not calibrated)."
 msgstr "레벨 {}(슬라이드가 보정되지 않음)."
 
-#: src/sidebar.rs:629 src/sidebar.rs:886
+#: src/sidebar.rs:642 ui/eovae-sidebar.slint:749
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "자동"
+
+#: src/sidebar.rs:644 src/sidebar.rs:901
 msgid "Open a slide."
 msgstr "슬라이드를 여세요."
 
-#: src/sidebar.rs:651
+#: src/sidebar.rs:666
 msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
 msgid_plural ""
 "{done} of {n} tiles · {background} background · {unreadable} unreadable"
@@ -1096,7 +1137,7 @@ msgstr[0] ""
 "타일 {n}개 중 {done}개 · 배경 {background}개 · 읽을 수 없음 {unreadable}개"
 
 #. Translators: Viewport and Whole slide are the buttons of the same names
-#: src/sidebar.rs:699
+#: src/sidebar.rs:714
 msgid ""
 "Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
 "Whole slide."
@@ -1107,7 +1148,7 @@ msgstr[0] ""
 "자동으로 분석하려면 확대하거나(현재 보이는 타일 {n}개) 뷰포트 또는 슬라이드 "
 "전체를 실행하세요."
 
-#: src/sidebar.rs:748
+#: src/sidebar.rs:763
 msgid ""
 "{n} tissue tile scored, {background} background, {unreadable} unreadable — "
 "{percent} % of the {total} tiles at level {level}."
@@ -1119,74 +1160,74 @@ msgstr[0] ""
 "— 레벨 {level}의 타일 {total}개 중 {percent}%."
 
 #. Translators: MAE is the mean absolute error; p95 the 95th percentile
-#: src/sidebar.rs:768
+#: src/sidebar.rs:783
 msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
 msgstr "타일 MAE: 평균 {mean} · 중앙값 {median} · p95 {p95} · 최대 {max}"
 
 #. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
-#: src/sidebar.rs:788
+#: src/sidebar.rs:803
 msgid "{lo}–{hi}: {n} tile"
 msgid_plural "{lo}–{hi}: {n} tiles"
 msgstr[0] "{lo}–{hi}: 타일 {n}개"
 
 #. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
-#: src/sidebar.rs:845
+#: src/sidebar.rs:860
 msgid "MAE {mae} · max {max}"
 msgstr "MAE {mae} · 최대 {max}"
 
 #. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
-#: src/sidebar.rs:859
+#: src/sidebar.rs:874
 msgid "Tile MAE (p05–p95)"
 msgstr "타일 MAE(p05–p95)"
 
-#: src/sidebar.rs:866
+#: src/sidebar.rs:881
 msgid "Pixel error"
 msgstr "픽셀 오차"
 
-#: src/sidebar.rs:885
+#: src/sidebar.rs:900
 msgid "Nothing analysed on this slide with these settings yet."
 msgstr "이 설정으로 이 슬라이드에서 분석한 항목이 아직 없습니다."
 
 #. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
-#: src/sidebar.rs:913
+#: src/sidebar.rs:928
 msgid "{used} of {budget} on disk · {n} run"
 msgid_plural "{used} of {budget} on disk · {n} runs"
 msgstr[0] "디스크 {budget} 중 {used} 사용 · 실행 {n}회"
 
-#: src/sidebar.rs:919
+#: src/sidebar.rs:934
 msgid "Disk cache disabled"
 msgstr "디스크 캐시 비활성화됨"
 
-#: src/sidebar.rs:927
+#: src/sidebar.rs:942
 msgid "Tile pixels in memory: {used} of {limit}"
 msgstr "메모리의 타일 픽셀: {limit} 중 {used}"
 
-#: src/sidebar.rs:995
+#: src/sidebar.rs:1010
 msgid "Open an ONNX model"
 msgstr "ONNX 모델 열기"
 
-#: src/sidebar.rs:997
+#: src/sidebar.rs:1012
 msgid "ONNX models"
 msgstr "ONNX 모델"
 
-#: src/sidebar.rs:1024
+#: src/sidebar.rs:1039
 msgid "Choose the ONNX Runtime library"
 msgstr "ONNX Runtime 라이브러리 선택"
 
-#: src/sidebar.rs:1272
+#: src/sidebar.rs:1287
 msgid "Open a slide first."
 msgstr "먼저 슬라이드를 여세요."
 
-#: src/sidebar.rs:1366
+#: src/sidebar.rs:1381
 msgid "Export tile scores"
 msgstr "타일 점수 내보내기"
 
-#: src/sidebar.rs:1383
+#: src/sidebar.rs:1398
 msgid "Clear the VAE result cache?"
 msgstr "VAE 결과 캐시를 지우시겠습니까?"
 
 #. Translators: {} is a size, e.g. "120 MB"
-#: src/sidebar.rs:1386
+#: src/sidebar.rs:1401
 msgid ""
 "This deletes {} of stored results for every slide. Results are recomputed "
 "when needed."
@@ -1194,100 +1235,64 @@ msgstr ""
 "모든 슬라이드의 저장된 결과({})가 삭제됩니다. 결과는 필요할 때 다시 계산됩니"
 "다."
 
-#: src/sidebar.rs:1389
+#: src/sidebar.rs:1404
 msgid "Clear"
 msgstr "지우기"
 
-#: src/sidebar.rs:1390
+#: src/sidebar.rs:1405
 msgid "Cancel"
 msgstr "취소"
 
-#: ui/eovae-sidebar.slint:201
+#: ui/eovae-sidebar.slint:718
 msgctxt "EovaeSidebar"
 msgid "No model loaded."
 msgstr "불러온 모델이 없습니다."
 
-#: ui/eovae-sidebar.slint:221
-msgctxt "Preprocessing"
-msgid "ImageNet mean/std"
-msgstr "ImageNet 평균/표준편차"
-
-#. Translators: inference device: CUDA when it works, else the CPU
-#: ui/eovae-sidebar.slint:230
-msgctxt "Device"
-msgid "Auto"
-msgstr "자동"
-
-#: ui/eovae-sidebar.slint:232
-msgctxt "Resolution"
-msgid "Auto"
-msgstr "자동"
-
-#: ui/eovae-sidebar.slint:258
-msgctxt "Overlay"
-msgid "Original"
-msgstr "원본"
-
-#: ui/eovae-sidebar.slint:259
-msgctxt "Overlay"
-msgid "Reconstruction"
-msgstr "재구성"
-
-#: ui/eovae-sidebar.slint:260
-msgctxt "Overlay"
-msgid "Error map"
-msgstr "오차 맵"
-
-#: ui/eovae-sidebar.slint:261
-msgctxt "Overlay"
-msgid "Difference"
-msgstr "차이"
-
 #. Translators: the sidebar's section about the ONNX model
-#: ui/eovae-sidebar.slint:333
+#: ui/eovae-sidebar.slint:870
 msgctxt "EovaeSidebar"
 msgid "Model"
 msgstr "모델"
 
-#: ui/eovae-sidebar.slint:347
+#: ui/eovae-sidebar.slint:884
 msgctxt "EovaeSidebar"
 msgid "No model"
 msgstr "모델 없음"
 
 #. Translators: {} is the inference device, e.g. CPU · 8 threads
-#: ui/eovae-sidebar.slint:362
+#: ui/eovae-sidebar.slint:899
 msgctxt "EovaeSidebar"
 msgid "Running on {}"
 msgstr "{}에서 실행 중"
 
-#: ui/eovae-sidebar.slint:369
+#: ui/eovae-sidebar.slint:914
 msgctxt "EovaeSidebar"
 msgid "Load ONNX…"
 msgstr "ONNX 불러오기…"
 
 #. Translators: unloads the model
-#: ui/eovae-sidebar.slint:378
+#: ui/eovae-sidebar.slint:926
 msgctxt "EovaeSidebar"
 msgid "Clear"
 msgstr "지우기"
 
 #. Translators: chooses the ONNX Runtime library
-#: ui/eovae-sidebar.slint:385
+#: ui/eovae-sidebar.slint:936
 msgctxt "EovaeSidebar"
 msgid "Runtime…"
 msgstr "런타임…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Address…"
 msgstr "주소…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Hide address"
 msgstr "주소 숨기기"
 
-#: ui/eovae-sidebar.slint:423
+#: ui/eovae-sidebar.slint:990
 msgctxt "EovaeSidebar"
 msgid ""
 "Your site's copy of the model (the .onnx file; the reference model's .onnx."
@@ -1296,7 +1301,7 @@ msgstr ""
 "소속 기관의 모델 사본(.onnx 파일, 참조 모델의 .onnx.data는 같은 폴더에서 가져"
 "옴):"
 
-#: ui/eovae-sidebar.slint:438
+#: ui/eovae-sidebar.slint:1005
 msgctxt "EovaeSidebar"
 msgid ""
 "SHA-256 of your own model at that address (empty: the reference model, "
@@ -1305,167 +1310,167 @@ msgstr ""
 "해당 주소에 있는 자체 모델의 SHA-256(비워 두면 참조 모델을 사용하며 eovae가 "
 "알고 있는 SHA-256으로 확인):"
 
-#: ui/eovae-sidebar.slint:443
+#: ui/eovae-sidebar.slint:1010
 msgctxt "EovaeSidebar"
 msgid "64 hex digits"
 msgstr "16진수 64자리"
 
 #. Translators: {} is the model's input: name · type · shape
-#: ui/eovae-sidebar.slint:458
+#: ui/eovae-sidebar.slint:1025
 msgctxt "EovaeSidebar"
 msgid "Input: {}"
 msgstr "입력: {}"
 
 #. Translators: the model's output the sidebar reads
-#: ui/eovae-sidebar.slint:462
+#: ui/eovae-sidebar.slint:1029
 msgctxt "EovaeSidebar"
 msgid "Output"
 msgstr "출력"
 
-#: ui/eovae-sidebar.slint:484
+#: ui/eovae-sidebar.slint:1048
 msgctxt "EovaeSidebar"
 msgid "Preprocessing"
 msgstr "전처리"
 
-#: ui/eovae-sidebar.slint:494
+#: ui/eovae-sidebar.slint:1059
 msgctxt "EovaeSidebar"
 msgid "Input range"
 msgstr "입력 범위"
 
-#: ui/eovae-sidebar.slint:506
+#: ui/eovae-sidebar.slint:1068
 msgctxt "EovaeSidebar"
 msgid "Output range"
 msgstr "출력 범위"
 
-#: ui/eovae-sidebar.slint:518
+#: ui/eovae-sidebar.slint:1077
 msgctxt "EovaeSidebar"
 msgid "Composite transparency onto white"
 msgstr "투명 영역을 흰색 위에 합성"
 
-#: ui/eovae-sidebar.slint:524
+#: ui/eovae-sidebar.slint:1083
 msgctxt "EovaeSidebar"
 msgid "Turn near-black pixels white"
 msgstr "거의 검은 픽셀을 흰색으로 바꾸기"
 
-#: ui/eovae-sidebar.slint:532
+#: ui/eovae-sidebar.slint:1093
 msgctxt "EovaeSidebar"
 msgid "Use the model's preprocessing"
 msgstr "모델의 전처리 사용"
 
-#: ui/eovae-sidebar.slint:544
+#: ui/eovae-sidebar.slint:1104
 msgctxt "EovaeSidebar"
 msgid "Analysis"
 msgstr "분석"
 
 #. Translators: the inference device (CPU or CUDA)
-#: ui/eovae-sidebar.slint:559
+#: ui/eovae-sidebar.slint:1119
 msgctxt "EovaeSidebar"
 msgid "Device"
 msgstr "장치"
 
 #. Translators: the pyramid level tiles are read from
-#: ui/eovae-sidebar.slint:572
+#: ui/eovae-sidebar.slint:1129
 msgctxt "EovaeSidebar"
 msgid "Resolution"
 msgstr "해상도"
 
 #. Translators: CPU inference threads
-#: ui/eovae-sidebar.slint:590
+#: ui/eovae-sidebar.slint:1144
 msgctxt "EovaeSidebar"
 msgid "Threads"
 msgstr "스레드"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch"
 msgstr "배치"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch (model)"
 msgstr "배치(모델)"
 
 #. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
 #. (CUDA); the computed errors change slightly.
-#: ui/eovae-sidebar.slint:622
+#: ui/eovae-sidebar.slint:1176
 msgctxt "EovaeSidebar"
 msgid "Allow TF32 on CUDA (faster, less precise)"
 msgstr "CUDA에서 TF32 허용(더 빠르지만 정밀도 낮음)"
 
-#: ui/eovae-sidebar.slint:628
+#: ui/eovae-sidebar.slint:1182
 msgctxt "EovaeSidebar"
 msgid "Skip background tiles"
 msgstr "배경 타일 건너뛰기"
 
-#: ui/eovae-sidebar.slint:634
+#: ui/eovae-sidebar.slint:1188
 msgctxt "EovaeSidebar"
 msgid "Analyse visible tiles automatically"
 msgstr "보이는 타일 자동 분석"
 
 #. Translators: analyses the visible part of the slide
-#: ui/eovae-sidebar.slint:645
+#: ui/eovae-sidebar.slint:1207
 msgctxt "EovaeSidebar"
 msgid "Viewport"
 msgstr "뷰포트"
 
 #. Translators: analyses the region of interest drawn on the slide
-#: ui/eovae-sidebar.slint:655
+#: ui/eovae-sidebar.slint:1219
 msgctxt "EovaeSidebar"
 msgid "ROI"
 msgstr "ROI"
 
-#: ui/eovae-sidebar.slint:664
+#: ui/eovae-sidebar.slint:1230
 msgctxt "EovaeSidebar"
 msgid "Whole slide"
 msgstr "슬라이드 전체"
 
 #. Translators: stops the running analysis
-#: ui/eovae-sidebar.slint:674
+#: ui/eovae-sidebar.slint:1242
 msgctxt "EovaeSidebar"
 msgid "Cancel"
 msgstr "취소"
 
-#: ui/eovae-sidebar.slint:722
+#: ui/eovae-sidebar.slint:1291
 msgctxt "EovaeSidebar"
 msgid "Results"
 msgstr "결과"
 
 #. Translators: what the overlay shows: Original, Reconstruction, …
-#: ui/eovae-sidebar.slint:737
+#: ui/eovae-sidebar.slint:1306
 msgctxt "EovaeSidebar"
 msgid "Overlay"
 msgstr "오버레이"
 
-#: ui/eovae-sidebar.slint:824
+#: ui/eovae-sidebar.slint:1390
 msgctxt "EovaeSidebar"
 msgid "Highest-error regions"
 msgstr "오차가 가장 큰 영역"
 
-#: ui/eovae-sidebar.slint:840
+#: ui/eovae-sidebar.slint:1409
 msgctxt "EovaeSidebar"
 msgid "Export CSV…"
 msgstr "CSV 내보내기…"
 
 #. Translators: the intended use: keep its meaning exactly
-#: ui/eovae-sidebar.slint:848
+#: ui/eovae-sidebar.slint:1416
 msgctxt "EovaeSidebar"
 msgid "Research use only; not for diagnosis."
 msgstr "연구용으로만 사용하며, 진단에 사용할 수 없습니다."
 
 #. Translators: the section about eovae's stored results
-#: ui/eovae-sidebar.slint:856
+#: ui/eovae-sidebar.slint:1424
 msgctxt "EovaeSidebar"
 msgid "Cache"
 msgstr "캐시"
 
-#: ui/eovae-sidebar.slint:874
+#: ui/eovae-sidebar.slint:1442
 msgctxt "EovaeSidebar"
 msgid "Keep reconstructions on disk (large)"
 msgstr "재구성 이미지를 디스크에 보관(용량 큼)"
 
-#: ui/eovae-sidebar.slint:883
+#: ui/eovae-sidebar.slint:1453
 msgctxt "EovaeSidebar"
 msgid "Clear cache…"
 msgstr "캐시 지우기…"

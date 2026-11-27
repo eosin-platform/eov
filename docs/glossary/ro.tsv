@@ -57,7 +57,7 @@ white threshold	prag de alb
 cache	cache	"memoria cache", "cache-ul".
 region of interest (ROI)	regiune de interes (ROI)	Keep ROI.
 region	regiune	
-measurement	măsurătoare	The result; plural "măsurători". The act is "măsurare".
+measurement	măsurătoare	The result; plural "măsurători". The act is "măsurare". Only real measurements (the Măsurare tool, measured IF = "IF măsurată"); never the Cellaris readout of predicted values ("statistici pe regiune").
 measure (tool)	instrumentul Măsurare	Tool name "Măsurare"; the move tool is "Navigare". Verb: "măsoară".
 distance	distanță	
 path length	lungimea traseului	
@@ -260,7 +260,7 @@ cell (Cellaris)	celulă de grilă	A small square of the model grid predicted at 
 tissue block (Cellaris)	pătrat de țesut	A 5 µm square of tissue in the region readout; never "bloc", which reads as the paraffin block. "{n} blocks" → "{n} pătrate".
 window (model input)	fereastră	A square image the model predicts from; plural "ferestre".
 display window (marker)	fereastră de afișare	The value range a predicted marker's colour is drawn over.
-region readout (Cellaris)	măsurare pe regiune	Tool "Cellaris region readout" → "Măsurare pe regiune Cellaris"; heading "REGION READOUT" → "MĂSURARE PE REGIUNE".
+readout, region readout (Cellaris)	statistici, statistici pe regiune	Statistics (mean, spread, density r²) computed from the model's predicted values over a region: never a measurement, so never "măsurare", "măsurătoare", "măsoară", "valori măsurate" or "citire" (an instrument reading); safety rule of translation-glossary.md. Always the plural "statistici" ("statisticile", "calculul statisticilor"). Tool "Cellaris region readout" → "Statistici pe regiune Cellaris" (quoted with the same words); heading "REGION READOUT" → "STATISTICI PE REGIUNE"; plugin description "a readout of the predicted values over a region" → "statistici ale valorilor prezise pe o regiune"; "Compute a readout of a large region?" → "Calculați statisticile pentru o regiune mare?"; "Readout copied…" → "Statisticile au fost copiate…"; layer "readout region" → "regiune pentru statistici". Words for measuring only where the English says "measured IF" ("IF măsurată") or "predictions are not measurements" ("predicțiile nu sunt măsurători").
 readout columns: mean / spread / density r²	medie / variație / r² densitate	Narrow columns.
 PREDICTED (banner)	PREDICȚIE	"PREDICTED — research use only, not for diagnosis" → "PREDICȚIE — numai pentru uz în cercetare, nu pentru diagnostic"; "predicted markers" → "markeri preziși".
 not for diagnosis	nu pentru diagnostic; nu este destinat diagnosticului	The short form in banners and labels, the full one in sentences; never omitted.
@@ -280,3 +280,6 @@ dead zone, response curve	zonă moartă, curbă de răspuns
 pointer (mouse)	cursor	"System pointer" → "Cursorul sistemului".
 profile (gamepad)	profil	Plural "profiluri".
 marker (placed point, example plugin)	marcator	Plural "marcatori"; not a protein marker and not "marcaj" (bookmark).
+compute (predictions, a readout)	calculează (v.), calcul (n.)	Never "măsoară": "Computing: 3 of 10 cells" → "Se calculează: 3 din 10 celule de grilă"; button "Compute" → "Calculează".
+host (eov, for a plugin)	aplicația gazdă	Plugin errors such as "the host returned …" → "aplicația gazdă a returnat …"; the system outside a Flatpak sandbox stays "sistemul gazdă".
+inch, in	inchi (pl.), in	Spelling of DOOM: "Inches (in)" → "Inchi (in)"; the unit symbol "in" stays as it is.

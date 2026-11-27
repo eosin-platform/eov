@@ -3,6 +3,8 @@ term	translation	note
 (instructions in sentences)	افتح، ارسم، اكتب، أعد المحاولة	Instructions to the user use the singular imperative, as Arabic desktop software does; errors may use «يُرجى» + verbal noun.
 (punctuation)	، ؛ ؟ « » …	Arabic comma, semicolon and question mark; quotation marks «…» around names; colon and parentheses as in English.
 (numbers and units)	12.5%، 40×، 0.25 µm/px	Western digits as in the source; units, ×, ° and keys unchanged; no space before %.
+(direction)	برنامج eov …، ملف TIFF هرمي	The paragraph direction follows the first strong letter: start a text with an Arabic word rather than a Latin one where natural. Where a text must start with a Latin word or a placeholder, it starts with U+200F (RIGHT-TO-LEFT MARK); `import` adds it and `check` requires it.
+(left-to-right fragments)	الامتداد .eop، الخيار --language	Wrap a left-to-right fragment that contains punctuation (an extension, an option, a path, a number with its unit, a range, w × h, a config example) in U+2068 (FIRST STRONG ISOLATE) … U+2069 (POP DIRECTIONAL ISOLATE), or it is drawn as eop. or language--. Not around a single word or a placeholder standing alone (docs/translating.md, "Right-to-left languages").
 (message patterns)	تعذّر فتح {} · يتعذّر… · جارٍ تصدير {}… · تم حفظ {} · هل تريد حذف {}؟	Could not… (past failure) / Cannot… / …ing (progress) / Saved {} / question dialogs.
 (plural forms)	0: {n} شريحة · 1: شريحة واحدة · 2: {n} شريحتان · 3–10: {n} شرائح · 11–99: {n} شريحةً/{n} ملفًا · 100+: {n} شريحة	Six forms; every form except the one for 1 shows {n} (eov's check). Dual for 2 (ـين after prepositions), plural for 3–10, accusative singular for 11–99, genitive singular for 0 and 100+.
 For research and education. Not a medical device; not for primary diagnosis.	للبحث والتعليم. ليس جهازًا طبيًا، ولا يجوز استخدامه للتشخيص الأولي.	Safety text: never soften or shorten.
@@ -12,7 +14,7 @@ primary diagnosis	التشخيص الأولي	Regulatory term: the first, final 
 synthetic (image, channel, stain)	مُولَّد حاسوبيًا	Never اصطناعي/مزيّف/محاكى in a sense that reads as fake.
 predicted	مُتنبَّأ به	
 generated	مُولَّد	
-computed	محسوب	
+compute, computed	حساب، محسوب	Predictions and Cellaris readouts are computed, never measured: Compute = حساب; Computing: … = جارٍ الحساب: …; Not computed = لم يُحسب.
 slide	شريحة (ج. شرائح)	The glass microscope slide and its scan; never a presentation slide.
 whole-slide image (WSI)	صورة الشريحة الكاملة (WSI)	Keep the abbreviation WSI.
 slide viewer, viewer	عارض الشرائح، العارض	
@@ -42,7 +44,7 @@ tile	بلاطة (ج. بلاطات)	A square piece of the image loaded at a time.
 patch (dataset)	رقعة (ج. رقع)	A small image cut from a slide for machine learning.
 cache	ذاكرة التخزين المؤقت	
 region of interest (ROI)	منطقة الاهتمام (ROI)	Keep ROI as the abbreviation.
-measurement	قياس (ج. قياسات)	
+measurement	قياس (ج. قياسات)	Only real measurements (the Measure tool, measured IF = IF مُقاس); never for Cellaris readouts of predicted values.
 Measure (tool)	القياس	
 distance, area, angle	المسافة، المساحة، الزاوية	
 annotation	تعليق توضيحي (ج. تعليقات توضيحية)	A drawn mark with a meaning; not «تعليق» alone (comment).
@@ -244,7 +246,7 @@ combined positive score (CPS)	درجة الإيجابية المجمّعة (CPS)
 tumour cells, immune cells	الخلايا الورمية، الخلايا المناعية	PD-L1-positive: الإيجابية لـ PD-L1
 95% confidence interval	فترة ثقة 95%	
 Shift+click, Alt+click, Ctrl+click	Shift+نقر، Alt+نقر، Ctrl+نقر	
-region readout (Cellaris)	قراءة المنطقة	Tool name: قراءة منطقة Cellaris
+readout, region readout (Cellaris)	ملخّص، ملخّص المنطقة	Statistics (mean, spread, density r²) computed from the model's predicted values over a region; not a measurement: never قراءة (a reading) or قياس. Tool name: ملخّص منطقة Cellaris; REGION READOUT: ملخّص المنطقة; readout region: منطقة الملخّص; Compute a readout: حساب ملخّص.
 window (square model input)	نافذة (ج. نوافذ)	Cellaris: the square images the model predicts from.
 cell (Cellaris grid square)	خانة (ج. خانات)	Not a biological cell.
 tissue block (5 µm square)	مربّع نسيج (ج. مربّعات نسيج)	Not a paraffin block.

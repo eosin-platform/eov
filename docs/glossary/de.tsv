@@ -37,7 +37,7 @@ downsample	Downsample-Faktor	Level-0 pixels per map pixel
 patch (dataset)	Patch (pl. Patches)	Dataset image for machine learning; the dataset dialog's „Tile size“ = Patchgröße
 cache	Cache	
 region of interest (ROI)	ROI (Region of Interest)	die ROI; „ROI“ in running text and labels; tool name: Region of Interest (ROI)
-measurement	Messung	
+measurement	Messung	Only real measurements (Measure tool, measured IF = gemessene IF); never for the Cellaris readout of predicted values (Auswertung)
 Measure (tool)	Messen	Tool name
 distance (measure mode)	Strecke	Path length = Pfadlänge, polygon area = Polygonfläche
 annotation	Annotation	A drawn mark with a meaning; a free-text comment is „Kommentar“
@@ -225,7 +225,8 @@ structured report (SR)	strukturierter Bericht (SR)
 level-0 pixels	Pixel der Stufe 0	
 Whole slide (scope of an operation)	Gesamtes Präparat	As in eov's Save Copy dialog
 predicted markers (Cellaris)	vorhergesagte Marker	
-region readout	Regionsauswertung	Tool: Cellaris-Regionsauswertung
+readout, region readout (Cellaris)	Auswertung, Regionsauswertung	Statistics (mean, spread, density r²) computed from the model's predicted values over a region, not a measurement: never „Messung“, „Messwert“, „messen“, „Ablesung“ or „Auslesung“ („Messungen“, „gemessen“ only where the English says measurement(s)/measured: predictions are not measurements = Vorhersagen sind keine Messungen; measured IF = gemessene IF). REGION READOUT = REGIONSAUSWERTUNG; tool Cellaris region readout = Cellaris-Regionsauswertung, quoted: Werkzeug „Cellaris-Regionsauswertung“; readout region = Auswertungsregion; readouts = Auswertungen; Compute a readout of a large region? = Auswertung einer großen Region berechnen?
+compute (predictions, a readout)	berechnen, Berechnung	Never „messen“: Compute (button) = Berechnen; Computing: {done} of {n} cells = Berechnung: {done} von {n} Rasterfeldern; {} % computed = {} % berechnet; Not computed: {} = Nicht berechnet: {}
 window (square model input)	Fenster, Vorhersagefenster	
 display window (value range of a marker)	Anzeigefenster	Black/White ends = Schwarz/Weiß
 cell (Cellaris grid cell, 41.6 µm)	Rasterfeld	Not „Zelle“ (biological cell)

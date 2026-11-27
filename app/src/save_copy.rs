@@ -155,6 +155,8 @@ fn options_for(settings: &SaveCopySettings, target: &Target) -> ConvertOptions {
 fn summary(plan: &ConvertPlan) -> String {
     let (width, height) = plan.levels[0];
     let levels = plan.levels.len();
+    // The numbers isolated (the units are the translation's).
+    let (width, height, tile) = (isolate(width), isolate(height), isolate(plan.tile_size));
     let mut text = match plan.mpp {
         // Translators: the size of the copy, its pyramid levels, the size of
         // its tiles and its pixel size.
@@ -163,8 +165,10 @@ fn summary(plan: &ConvertPlan) -> String {
                 | "{width} × {height} px in {n} levels of {tile}-px tiles at {mpp} µm/px." % levels,
             width = width,
             height = height,
-            tile = plan.tile_size,
-            mpp = crate::ui_update::localized_number(&eov_common::format_decimal(x))
+            tile = tile,
+            mpp = isolate(crate::ui_update::localized_number(
+                &eov_common::format_decimal(x)
+            ))
         ),
         None => tr!(
             "{width} × {height} px in {n} level of {tile}-px tiles; the slide records no pixel size."
@@ -172,7 +176,7 @@ fn summary(plan: &ConvertPlan) -> String {
                     % levels,
             width = width,
             height = height,
-            tile = plan.tile_size
+            tile = tile
         ),
     };
     if let Some(channels) = plan.composite_channels {
@@ -811,6 +815,42 @@ mod tests {
                 ui.get_save_copy_settings().summary
             );
             DIALOG.with(|dialog| *dialog.borrow_mut() = Dialog::default());
+        });
+    }
+
+    /// In right-to-left languages the summary's numbers are isolated, so
+    /// that with their units (which the translations isolate with them)
+    /// they keep their order: "25895 × 23396 px", not "px 23396 × 25895".
+    #[test]
+    fn the_summary_isolates_its_numbers_in_right_to_left_languages() {
+        crate::test_support::run_on_slint_ui_test_thread(|| {
+            struct English;
+            impl Drop for English {
+                fn drop(&mut self) {
+                    crate::i18n::activate(eov_plugin_api::i18n::source());
+                    DIALOG.with(|dialog| *dialog.borrow_mut() = Dialog::default());
+                }
+            }
+            let _english = English;
+            let dir = tempfile::tempdir().unwrap();
+            let (state, id) = open_slide(dir.path());
+            let ui = AppWindow::new().unwrap();
+            for tag in ["ar", "fa", "he"] {
+                crate::i18n::activate(eov_plugin_api::i18n::by_tag(tag).unwrap());
+                open(&ui, &state, id);
+                let summary = ui.get_save_copy_settings().summary;
+                let mpp = crate::ui_update::localized_number("0.25");
+                for number in ["1024", "768", mpp.as_str()] {
+                    assert!(
+                        summary.contains(&format!("\u{2068}{number}\u{2069}")),
+                        "{tag}: {summary:?}"
+                    );
+                }
+            }
+            crate::i18n::activate(eov_plugin_api::i18n::source());
+            open(&ui, &state, id);
+            let summary = ui.get_save_copy_settings().summary;
+            assert!(!summary.contains('\u{2068}'), "{summary:?}");
         });
     }
 

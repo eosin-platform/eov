@@ -3,6 +3,7 @@
 import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { DialogKeys } from "dialog-keys.slint";
+import { ScrollArea } from "scroll-area.slint";
 
 export struct SaveCopySettings {
     // The slide's name, for the title.
@@ -24,7 +25,9 @@ export struct SaveCopySettings {
     error: string,
 }
 
-// One choice of a group.
+// One choice of a group. Its texts start where the language starts a line
+// (the button stays at the left), and the detail wraps: the OME-TIFF one
+// ends with what OpenSlide cannot see.
 component Choice inherits Rectangle {
     in property <string> text;
     in property <string> detail;
@@ -32,7 +35,10 @@ component Choice inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked();
 
-    height: root.detail == "" ? 24px : 38px;
+    // As tall as before, taller when the detail takes more lines (and
+    // never shorter than its texts).
+    min-height: max(root.detail == "" ? 24px : 38px, content.min-height);
+    vertical-stretch: 0;
     opacity: root.enabled ? 1.0 : 0.45;
     accessible-role: radio-button;
     accessible-label: root.text;
@@ -46,7 +52,7 @@ component Choice inherits Rectangle {
         }
     }
 
-    HorizontalLayout {
+    content := HorizontalLayout {
         spacing: 8px;
 
         Rectangle {
@@ -76,14 +82,18 @@ component Choice inherits Rectangle {
                 text: root.text;
                 color: Theme.text-primary;
                 font-size: 12px;
+                horizontal-alignment: Locale.start;
                 accessible-role: none;
             }
 
-            if root.detail != "": Text {
+            // Wrapped text in `if` needs its height set.
+            if root.detail != "": detail := Text {
                 text: root.detail;
                 color: Theme.text-secondary;
-                font-size: 11px;
-                overflow: elide;
+                font-size: Locale.text-size(11px);
+                wrap: word-wrap;
+                horizontal-alignment: Locale.start;
+                height: self.preferred-height;
                 accessible-role: none;
             }
         }
@@ -103,6 +113,70 @@ component Heading inherits Text {
     font-size: 12px;
     font-weight: 600;
     horizontal-alignment: Locale.start;
+}
+
+// A checkbox with its label, which wraps and starts where the language
+// starts a line (the box stays at the left). A click anywhere on the row
+// toggles it.
+component CheckRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked: false;
+    callback toggled();
+
+    // As tall as before, taller when the label wraps.
+    min-height: max(22px, row.min-height);
+    vertical-stretch: 0;
+    accessible-role: checkbox;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => {
+        root.toggled();
+    }
+
+    row := HorizontalLayout {
+        // A line of the label is as tall as the row was, and the first one
+        // stays level with the box.
+        padding-top: 2.5px;
+        padding-bottom: 2.5px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: 3px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: root.checked ? Theme.accent : Theme.border;
+            background: root.checked ? Theme.accent : transparent;
+
+            if root.checked: Text {
+                text: "✓";
+                color: Theme.text-on-accent;
+                font-size: Locale.text-size(11px);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+
+        label := Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            color: Theme.text-primary;
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-alignment: Locale.start;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            root.toggled();
+        }
+    }
 }
 
 component DialogButton inherits Rectangle {
@@ -197,155 +271,126 @@ export component SaveCopyDialog inherits Rectangle {
                 Text {
                     text: root.settings.title;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: Locale.start;
                     overflow: elide;
                 }
 
-                Heading {
-                    // Translators: heading of the choice of what to copy (the whole slide or the region of interest), not a measured area.
-                    text: @tr("Area");
-                }
+                // The choices scroll when the window is too short to show
+                // them all; what will be written (or why it cannot be) and
+                // the buttons stay in view below them.
+                choices := ScrollArea {
+                    VerticalLayout {
+                        spacing: 10px;
 
-                Choice {
-                    text: @tr("Whole slide");
-                    detail: root.settings.whole-text;
-                    checked: root.settings.area == 0;
-                    clicked => {
-                        root.settings.area = 0;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Heading {
+                            // Translators: heading of the choice of what to copy (the whole slide or the region of interest), not a measured area.
+                            text: @tr("Area");
+                        }
 
-                Choice {
-                    text: @tr("Region of interest");
-                    detail: root.settings.has-roi ? root.settings.roi-text : @tr("Draw one with the region tool first");
-                    checked: root.settings.area == 1;
-                    enabled: root.settings.has-roi;
-                    clicked => {
-                        root.settings.area = 1;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Choice {
+                            text: @tr("Whole slide");
+                            detail: root.settings.whole-text;
+                            checked: root.settings.area == 0;
+                            clicked => {
+                                root.settings.area = 0;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                Heading {
-                    text: @tr("Format");
-                }
+                        Choice {
+                            text: @tr("Region of interest");
+                            detail: root.settings.has-roi ? root.settings.roi-text : @tr("Draw one with the region tool first");
+                            checked: root.settings.area == 1;
+                            enabled: root.settings.has-roi;
+                            clicked => {
+                                root.settings.area = 1;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                Choice {
-                    text: @tr("Pyramidal TIFF");
-                    detail: @tr("Opens in eov, QuPath, OpenSlide and most WSI tools");
-                    checked: root.settings.format == 0;
-                    clicked => {
-                        root.settings.format = 0;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Heading {
+                            text: @tr("Format");
+                        }
 
-                Choice {
-                    text: @tr("OME-TIFF");
-                    detail: @tr("For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)");
-                    checked: root.settings.format == 1;
-                    clicked => {
-                        root.settings.format = 1;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Choice {
+                            text: @tr("Pyramidal TIFF");
+                            detail: @tr("Opens in eov, QuPath, OpenSlide and most WSI tools");
+                            checked: root.settings.format == 0;
+                            clicked => {
+                                root.settings.format = 0;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                Heading {
-                    text: @tr("Compression");
-                }
+                        Choice {
+                            text: @tr("OME-TIFF");
+                            detail: @tr("For eov, QuPath, Bio-Formats and OMERO (OpenSlide sees its full resolution only)");
+                            checked: root.settings.format == 1;
+                            clicked => {
+                                root.settings.format = 1;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                Choice {
-                    text: @tr("JPEG, high quality (90)");
-                    checked: root.settings.compression == 0;
-                    clicked => {
-                        root.settings.compression = 0;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Heading {
+                            text: @tr("Compression");
+                        }
 
-                Choice {
-                    text: @tr("JPEG, smaller files (80)");
-                    checked: root.settings.compression == 1;
-                    clicked => {
-                        root.settings.compression = 1;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Choice {
+                            text: @tr("JPEG, high quality (90)");
+                            checked: root.settings.compression == 0;
+                            clicked => {
+                                root.settings.compression = 0;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                Choice {
-                    text: @tr("Lossless (Deflate)");
-                    detail: @tr("Exact pixels; several times larger");
-                    checked: root.settings.compression == 2;
-                    clicked => {
-                        root.settings.compression = 2;
-                        root.settings-changed(root.settings);
-                    }
-                }
+                        Choice {
+                            text: @tr("JPEG, smaller files (80)");
+                            checked: root.settings.compression == 1;
+                            clicked => {
+                                root.settings.compression = 1;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                // De-identification.
-                HorizontalLayout {
-                    spacing: 8px;
-                    height: 22px;
-                    accessible-role: checkbox;
-                    accessible-label: @tr("De-identify");
-                    accessible-checkable: true;
-                    accessible-checked: root.settings.deidentify;
-                    accessible-action-default => {
-                        root.settings.deidentify = !root.settings.deidentify;
-                        root.settings-changed(root.settings);
-                    }
+                        Choice {
+                            text: @tr("Lossless (Deflate)");
+                            detail: @tr("Exact pixels; several times larger");
+                            checked: root.settings.compression == 2;
+                            clicked => {
+                                root.settings.compression = 2;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                    Rectangle {
-                        width: 16px;
-                        height: 16px;
-                        y: (parent.height - self.height) / 2;
-                        border-radius: 3px;
-                        border-width: 1px;
-                        border-color: root.settings.deidentify ? Theme.accent : Theme.border;
-                        background: root.settings.deidentify ? Theme.accent : transparent;
+                        // De-identification.
+                        CheckRow {
+                            text: @tr("De-identify");
+                            checked: root.settings.deidentify;
+                            toggled => {
+                                root.settings.deidentify = !root.settings.deidentify;
+                                root.settings-changed(root.settings);
+                            }
+                        }
 
-                        if root.settings.deidentify: Text {
-                            text: "✓";
-                            color: Theme.text-on-accent;
-                            font-size: 11px;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            accessible-role: none;
+                        Text {
+                            text: root.settings.deidentify
+                                ? @tr("No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed.")
+                                : @tr("The copy keeps the label and macro images and every property of the slide; any of these can identify the patient.");
+                            color: Theme.text-secondary;
+                            font-size: Locale.text-size(11px);
+                            wrap: word-wrap;
+                            horizontal-alignment: Locale.start;
                         }
                     }
-
-                    Text {
-                        text: @tr("De-identify");
-                        color: Theme.text-primary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        accessible-role: none;
-                    }
-
-                    TouchArea {
-                        clicked => {
-                            root.settings.deidentify = !root.settings.deidentify;
-                            root.settings-changed(root.settings);
-                        }
-                    }
-                }
-
-                Text {
-                    text: root.settings.deidentify
-                        ? @tr("No label, macro or thumbnail image, and no properties but the pixel size, objective power and stain. Text or marks inside the scanned tissue image are not removed.")
-                        : @tr("The copy keeps the label and macro images and every property of the slide; any of these can identify the patient.");
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    wrap: word-wrap;
-                    horizontal-alignment: Locale.start;
                 }
 
                 if root.settings.summary != "": Text {
                     text: root.settings.summary;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                 }
@@ -353,7 +398,7 @@ export component SaveCopyDialog inherits Rectangle {
                 if root.settings.error != "": Text {
                     text: root.settings.error;
                     color: Theme.error;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                 }

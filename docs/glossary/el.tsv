@@ -161,7 +161,8 @@ overlap (geometric)	αλληλοεπικάλυψη	Plugins. Never «επικάλ
 even-odd rule	κανόνας άρτιου-περιττού	Plugins.
 DICOM bulk annotations, attribute, study, series	μαζικές επισημάνσεις DICOM, χαρακτηριστικό, μελέτη, σειρά	Plugins. IOD and attribute names (Microscopy Bulk Simple Annotations, SOP Class UID) stay in English.
 feature (GeoJSON)	στοιχείο (feature)	Plugins.
-region readout (Cellaris)	ανάγνωση τιμών περιοχής	Plugins. «readout» = ανάγνωση τιμών; «Measure ROI» = Μέτρηση ROI.
+readout, region readout (Cellaris)	σύνοψη τιμών, σύνοψη τιμών περιοχής	Plugins. Statistics computed from a model's predicted values, not a measurement: never «μέτρηση», «ανάγνωση» or «ένδειξη». Tool and job title «Σύνοψη τιμών περιοχής Cellaris»; heading ΣΥΝΟΨΗ ΤΙΜΩΝ ΠΕΡΙΟΧΗΣ; readout region = περιοχή σύνοψης τιμών; «a readout of the predicted values» = σύνοψη των προβλεπόμενων τιμών.
+compute (predictions, a readout)	υπολογισμός, υπολογίζω	Plugins (Cellaris). Button Compute = Υπολογισμός; «Computing: …» = Υπολογισμός: …; «{} % computed» = υπολογίστηκε το {}%. Never «μέτρηση».
 cell (Cellaris: grid square predicted at once)	κελί	Plugins. Never «κύτταρο» here: it is not a biological cell.
 window (square image a model predicts from)	παράθυρο	Plugins.
 tissue block (5 µm square of tissue)	τετράγωνο ιστού	Plugins. Not «κύβος» or «μπλοκ», which read as a paraffin block.

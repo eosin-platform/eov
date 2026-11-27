@@ -411,11 +411,19 @@ fn desktop_entry_with(exec: &str, registered: bool, translate: Translate) -> Str
 
 /// A translation of the `Keywords` as the English writes them, however the
 /// translator did: words separated by `;`, without spaces around them,
-/// empty words or a `;` at the end.
+/// empty words or a `;` at the end. Bidirectional marks and isolates are
+/// dropped: the words are searched, not shown, and a mark stuck to a word
+/// would stop it from matching what people type.
 fn keyword_list(translation: &str) -> String {
+    let is_bidi_control = |c: char| {
+        matches!(
+            c,
+            '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{2066}'..='\u{2069}'
+        )
+    };
     translation
         .split(';')
-        .map(str::trim)
+        .map(|word| word.trim_matches(|c: char| c.is_whitespace() || is_bidi_control(c)))
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>()
         .join(";")

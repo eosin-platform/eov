@@ -30,7 +30,7 @@ export component Chip inherits Rectangle {
     label := Text {
         text: root.text;
         color: root.selected ? Theme.text-on-accent : Theme.text-primary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
@@ -60,7 +60,7 @@ export component NumberField inherits Rectangle {
         Text {
             text: root.label;
             color: Theme.text-secondary;
-            font-size: 10px;
+            font-size: Locale.text-size(10px);
             horizontal-alignment: Locale.start;
             accessible-role: none;
         }
@@ -170,7 +170,7 @@ export component PanelSlider inherits Rectangle {
         y: 0px;
         text: root.label;
         color: Theme.text-secondary;
-        font-size: 10px;
+        font-size: Locale.text-size(10px);
         accessible-role: none;
     }
 
@@ -179,7 +179,7 @@ export component PanelSlider inherits Rectangle {
         y: 0px;
         text: root.value-text;
         color: Theme.text-primary;
-        font-size: 10px;
+        font-size: Locale.text-size(10px);
         accessible-role: none;
     }
 
@@ -268,7 +268,7 @@ export component PanelCheck inherits Rectangle {
         if root.checked: Text {
             text: "✓";
             color: Theme.text-on-accent;
-            font-size: 10px;
+            font-size: Locale.text-size(10px);
             horizontal-alignment: center;
             vertical-alignment: center;
             accessible-role: none;

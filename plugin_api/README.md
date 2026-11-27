@@ -271,24 +271,37 @@ and a plugin can follow the language the user chose:
    let tooltip = tr!("Toolbar" => "Count cells");
    ```
 
+   A note for translators goes in a `// Translators: …` comment: for `tr!`,
+   the `//` lines directly above it; for `@tr`, one `//` line directly
+   above the line that holds `@tr` (`slint-tr-extractor` keeps only that
+   line, and nothing above the element or above a `text:` whose `@tr` is
+   on the next line).
+
 3. Handle `HostEvent::LanguageChanged { language }`: the SDK has already
    switched `tr!` to the new language; hand eov again what it shows for you
    (toolbar tooltips, tool names, surface properties that hold text).
    Surfaces that declare `in property <bool> eov-rtl;` and
    `in property <string> eov-language;` get the writing direction (Arabic,
-   Persian, Hebrew are right to left) and the language's tag.
+   Persian, Hebrew are right to left) and the language's tag. Keep text at
+   12 px or more in Hindi (`eov-language` is `hi`): below that, eov's GPU
+   renderer draws Devanagari with overlapping pieces at a scale factor of
+   1. The first-party plugins do it with a `text-size(size)` function next
+   to their direction global.
 
 4. Ship `translations/<tag>/LC_MESSAGES/<domain>.po` in the `.eop`. The
    Plugins panel shows the plugin's `name` and `description` from catalog
    entries with the context `plugin.toml`. Each catalog's plural rule
    (`Plural-Forms`) must be its language's, as `i18n::LANGUAGES` lists
-   it: any spelling that gives every number the same form will do, and a
-   catalog without one takes the language's. eov leaves a catalog with
-   another rule out of the plugin's surfaces (they show in English in that
-   language). A text with fewer plural forms than its language has shows
-   in English: in surfaces always, in Rust for the numbers whose form is
-   missing. `i18n.py update --plugin` writes the right header and as many
-   forms as the language has.
+   it: any spelling that gives every number the same form will do, and eov
+   reads a catalog without one with the language's. The checks
+   (`i18n.py check --plugin`, `i18n::check_catalog`) accept any spelling
+   too, but want the header (`msgfmt --check` refuses a catalog with plural
+   texts without one). eov leaves a catalog with another rule out of the
+   plugin's surfaces (they show in English in that language). A text with
+   fewer plural forms than its language has shows in English: in surfaces
+   always, in Rust for the numbers whose form is missing.
+   `i18n.py update --plugin` writes the right header and as many forms as
+   the language has.
 
 **Warnings and errors.** eov writes a plugin's `host.warn`/`host.error`
 messages to its log as they are, and shows the same text to the user as a
@@ -437,9 +450,14 @@ paths, `..`, links or special files.
   `..Default::default()`, `..OverlayObject::new(..)` or
   `..testing::test_init(..)` (or with their constructors and `with_*`
   methods), and match structs and event variants with `..`, so that a
-  minor update never stops your plugin compiling. (`PluginManifest` has a
-  `Default` since 1.1; `PluginManifest::from_toml` reads and validates a
-  manifest.) Minor releases may also add languages: `i18n::LANGUAGES` is a
+  minor update does not stop your plugin compiling. Code that builds an
+  event variant (tests that send `HostEvent`s) cannot use `..`, since Rust
+  has no `..base` for enum variants: it must name the fields a minor
+  release adds (1.1: `shown_reason: None`), or build the event from JSON
+  with `serde_json::from_value`, which fills new `#[serde(default)]`
+  fields. (`PluginManifest` has a `Default` since 1.1;
+  `PluginManifest::from_toml` reads and validates a manifest.) Minor
+  releases may also add languages: `i18n::LANGUAGES` is a
   slice (iterate `i18n::LANGUAGES`, not `&LANGUAGES`), and
   `i18n::Language` is `#[non_exhaustive]`, so read its fields rather than
   build or destructure one.
@@ -474,7 +492,13 @@ behind a lock, as eov's own plugins do. Alternatively, the
 (`eov-plugin-api = { version = "1.1", features = ["thread-local-language"] }`
 under `[dev-dependencies]`) gives each test thread its own language; texts
 your plugin makes on threads of its own are then in English, since new
-threads start in English.
+threads start in English. A harness loads your catalog as eov does,
+through the `[i18n]` table of `plugin.toml` in `PluginInit::plugin_root`,
+and `test_init`'s root is an empty temporary folder: a language set on it
+changes only decimals and isolation, and `tr!` stays English without a
+word. Copy `plugin.toml` and the catalog into the root before creating the
+harness, as the example plugin's `texts_follow_the_language_of_the_interface`
+test does, or set a catalog with `i18n::set_catalog` after creating it.
 
 The mock keeps a model store too: put models in it with
 `state().add_model(record)` (what `resolve_model` and `models` answer),

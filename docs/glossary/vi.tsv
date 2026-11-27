@@ -316,7 +316,8 @@ hotkey	phím tắt	Set class hotkey = Đặt phím tắt cho loại.
 click, Shift+click, double-click, drag	nhấp, Shift+nhấp, nhấp đúp, kéo	Ctrl+click selects several = Ctrl+nhấp để chọn nhiều.
 brush, eraser, erase	cọ, tẩy / chế độ tẩy, tẩy	Brush stroke = Nét cọ.
 legend (of an overlay)	chú giải	Never “chú thích” (annotation).
-region readout (Cellaris)	đo vùng, kết quả đo	Tool “Cellaris region readout” = Đo vùng Cellaris; REGION READOUT = ĐO VÙNG.
+region readout, readout (Cellaris)	thống kê vùng, thống kê	Statistics computed from a model’s predicted values, not a measurement: never “đo”, “phép đo”, “số đo”, “kết quả đo”, a reading (“số đọc”, “chỉ số đọc”) or an assay (“xét nghiệm”), and never say the values are measured. “đo” only where the English itself says so: measured IF = IF đo thực tế; predictions are not measurements = kết quả dự đoán không phải là số đo. Tool “Cellaris region readout” = Thống kê vùng Cellaris; REGION READOUT = THỐNG KÊ VÙNG; readout region (layer) = vùng thống kê; a long readout = một lượt tính thống kê dài; Use ROI = Dùng ROI.
+compute (predictions, a readout)	tính, tính toán	Compute (button) = Tính; Compute a readout of a large region? = Tính thống kê cho một vùng lớn?; Computing: … = Đang tính: …; {} % computed = đã tính {}%. Never “đo”.
 window (model input, Cellaris/eovae)	cửa sổ	Square image the model predicts from; {n} s per window = {n} giây mỗi cửa sổ.
 cell (Cellaris computation square)	ô	Not a biological cell: never “tế bào” there.
 tissue block (Cellaris, 5 µm square)	khối mô	near-black block = khối gần như đen.
@@ -344,3 +345,8 @@ has focus (window)	đang được chọn	while eov has focus = khi cửa sổ eo
 marker (placed point, example plugin)	điểm đánh dấu	Not a biomarker (dấu ấn).
 background job	tác vụ nền
 legend colours (Okabe–Ito)	vàng, hồng cánh sen, xanh ngọc, xanh da trời, cam, đỏ son	yellow, magenta, bluish green, sky blue, orange, vermilion.
+whole-slide image (file type name)	Ảnh toàn bộ tiêu bản <maker/format>	File managers’ Type column: Aperio whole-slide image = Ảnh toàn bộ tiêu bản Aperio; Hamamatsu NDPI whole-slide image = Ảnh toàn bộ tiêu bản Hamamatsu NDPI; BigTIFF image = Ảnh BigTIFF.
+flagged (by tissue QC)	bị QC mô đánh dấu	Flags for review, not certainties: pen marks, possible folds or blur = vết bút, có thể là nếp gấp hoặc vùng bị mờ.
+host (eov, in plugin messages)	eov	The host returned … = eov trả về … (the host is eov, as the comments say); the Flatpak host stays hệ thống chủ.
+Whole slide / Viewport / Region of interest (eovae run ended)	Phân tích toàn bộ tiêu bản / vùng hiển thị / vùng quan tâm	… finished in {duration} = … đã hoàn tất sau {duration}; cancelled after = đã bị hủy sau; failed = thất bại. The buttons stay Toàn bộ tiêu bản / Vùng hiển thị.
+Low / High (ends of a Cellaris display window)	Thấp / Cao	Compact slider labels.

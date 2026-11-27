@@ -43,7 +43,7 @@ msgstr "نموذج ONNX (الافتراضي: النموذج المختار في 
 #. Translators: a batch parameter: keep auto, cpu and cuda, the values typed
 #: src/batch.rs:104
 msgid "auto (CUDA, else the CPU), cpu or cuda"
-msgstr "auto (CUDA، وإلا CPU)، أو cpu أو cuda"
+msgstr "‏auto (CUDA، وإلا CPU)، أو cpu أو cuda"
 
 #: src/batch.rs:109
 msgid "tiles per inference batch, for models without a fixed batch"
@@ -63,7 +63,7 @@ msgid ""
 "auto (tiles resampled to the model's µm/px) or a downsample, e.g. 4 (that "
 "level's own pixels)"
 msgstr ""
-"auto (يُعاد اعتيان البلاطات إلى µm/px الخاص بالنموذج) أو معامل تصغير، مثل 4 "
+"‏auto (يُعاد اعتيان البلاطات إلى µm/px الخاص بالنموذج) أو معامل تصغير، مثل 4 "
 "(بكسلات ذلك المستوى نفسه)"
 
 #: src/batch.rs:132
@@ -86,14 +86,14 @@ msgid ""
 "off; store (keep the results for eov's viewer); or reuse (also take tiles "
 "analysed before with the same model and settings)"
 msgstr ""
-"off؛ أو store (الاحتفاظ بالنتائج لعارض eov)؛ أو reuse (استخدام البلاطات التي "
+"‏off؛ أو store (الاحتفاظ بالنتائج لعارض eov)؛ أو reuse (استخدام البلاطات التي "
 "حُللت سابقًا بالنموذج والإعدادات نفسها أيضًا)"
 
 #. Translators: {} is what was typed into the SHA-256 field; it is
 #. ignored and the field keeps its previous value.
-#: src/config.rs:159
+#: src/config.rs:163
 msgid "'{}' is not a SHA-256 (64 hex digits) and was not saved."
-msgstr "«{}» ليس قيمة SHA-256 (64 رقمًا ست عشريًا) ولم يُحفظ."
+msgstr "‏«{}» ليس قيمة SHA-256 (64 رقمًا ست عشريًا) ولم يُحفظ."
 
 #: src/contract.rs:162
 msgid "HistoVAE defaults"
@@ -114,7 +114,7 @@ msgstr "الملف المرافق"
 #. Translators: a value a model declares that eovae does not use
 #: src/contract.rs:196
 msgid "ignored {key} = '{value}'"
-msgstr "تم تجاهل {key} = «{value}»"
+msgstr "تم تجاهل ⁨{key} = «{value}»⁩"
 
 #. Translators: std is the standard deviation
 #: src/contract.rs:201
@@ -133,7 +133,7 @@ msgstr "ذاكرة التخزين المؤقت للنتائج: {}"
 #. Translators: two errors: opening the cache, then a new one
 #: src/db.rs:559
 msgid "{error}; then {again}"
-msgstr "{error}؛ ثم {again}"
+msgstr "‏{error}؛ ثم {again}"
 
 #: src/db.rs:567
 msgid ""
@@ -156,17 +156,23 @@ msgstr "ذاكرة التخزين المؤقت للنتائج معطّلة"
 msgid "the result cache stopped"
 msgstr "توقفت ذاكرة التخزين المؤقت للنتائج"
 
+#. Translators: inference device: CUDA when it works, else the CPU
+#: src/engine.rs:49 ui/eovae-sidebar.slint:747
+msgctxt "Device"
+msgid "Auto"
+msgstr "تلقائي"
+
 #: src/engine.rs:107
 msgid "CPU · {n} thread"
 msgid_plural "CPU · {n} threads"
-msgstr[0] "CPU · {n} مؤشر ترابط"
-msgstr[1] "CPU · مؤشر ترابط واحد"
-msgstr[2] "CPU · {n} مؤشرا ترابط"
-msgstr[3] "CPU · {n} مؤشرات ترابط"
-msgstr[4] "CPU · {n} مؤشر ترابط"
-msgstr[5] "CPU · {n} مؤشر ترابط"
+msgstr[0] "‏CPU · {n} مؤشر ترابط"
+msgstr[1] "‏CPU · مؤشر ترابط واحد"
+msgstr[2] "‏CPU · {n} مؤشرا ترابط"
+msgstr[3] "‏CPU · {n} مؤشرات ترابط"
+msgstr[4] "‏CPU · {n} مؤشر ترابط"
+msgstr[5] "‏CPU · {n} مؤشر ترابط"
 
-#: src/engine.rs:121
+#: src/engine.rs:122
 msgid ""
 "this ONNX Runtime has no CUDA support (use the GPU build; see the README)"
 msgstr "لا يدعم ONNX Runtime هذا CUDA (استخدم إصدار GPU؛ راجع ملف README)"
@@ -182,7 +188,7 @@ msgid "no inference runtime in this build"
 msgstr "لا توجد بيئة تشغيل للاستدلال في هذا الإصدار"
 
 #. Translators: an error: the operation was cancelled
-#: src/message.rs:57
+#: src/message.rs:93
 msgid "cancelled"
 msgstr "أُلغي"
 
@@ -190,14 +196,14 @@ msgstr "أُلغي"
 msgid ""
 "The input size is dynamic; analysing {size}×{size} tiles as the model "
 "declares."
-msgstr "حجم المُدخل ديناميكي؛ تُحلَّل بلاطات {size}×{size} كما يعلن النموذج."
+msgstr "حجم المُدخل ديناميكي؛ تُحلَّل بلاطات ⁨{size}×{size}⁩ كما يعلن النموذج."
 
 #: src/model.rs:167
 msgid ""
 "The input size is dynamic; analysing {size}×{size} tiles (declare eovae."
 "tile_size to change)."
 msgstr ""
-"حجم المُدخل ديناميكي؛ تُحلَّل بلاطات {size}×{size} (أعلن عن eovae.tile_size "
+"حجم المُدخل ديناميكي؛ تُحلَّل بلاطات ⁨{size}×{size}⁩ (أعلن عن eovae.tile_size "
 "لتغيير ذلك)."
 
 #: src/model.rs:171
@@ -281,12 +287,12 @@ msgid ""
 "No preprocessing declared: using HistoVAE's ([-1, 1], alpha on white). Check "
 "it in Preprocessing."
 msgstr ""
-"لم يُعلَن عن أي معالجة مسبقة: تُستخدم معالجة HistoVAE (النطاق [-1, 1]، "
+"لم يُعلَن عن أي معالجة مسبقة: تُستخدم معالجة HistoVAE (النطاق ⁨[-1, 1]⁩، "
 "والشفافية على خلفية بيضاء). تحقّق منها في قسم «المعالجة المسبقة»."
 
 #. Translators: about the model's input tensor; the words in
 #. parentheses name its four axes in order and may be translated.
-#: src/model.rs:304
+#: src/model.rs:305
 msgid ""
 "it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
 msgid_plural ""
@@ -304,7 +310,7 @@ msgstr[4] ""
 msgstr[5] ""
 "له {n} بُعد؛ وموتّر الصورة له 4 أبعاد (الدفعة، القنوات، الارتفاع، العرض)"
 
-#: src/model.rs:326
+#: src/model.rs:327
 msgid "it has {n} channel; eovae feeds RGB (3 channels)"
 msgid_plural "it has {n} channels; eovae feeds RGB (3 channels)"
 msgstr[0] "له {n} قناة؛ ويغذّي eovae صور RGB (3 قنوات)"
@@ -314,15 +320,15 @@ msgstr[3] "له {n} قنوات؛ ويغذّي eovae صور RGB (3 قنوات)"
 msgstr[4] "له {n} قناة؛ ويغذّي eovae صور RGB (3 قنوات)"
 msgstr[5] "له {n} قناة؛ ويغذّي eovae صور RGB (3 قنوات)"
 
-#: src/model.rs:329
+#: src/model.rs:330
 msgid "its channel dimension is not 3 (RGB)"
 msgstr "بُعد القنوات فيه ليس 3 (RGB)"
 
-#: src/model.rs:372
+#: src/model.rs:373
 msgid "the model has no inputs"
 msgstr "ليس للنموذج مُدخلات"
 
-#: src/model.rs:381
+#: src/model.rs:383
 msgid ""
 "the model needs {n} input ({names}); eovae feeds exactly one image input"
 msgid_plural ""
@@ -340,32 +346,32 @@ msgstr[4] ""
 msgstr[5] ""
 "يحتاج النموذج إلى {n} مُدخل ({names})؛ ويغذّي eovae مُدخل صورة واحدًا بالضبط"
 
-#: src/model.rs:394
+#: src/model.rs:398
 msgid "input '{name}' is {kind}; eovae feeds float32 or float16"
 msgstr "المُدخل «{name}» من النوع {kind}؛ ويغذّي eovae بيانات float32 أو float16"
 
-#: src/model.rs:403
+#: src/model.rs:408
 msgid "input '{}' does not declare its shape"
 msgstr "لا يعلن المُدخل «{}» عن شكله"
 
-#: src/model.rs:407
+#: src/model.rs:417
 msgid "input '{name}' is not an image: {error}"
 msgstr "المُدخل «{name}» ليس صورة: {error}"
 
-#: src/model.rs:418
+#: src/model.rs:428
 msgid "input '{name}' is {height}×{width}; eovae analyses square tiles"
-msgstr "المُدخل «{name}» بحجم {height}×{width}؛ ويحلّل eovae بلاطات مربعة"
+msgstr "المُدخل «{name}» بحجم ⁨{height}×{width}⁩؛ ويحلّل eovae بلاطات مربعة"
 
-#: src/model.rs:437
+#: src/model.rs:447
 msgid "tiles of {} px are not supported (16–2048)"
-msgstr "البلاطات بحجم {} px غير مدعومة (16–2048)"
+msgstr "البلاطات بحجم ⁨{} px⁩ غير مدعومة (⁨16–2048⁩)"
 
 #. Translators: an output of the model (its name) that declares no shape
-#: src/model.rs:465
+#: src/model.rs:476
 msgid "{} (no shape)"
-msgstr "{} (بلا شكل)"
+msgstr "‏{} (بلا شكل)"
 
-#: src/model.rs:499
+#: src/model.rs:510
 msgid ""
 "the model only encodes (outputs mu and logvar); export the reconstruction "
 "model (HistoVAE: create_onnx --mode reconstruct)"
@@ -373,58 +379,57 @@ msgstr ""
 "النموذج يرمّز فقط (يُخرج mu وlogvar)؛ صدّر نموذج إعادة البناء (HistoVAE: "
 "create_onnx --mode reconstruct)"
 
-#: src/model.rs:510
+#: src/model.rs:522
 msgid ""
 "no output is an RGB image matching the input {shape} (outputs: {outputs})"
 msgstr "لا يوجد مُخرج هو صورة RGB مطابقة للمُدخل {shape} (المُخرجات: {outputs})"
 
-#: src/model.rs:666
+#: src/model.rs:678
 msgid "only .onnx models are supported"
-msgstr "النماذج بتنسيق .onnx هي وحدها المدعومة"
+msgstr "النماذج بتنسيق ⁨.onnx⁩ هي وحدها المدعومة"
 
-#: src/model.rs:670
+#: src/model.rs:683
 msgid "{} does not exist"
-msgstr "{} غير موجود"
+msgstr "‏{} غير موجود"
 
-#. The detail is technical, and English like a library's.
-#: src/model.rs:676
+#: src/model.rs:691
 msgid "not a valid ONNX model: {}"
 msgstr "ليس نموذج ONNX صالحًا: {}"
 
-#: src/model.rs:688
+#: src/model.rs:705
 msgid "the model's weights point outside its folder ('{}')"
 msgstr "تشير أوزان النموذج إلى خارج مجلده («{}»)"
 
-#: src/model.rs:697
+#: src/model.rs:715
 msgid ""
 "the model's weights file '{}' is missing; keep it next to the .onnx file"
-msgstr "ملف أوزان النموذج «{}» مفقود؛ احتفظ به بجوار ملف .onnx"
+msgstr "ملف أوزان النموذج «{}» مفقود؛ احتفظ به بجوار ملف ⁨.onnx⁩"
 
-#: src/ort_backend.rs:153
+#: src/ort_backend.rs:154
 msgid "it could not be opened: {}"
 msgstr "تعذّر فتحها: {}"
 
-#: src/ort_backend.rs:157
+#: src/ort_backend.rs:159
 msgid "it is not ONNX Runtime (it has no OrtGetApiBase)"
 msgstr "ليست ONNX Runtime (لا تحتوي على OrtGetApiBase)"
 
-#: src/ort_backend.rs:162
+#: src/ort_backend.rs:164
 msgid "it is not ONNX Runtime (OrtGetApiBase returned nothing)"
 msgstr "ليست ONNX Runtime (لم تُرجع OrtGetApiBase أي شيء)"
 
-#: src/ort_backend.rs:177
+#: src/ort_backend.rs:180
 msgid "it is ONNX Runtime {version}, older than {oldest}"
-msgstr "إنها ONNX Runtime {version}، وهو أقدم من {oldest}"
+msgstr "إنها ⁨ONNX Runtime {version}⁩، وهو أقدم من {oldest}"
 
-#: src/ort_backend.rs:292
+#: src/ort_backend.rs:297
 msgid "{path}: opening it crashed ({error})"
-msgstr "{path}: تعطّل فتحها ({error})"
+msgstr "‏{path}: تعطّل فتحها ({error})"
 
-#: src/ort_backend.rs:318
+#: src/ort_backend.rs:323
 msgid "loading it crashed ({})"
 msgstr "تعطّل تحميلها ({})"
 
-#: src/ort_backend.rs:323
+#: src/ort_backend.rs:328
 msgid ""
 "ONNX Runtime at {path} could not be loaded: {error}. Restart eov to try "
 "again."
@@ -433,7 +438,7 @@ msgstr ""
 
 #. Translators: {variable} is an environment variable; "Model →
 #. Runtime" is the Runtime… button in the sidebar's Model section
-#: src/ort_backend.rs:342
+#: src/ort_backend.rs:347
 msgid ""
 "ONNX Runtime (1.22 or newer) was not found. Install it, set {variable} to "
 "the library, or choose it under Model → Runtime. Tried: {tried}"
@@ -442,49 +447,49 @@ msgstr ""
 "المكتبة، أو اختره من «النموذج ← بيئة التشغيل…». المحاولات: {tried}"
 
 #. Translators: a library that was loaded, as a note after an error
-#: src/ort_backend.rs:381
+#: src/ort_backend.rs:386
 msgid "loaded {}"
 msgstr "تم تحميل {}"
 
-#: src/ort_backend.rs:453
+#: src/ort_backend.rs:458
 msgid "building the session took longer than {} s"
 msgstr "استغرق إنشاء الجلسة أكثر من {} ث"
 
-#: src/ort_backend.rs:472
+#: src/ort_backend.rs:477
 msgid "Building CPU session…"
 msgstr "جارٍ إنشاء جلسة CPU…"
 
-#: src/ort_backend.rs:473
+#: src/ort_backend.rs:478
 msgid "Building CUDA session…"
 msgstr "جارٍ إنشاء جلسة CUDA…"
 
-#: src/ort_backend.rs:483
+#: src/ort_backend.rs:489
 msgid "ONNX Runtime does not see input '{}'"
 msgstr "لا يرى ONNX Runtime المُدخل «{}»"
 
-#: src/ort_backend.rs:491
+#: src/ort_backend.rs:498
 msgid "unknown output '{}'"
 msgstr "مُخرج غير معروف «{}»"
 
-#: src/ort_backend.rs:497
+#: src/ort_backend.rs:505
 msgid "ONNX Runtime does not see output '{}'"
 msgstr "لا يرى ONNX Runtime المُخرج «{}»"
 
-#: src/ort_backend.rs:553
+#: src/ort_backend.rs:561
 msgid "Checking the model…"
 msgstr "جارٍ التحقق من النموذج…"
 
-#: src/ort_backend.rs:554
+#: src/ort_backend.rs:562
 msgid "Warming up CUDA…"
 msgstr "جارٍ تهيئة CUDA…"
 
-#: src/ort_backend.rs:560
+#: src/ort_backend.rs:568
 msgid "test run failed: {}"
 msgstr "فشل التشغيل التجريبي: {}"
 
 #. Translators: the model's output has the wrong size;
 #. {returned} and {expected} are bare numbers of values.
-#: src/ort_backend.rs:569
+#: src/ort_backend.rs:578
 msgid ""
 "the model returned the wrong number of values for {n} tile: {returned} "
 "instead of {expected}"
@@ -505,23 +510,23 @@ msgstr[4] ""
 msgstr[5] ""
 "أعاد النموذج عددًا خاطئًا من القيم لـ {n} بلاطة: {returned} بدلاً من {expected}"
 
-#: src/ort_backend.rs:598
+#: src/ort_backend.rs:607
 msgid "Loading ONNX Runtime…"
 msgstr "جارٍ تحميل ONNX Runtime…"
 
-#: src/ort_backend.rs:638
+#: src/ort_backend.rs:646
 msgid "CUDA is unavailable: {}"
-msgstr "CUDA غير متاح: {}"
+msgstr "‏CUDA غير متاح: {}"
 
-#: src/ort_backend.rs:660
+#: src/ort_backend.rs:667
 msgid "ONNX Runtime: {}"
-msgstr "ONNX Runtime: {}"
+msgstr "‏ONNX Runtime: {}"
 
-#: src/ort_backend.rs:661
+#: src/ort_backend.rs:668
 msgid "ONNX Runtime is loaded with the first model."
 msgstr "يُحمَّل ONNX Runtime مع أول نموذج."
 
-#: src/ort_backend.rs:821
+#: src/ort_backend.rs:829
 msgid "the model produced no '{}'"
 msgstr "لم يُنتج النموذج «{}»"
 
@@ -532,14 +537,14 @@ msgstr "لم يُنتج النموذج «{}»"
 #: src/pipeline.rs:317
 msgid "the host returned {n} byte for a {tile}×{tile} region"
 msgid_plural "the host returned {n} bytes for a {tile}×{tile} region"
-msgstr[0] "أعاد المضيف {n} بايت لمنطقة {tile}×{tile}"
-msgstr[1] "أعاد المضيف بايتًا واحدًا لمنطقة {tile}×{tile}"
-msgstr[2] "أعاد المضيف {n} بايت لمنطقة {tile}×{tile}"
-msgstr[3] "أعاد المضيف {n} بايت لمنطقة {tile}×{tile}"
-msgstr[4] "أعاد المضيف {n} بايت لمنطقة {tile}×{tile}"
-msgstr[5] "أعاد المضيف {n} بايت لمنطقة {tile}×{tile}"
+msgstr[0] "أعاد المضيف {n} بايت لمنطقة ⁨{tile}×{tile}⁩"
+msgstr[1] "أعاد المضيف بايتًا واحدًا لمنطقة ⁨{tile}×{tile}⁩"
+msgstr[2] "أعاد المضيف {n} بايت لمنطقة ⁨{tile}×{tile}⁩"
+msgstr[3] "أعاد المضيف {n} بايت لمنطقة ⁨{tile}×{tile}⁩"
+msgstr[4] "أعاد المضيف {n} بايت لمنطقة ⁨{tile}×{tile}⁩"
+msgstr[5] "أعاد المضيف {n} بايت لمنطقة ⁨{tile}×{tile}⁩"
 
-#: src/pipeline.rs:335
+#: src/pipeline.rs:336
 msgid "{n} tile could not be read (level {level}); last error: {error}"
 msgid_plural "{n} tiles could not be read (level {level}); last error: {error}"
 msgstr[0] "تعذّرت قراءة {n} بلاطة (المستوى {level})؛ آخر خطأ: {error}"
@@ -551,17 +556,17 @@ msgstr[5] "تعذّرت قراءة {n} بلاطة (المستوى {level})؛ آ�
 
 #. Translators: why an analysis failed: it ended before every
 #. tile was done ({done} of the {total} tiles were).
-#: src/pipeline.rs:440
+#: src/pipeline.rs:441
 msgid "it stopped before every tile was done ({done} of {total})"
 msgstr "توقّف قبل اكتمال جميع البلاطات ({done} من {total})"
 
-#: src/pipeline.rs:480
+#: src/pipeline.rs:481
 msgid "inference failed: {}"
 msgstr "فشل الاستدلال: {}"
 
 #. Translators: the model's output has the wrong size; {returned}
 #. and {expected} are bare numbers of values.
-#: src/pipeline.rs:492
+#: src/pipeline.rs:494
 msgid ""
 "the model returned the wrong number of values for a batch of {n} tile: "
 "{returned} instead of {expected}"
@@ -591,11 +596,11 @@ msgstr[5] ""
 msgid "VAE reconstruction analysis"
 msgstr "تحليل إعادة البناء بـ VAE"
 
-#: src/plugin.rs:61 src/presenter.rs:794
+#: src/plugin.rs:61 src/presenter.rs:796
 msgid "VAE tile grid"
 msgstr "شبكة بلاطات VAE"
 
-#: src/plugin.rs:65 src/presenter.rs:790
+#: src/plugin.rs:65 src/presenter.rs:792
 msgid "VAE overlay"
 msgstr "تراكب VAE"
 
@@ -619,49 +624,49 @@ msgstr "البلاطات المرئية"
 msgid "Automatic analysis"
 msgstr "التحليل التلقائي"
 
-#: src/plugin.rs:516
+#: src/plugin.rs:518
 msgid "Load an ONNX model first."
 msgstr "حمّل نموذج ONNX أولًا."
 
-#: src/plugin.rs:517
+#: src/plugin.rs:519
 msgid "The model is still loading."
 msgstr "لا يزال النموذج قيد التحميل."
 
-#: src/plugin.rs:518
+#: src/plugin.rs:520
 msgid "The model could not be loaded: {}"
 msgstr "تعذّر تحميل النموذج: {}"
 
-#: src/plugin.rs:519
+#: src/plugin.rs:521
 msgid "Preparing the inference engine…"
 msgstr "جارٍ تجهيز محرك الاستدلال…"
 
 #. Translators: eovae is working out which slide file this is (its
 #. content fingerprint), to find its stored results; it does not
 #. identify a patient.
-#: src/plugin.rs:524
+#: src/plugin.rs:526
 msgid "Identifying the slide…"
 msgstr "جارٍ تحديد هوية الشريحة…"
 
-#: src/plugin.rs:525
+#: src/plugin.rs:527
 msgid "The slide reports no pyramid levels."
 msgstr "لا تُبلغ الشريحة عن أي مستويات هرم."
 
-#: src/plugin.rs:526
+#: src/plugin.rs:528
 msgid "The slide is not open."
 msgstr "الشريحة غير مفتوحة."
 
 #. Translators: eovae is this plugin's name; {} says why, in English
-#: src/plugin.rs:753
+#: src/plugin.rs:755
 msgid "eovae settings were unreadable and were reset ({})"
 msgstr "تعذّرت قراءة إعدادات eovae فأُعيد تعيينها ({})"
 
 #. Translators: the title of an error notification; eovae is
 #. this plugin's name
-#: src/plugin.rs:804
+#: src/plugin.rs:806
 msgid "An eovae worker thread failed unexpectedly"
 msgstr "فشل مؤشر ترابط عامل في eovae على نحو غير متوقع"
 
-#: src/plugin.rs:1120
+#: src/plugin.rs:1122
 msgid ""
 "This eov cannot show layers in some panes only: every pane of a slide shows "
 "the same VAE overlay."
@@ -669,15 +674,15 @@ msgstr ""
 "لا يستطيع إصدار eov هذا عرض الطبقات في بعض الأجزاء دون غيرها: فكل جزء يعرض "
 "الشريحة يُظهر تراكب VAE نفسه."
 
-#: src/plugin.rs:1260
+#: src/plugin.rs:1262
 msgid "Load an ONNX model in the VAE sidebar to analyse this slide."
 msgstr "حمّل نموذج ONNX في الشريط الجانبي VAE لتحليل هذه الشريحة."
 
-#: src/plugin.rs:1305
+#: src/plugin.rs:1307
 msgid "VAE analysis"
 msgstr "تحليل VAE"
 
-#: src/plugin.rs:1351
+#: src/plugin.rs:1353
 msgid ""
 "The ONNX Runtime library is used from the next start of eov if a runtime is "
 "already loaded."
@@ -685,89 +690,89 @@ msgstr ""
 "إذا كانت بيئة تشغيل محمّلة بالفعل، فستُستخدم مكتبة ONNX Runtime بدءًا من "
 "التشغيل التالي لـ eov."
 
-#: src/plugin.rs:1378
+#: src/plugin.rs:1380
 msgid "The VAE result cache was cleared."
 msgstr "تم مسح ذاكرة التخزين المؤقت لنتائج VAE."
 
-#: src/plugin.rs:1382
+#: src/plugin.rs:1384
 msgid "Could not clear the VAE result cache"
 msgstr "تعذّر مسح ذاكرة التخزين المؤقت لنتائج VAE"
 
-#: src/plugin.rs:1411
+#: src/plugin.rs:1413
 msgid "the model file could not be read"
 msgstr "تعذّرت قراءة ملف النموذج"
 
-#: src/plugin.rs:1440
+#: src/plugin.rs:1442
 msgid "The VAE model could not be loaded"
 msgstr "تعذّر تحميل نموذج VAE"
 
 #. Translators: "Load ONNX…" is the sidebar's button of that name
-#: src/plugin.rs:1496
+#: src/plugin.rs:1498
 msgid "This eov cannot download models: load the model file with Load ONNX…"
 msgstr ""
 "لا يستطيع إصدار eov هذا تنزيل النماذج: حمّل ملف النموذج باستخدام «تحميل ONNX…»"
 
-#: src/plugin.rs:1620
+#: src/plugin.rs:1626
 msgid "the inference engine failed unexpectedly"
 msgstr "فشل محرك الاستدلال على نحو غير متوقع"
 
-#: src/plugin.rs:1666
+#: src/plugin.rs:1671
 msgid "VAE inference runs on the CPU: {}"
 msgstr "يعمل استدلال VAE على CPU: {}"
 
-#: src/plugin.rs:1673
+#: src/plugin.rs:1676
 msgid "The VAE model cannot run"
 msgstr "يتعذّر تشغيل نموذج VAE"
 
-#: src/plugin.rs:1754
+#: src/plugin.rs:1757
 msgid "Starting…"
 msgstr "جارٍ البدء…"
 
-#: src/plugin.rs:1810
+#: src/plugin.rs:1813
 msgid "Preparing the model…"
 msgstr "جارٍ تجهيز النموذج…"
 
-#: src/plugin.rs:1865
+#: src/plugin.rs:1868
 msgid "Draw a region of interest on the slide first."
 msgstr "ارسم منطقة اهتمام على الشريحة أولًا."
 
-#: src/plugin.rs:1884
+#: src/plugin.rs:1887
 msgid "The slide is not shown in a pane."
 msgstr "الشريحة غير معروضة في أي جزء."
 
-#: src/plugin.rs:1939
+#: src/plugin.rs:1942
 msgid "VAE: whole slide"
-msgstr "VAE: الشريحة كاملة"
+msgstr "‏VAE: الشريحة كاملة"
 
-#: src/plugin.rs:1940
+#: src/plugin.rs:1943
 msgid "VAE: region of interest"
-msgstr "VAE: منطقة الاهتمام"
+msgstr "‏VAE: منطقة الاهتمام"
 
-#: src/plugin.rs:1941
+#: src/plugin.rs:1944
 msgid "VAE: viewport"
-msgstr "VAE: منطقة العرض"
+msgstr "‏VAE: منطقة العرض"
 
-#: src/plugin.rs:1951
+#: src/plugin.rs:1954
 msgid "Analysing on {}"
 msgstr "جارٍ التحليل على {}"
 
-#: src/plugin.rs:1983
+#: src/plugin.rs:1986
 msgid "internal error while analysing tiles"
 msgstr "خطأ داخلي أثناء تحليل البلاطات"
 
-#: src/plugin.rs:2031
+#: src/plugin.rs:2034
 msgid "internal error: {}"
 msgstr "خطأ داخلي: {}"
 
-#: src/plugin.rs:2069
+#: src/plugin.rs:2072
 msgid "VAE analysis failed"
 msgstr "فشل تحليل VAE"
 
-#: src/plugin.rs:2097
+#: src/plugin.rs:2100
 msgid "Nothing to export"
 msgstr "لا يوجد ما يُصدَّر"
 
-#: src/plugin.rs:2156
+#: src/plugin.rs:2159
 msgid "Exported {n} tile to {file}"
 msgid_plural "Exported {n} tiles to {file}"
 msgstr[0] "تم تصدير {n} بلاطة إلى {file}"
@@ -777,190 +782,215 @@ msgstr[3] "تم تصدير {n} بلاطات إلى {file}"
 msgstr[4] "تم تصدير {n} بلاطة إلى {file}"
 msgstr[5] "تم تصدير {n} بلاطة إلى {file}"
 
-#: src/plugin.rs:2162
+#: src/plugin.rs:2165
 msgid "The export failed"
 msgstr "فشل التصدير"
 
 #. Translators: eovae is this plugin's name; {} is eov's reason, in English
-#: src/plugin.rs:2180
+#: src/plugin.rs:2183
 msgid "eovae settings could not be saved: {}"
 msgstr "تعذّر حفظ إعدادات eovae: {}"
 
 #. Translators: a duration in seconds
-#: src/plugin.rs:2232
+#: src/plugin.rs:2235
 msgid "{} s"
-msgstr "{} ث"
+msgstr "‏{} ث"
 
 #. Translators: a duration in minutes and seconds, e.g. "3m 05s"
-#: src/plugin.rs:2235
+#: src/plugin.rs:2238
 msgid "{minutes}m {seconds}s"
-msgstr "{minutes} د {seconds} ث"
+msgstr "‏{minutes} د {seconds} ث"
 
 #. Translators: a duration in hours and minutes, e.g. "1h 02m"
-#: src/plugin.rs:2241
+#: src/plugin.rs:2244
 msgid "{hours}h {minutes}m"
-msgstr "{hours} س {minutes} د"
+msgstr "‏{hours} س {minutes} د"
 
-#: src/plugin.rs:2252
+#: src/plugin.rs:2255
 msgid "about {} left"
 msgstr "يتبقى نحو {}"
 
-#: src/plugin.rs:2260
+#: src/plugin.rs:2263
 msgid "{analysed} analysed"
 msgstr "المحلَّلة: {analysed}"
 
-#: src/plugin.rs:2262
+#: src/plugin.rs:2265
 msgid "{analysed} analysed, {background} background"
 msgstr "المحلَّلة: {analysed}، الخلفية: {background}"
 
-#: src/plugin.rs:2267
+#: src/plugin.rs:2270
 msgid "{analysed} analysed, {unreadable} unreadable"
 msgstr "المحلَّلة: {analysed}، غير المقروءة: {unreadable}"
 
-#: src/plugin.rs:2272
+#: src/plugin.rs:2275
 msgid "{analysed} analysed, {background} background, {unreadable} unreadable"
 msgstr "المحلَّلة: {analysed}، الخلفية: {background}، غير المقروءة: {unreadable}"
 
 #. Translators: {what}: Whole slide, Viewport, Region of interest or Automatic analysis
-#: src/plugin.rs:2301
+#: src/plugin.rs:2304
 msgid "{what}: everything was already analysed."
-msgstr "{what}: سبق تحليل كل شيء."
+msgstr "‏{what}: سبق تحليل كل شيء."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2305
+#: src/plugin.rs:2308
 msgid "Whole slide finished in {duration}: {counts}."
 msgstr "اكتمل تحليل الشريحة كاملة خلال {duration}: {counts}."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2311
+#: src/plugin.rs:2314
 msgid "Viewport finished in {duration}: {counts}."
 msgstr "اكتمل تحليل منطقة العرض خلال {duration}: {counts}."
 
 #. Translators: the analysis of the region of interest ended; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2317
+#: src/plugin.rs:2320
 msgid "Region of interest finished in {duration}: {counts}."
 msgstr "اكتمل تحليل منطقة الاهتمام خلال {duration}: {counts}."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2323
+#: src/plugin.rs:2326
 msgid "Automatic analysis finished in {duration}: {counts}."
 msgstr "اكتمل التحليل التلقائي خلال {duration}: {counts}."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2329
+#: src/plugin.rs:2332
 msgid "Whole slide cancelled after {duration}: {counts}."
 msgstr "أُلغي تحليل الشريحة كاملة بعد {duration}: {counts}."
 
 #. Translators: the analysis of the tiles in view (the button Viewport) was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2335
+#: src/plugin.rs:2338
 msgid "Viewport cancelled after {duration}: {counts}."
 msgstr "أُلغي تحليل منطقة العرض بعد {duration}: {counts}."
 
 #. Translators: the analysis of the region of interest was cancelled; {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2341
+#: src/plugin.rs:2344
 msgid "Region of interest cancelled after {duration}: {counts}."
 msgstr "أُلغي تحليل منطقة الاهتمام بعد {duration}: {counts}."
 
 #. Translators: {duration}: e.g. "3m 05s"; {counts}: e.g. "120 analysed, 8 background"
-#: src/plugin.rs:2347
+#: src/plugin.rs:2350
 msgid "Automatic analysis cancelled after {duration}: {counts}."
 msgstr "أُلغي التحليل التلقائي بعد {duration}: {counts}."
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2353
+#: src/plugin.rs:2356
 msgid "Whole slide failed ({counts}): {error}"
 msgstr "فشل تحليل الشريحة كاملة ({counts}): {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2357
+#: src/plugin.rs:2360
 msgid "Viewport failed ({counts}): {error}"
 msgstr "فشل تحليل منطقة العرض ({counts}): {error}"
 
 #. Translators: the analysis of the region of interest failed; {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2362
+#: src/plugin.rs:2365
 msgid "Region of interest failed ({counts}): {error}"
 msgstr "فشل تحليل منطقة الاهتمام ({counts}): {error}"
 
 #. Translators: {counts}: e.g. "120 analysed, 8 background"; {error}: why
-#: src/plugin.rs:2370
+#: src/plugin.rs:2373
 msgid "Automatic analysis failed ({counts}): {error}"
 msgstr "فشل التحليل التلقائي ({counts}): {error}"
 
 #. Translators: the analysis of the whole slide (the button Whole slide) failed; {error}: why
-#: src/plugin.rs:2377
+#: src/plugin.rs:2380
 msgid "Whole slide failed: {error}"
 msgstr "فشل تحليل الشريحة كاملة: {error}"
 
 #. Translators: the analysis of the tiles in view (the button Viewport) failed; {error}: why
-#: src/plugin.rs:2381
+#: src/plugin.rs:2384
 msgid "Viewport failed: {error}"
 msgstr "فشل تحليل منطقة العرض: {error}"
 
 #. Translators: the analysis of the region of interest failed; {error}: why
-#: src/plugin.rs:2385
+#: src/plugin.rs:2388
 msgid "Region of interest failed: {error}"
 msgstr "فشل تحليل منطقة الاهتمام: {error}"
 
 #. Translators: {error}: why
-#: src/plugin.rs:2389
+#: src/plugin.rs:2392
 msgid "Automatic analysis failed: {error}"
 msgstr "فشل التحليل التلقائي: {error}"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave an image of another size than asked for, in
 #. pixels.
-#: src/plugin.rs:2417
+#: src/plugin.rs:2422
 msgid ""
 "the host returned {width}×{height} for a {asked_width}×{asked_height} region"
 msgstr ""
-"أعاد المضيف صورة بحجم {width}×{height} لمنطقة {asked_width}×{asked_height}"
+"أعاد المضيف صورة بحجم ⁨{width}×{height}⁩ لمنطقة ⁨{asked_width}×{asked_height}⁩"
 
 #. Translators: the progress of an analysis, e.g. "40 of 120 tiles"
-#: src/plugin.rs:2493
+#: src/plugin.rs:2498
 msgid "{done} of {n} tile"
 msgid_plural "{done} of {n} tiles"
-msgstr[0] "{done} من أصل {n} بلاطة"
-msgstr[1] "{done} من أصل بلاطة واحدة"
-msgstr[2] "{done} من أصل {n} بلاطتين"
-msgstr[3] "{done} من أصل {n} بلاطات"
-msgstr[4] "{done} من أصل {n} بلاطة"
-msgstr[5] "{done} من أصل {n} بلاطة"
+msgstr[0] "‏{done} من أصل {n} بلاطة"
+msgstr[1] "‏{done} من أصل بلاطة واحدة"
+msgstr[2] "‏{done} من أصل {n} بلاطتين"
+msgstr[3] "‏{done} من أصل {n} بلاطات"
+msgstr[4] "‏{done} من أصل {n} بلاطة"
+msgstr[5] "‏{done} من أصل {n} بلاطة"
 
 #. Translators: {eta} is the time left, e.g. "about 2m 05s left"
-#: src/plugin.rs:2499
+#: src/plugin.rs:2504
 msgid "{done} of {n} tile, {eta}"
 msgid_plural "{done} of {n} tiles, {eta}"
-msgstr[0] "{done} من أصل {n} بلاطة، {eta}"
-msgstr[1] "{done} من أصل بلاطة واحدة، {eta}"
-msgstr[2] "{done} من أصل {n} بلاطتين، {eta}"
-msgstr[3] "{done} من أصل {n} بلاطات، {eta}"
-msgstr[4] "{done} من أصل {n} بلاطة، {eta}"
-msgstr[5] "{done} من أصل {n} بلاطة، {eta}"
+msgstr[0] "‏{done} من أصل {n} بلاطة، {eta}"
+msgstr[1] "‏{done} من أصل بلاطة واحدة، {eta}"
+msgstr[2] "‏{done} من أصل {n} بلاطتين، {eta}"
+msgstr[3] "‏{done} من أصل {n} بلاطات، {eta}"
+msgstr[4] "‏{done} من أصل {n} بلاطة، {eta}"
+msgstr[5] "‏{done} من أصل {n} بلاطة، {eta}"
 
 #. Translators: the status bar while an analysis runs, e.g. "VAE 40 / 120 tiles"
 #: src/presenter.rs:381
 msgid "VAE {done} / {n} tile"
 msgid_plural "VAE {done} / {n} tiles"
-msgstr[0] "VAE: البلاطات {done} / {n}"
-msgstr[1] "VAE: البلاطات {done} / {n}"
-msgstr[2] "VAE: البلاطات {done} / {n}"
-msgstr[3] "VAE: البلاطات {done} / {n}"
-msgstr[4] "VAE: البلاطات {done} / {n}"
-msgstr[5] "VAE: البلاطات {done} / {n}"
+msgstr[0] "‏VAE: البلاطات ⁨{done} / {n}⁩"
+msgstr[1] "‏VAE: البلاطات ⁨{done} / {n}⁩"
+msgstr[2] "‏VAE: البلاطات ⁨{done} / {n}⁩"
+msgstr[3] "‏VAE: البلاطات ⁨{done} / {n}⁩"
+msgstr[4] "‏VAE: البلاطات ⁨{done} / {n}⁩"
+msgstr[5] "‏VAE: البلاطات ⁨{done} / {n}⁩"
 
-#. Translators: the status bar: how the inference engine is being prepared
-#: src/presenter.rs:385 src/presenter.rs:387
+#. Translators: the status bar: what the analysis is doing, or how
+#. the inference engine is being prepared
+#: src/presenter.rs:386 src/presenter.rs:389
 msgid "VAE: {}"
-msgstr "VAE: {}"
+msgstr "‏VAE: {}"
 
-#: src/presenter.rs:781
+#: src/presenter.rs:783
 msgid "VAE error map"
 msgstr "خريطة خطأ VAE"
 
 #. Translators: the outline of the region under the pointer
-#: src/presenter.rs:786
+#: src/presenter.rs:788
 msgid "VAE highlight"
 msgstr "تمييز VAE"
+
+#. Translators: the overlay that shows the slide as it is
+#: src/render.rs:59 ui/eovae-sidebar.slint:775
+msgctxt "Overlay"
+msgid "Original"
+msgstr "الأصل"
+
+#. Translators: the overlay that shows the model's reconstruction
+#: src/render.rs:61 ui/eovae-sidebar.slint:776
+msgctxt "Overlay"
+msgid "Reconstruction"
+msgstr "إعادة البناء"
+
+#. Translators: the overlay that shows a heat map of tile errors
+#: src/render.rs:63 ui/eovae-sidebar.slint:777
+msgctxt "Overlay"
+msgid "Error map"
+msgstr "خريطة الخطأ"
+
+#. Translators: the overlay that shows per-pixel differences
+#: src/render.rs:65 ui/eovae-sidebar.slint:778
+msgctxt "Overlay"
+msgid "Difference"
+msgstr "الفرق"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for
@@ -969,25 +999,25 @@ msgstr "تمييز VAE"
 msgid "the host returned {n} byte for rows of a {width}×{height} region"
 msgid_plural ""
 "the host returned {n} bytes for rows of a {width}×{height} region"
-msgstr[0] "أعاد المضيف {n} بايت لصفوف منطقة {width}×{height}"
-msgstr[1] "أعاد المضيف بايتًا واحدًا لصفوف منطقة {width}×{height}"
-msgstr[2] "أعاد المضيف {n} بايت لصفوف منطقة {width}×{height}"
-msgstr[3] "أعاد المضيف {n} بايت لصفوف منطقة {width}×{height}"
-msgstr[4] "أعاد المضيف {n} بايت لصفوف منطقة {width}×{height}"
-msgstr[5] "أعاد المضيف {n} بايت لصفوف منطقة {width}×{height}"
+msgstr[0] "أعاد المضيف {n} بايت لصفوف منطقة ⁨{width}×{height}⁩"
+msgstr[1] "أعاد المضيف بايتًا واحدًا لصفوف منطقة ⁨{width}×{height}⁩"
+msgstr[2] "أعاد المضيف {n} بايت لصفوف منطقة ⁨{width}×{height}⁩"
+msgstr[3] "أعاد المضيف {n} بايت لصفوف منطقة ⁨{width}×{height}⁩"
+msgstr[4] "أعاد المضيف {n} بايت لصفوف منطقة ⁨{width}×{height}⁩"
+msgstr[5] "أعاد المضيف {n} بايت لصفوف منطقة ⁨{width}×{height}⁩"
 
 #. Translators: why a part of the slide could not be read: the
 #. host (eov) gave {n} bytes of pixel data, the wrong size for a
 #. region of {width} × {height} pixels.
-#: src/resample.rs:216
+#: src/resample.rs:217
 msgid "the host returned {n} byte for a {width}×{height} region"
 msgid_plural "the host returned {n} bytes for a {width}×{height} region"
-msgstr[0] "أعاد المضيف {n} بايت لمنطقة {width}×{height}"
-msgstr[1] "أعاد المضيف بايتًا واحدًا لمنطقة {width}×{height}"
-msgstr[2] "أعاد المضيف {n} بايت لمنطقة {width}×{height}"
-msgstr[3] "أعاد المضيف {n} بايت لمنطقة {width}×{height}"
-msgstr[4] "أعاد المضيف {n} بايت لمنطقة {width}×{height}"
-msgstr[5] "أعاد المضيف {n} بايت لمنطقة {width}×{height}"
+msgstr[0] "أعاد المضيف {n} بايت لمنطقة ⁨{width}×{height}⁩"
+msgstr[1] "أعاد المضيف بايتًا واحدًا لمنطقة ⁨{width}×{height}⁩"
+msgstr[2] "أعاد المضيف {n} بايت لمنطقة ⁨{width}×{height}⁩"
+msgstr[3] "أعاد المضيف {n} بايت لمنطقة ⁨{width}×{height}⁩"
+msgstr[4] "أعاد المضيف {n} بايت لمنطقة ⁨{width}×{height}⁩"
+msgstr[5] "أعاد المضيف {n} بايت لمنطقة ⁨{width}×{height}⁩"
 
 #. Translators: Original and Reconstruction are overlays (the Overlay menu)
 #: src/sidebar.rs:35
@@ -1027,6 +1057,12 @@ msgstr "تُقاس الأخطاء على بكسلات الشريحة الأصل�
 msgid "{} normalisation"
 msgstr "تطبيع {}"
 
+#. Translators: ImageNet's mean and standard deviation (std) per channel
+#: src/sidebar.rs:109 ui/eovae-sidebar.slint:738
+msgctxt "Preprocessing"
+msgid "ImageNet mean/std"
+msgstr "‏mean/std لـ ImageNet"
+
 #: src/sidebar.rs:163
 msgid "Download the reference model"
 msgstr "تنزيل النموذج المرجعي"
@@ -1046,7 +1082,7 @@ msgstr "استخدام نموذج مؤسستك"
 #. Translators: {} is the start of the model's SHA-256 checksum
 #: src/sidebar.rs:171
 msgid "Your site's model (SHA-256 {}…)"
-msgstr "نموذج مؤسستك (SHA-256 {}…)"
+msgstr "نموذج مؤسستك (SHA-256 ⁨{}…⁩)"
 
 #. Translators: eov first asks the user whether to download the model
 #. (nothing is downloaded without that answer), then downloads it.
@@ -1059,12 +1095,12 @@ msgstr "يسألك eov عمّا إذا كنت تريد تنزيل النموذج
 #. Translators: {} is the model: its name and size, or "Your site's model (SHA-256 …)"
 #: src/sidebar.rs:188
 msgid "{} is in eov's model store."
-msgstr "{} موجود في مخزن نماذج eov."
+msgstr "‏{} موجود في مخزن نماذج eov."
 
 #. Translators: {what} is the model (its name and size, or "Your site's model (SHA-256 …)"); {server} the server it comes from
 #: src/sidebar.rs:193
 msgid "{what}, from {server}."
-msgstr "{what}، من {server}."
+msgstr "‏{what}، من {server}."
 
 #. Translators: {} is the model (its name and size, or "Your site's model (SHA-256 …)"); "Address…" is the button that shows the address fields
 #: src/sidebar.rs:202
@@ -1072,54 +1108,54 @@ msgid ""
 "{}: from your site's copy. Set its address (Address…), unless your "
 "administrator has given it to eov."
 msgstr ""
-"{}: من نسخة مؤسستك. عيّن عنوانها («العنوان…»)، ما لم يكن المسؤول قد زوّد eov "
+"‏{}: من نسخة مؤسستك. عيّن عنوانها («العنوان…»)، ما لم يكن المسؤول قد زوّد eov "
 "به."
 
 #. Translators: {} is where the model's preprocessing is declared: HistoVAE defaults, built-in model card, model metadata or sidecar file
-#: src/sidebar.rs:260
+#: src/sidebar.rs:268
 msgid "Changed by you (model declares: {})"
 msgstr "عدّلتها أنت (ما أعلنه النموذج: {})"
 
-#: src/sidebar.rs:263
+#: src/sidebar.rs:271
 msgid "From HistoVAE defaults"
 msgstr "من إعدادات HistoVAE الافتراضية"
 
-#: src/sidebar.rs:264
+#: src/sidebar.rs:272
 msgid "From built-in model card"
 msgstr "من بطاقة النموذج المضمّنة"
 
-#: src/sidebar.rs:265
+#: src/sidebar.rs:273
 msgid "From model metadata"
 msgstr "من البيانات الوصفية للنموذج"
 
 #. Translators: the sidecar is the model's <model>.eovae.json file
-#: src/sidebar.rs:267
+#: src/sidebar.rs:275
 msgid "From sidecar file"
 msgstr "من الملف المرافق"
 
-#: src/sidebar.rs:289
+#: src/sidebar.rs:297
 msgid "No model loaded."
 msgstr "لم يُحمَّل أي نموذج."
 
-#: src/sidebar.rs:295
+#: src/sidebar.rs:303
 msgid "Reading and hashing the model…"
 msgstr "جارٍ قراءة النموذج وحساب بصمته…"
 
-#: src/sidebar.rs:348
+#: src/sidebar.rs:358
 msgid "CUDA unavailable: {}"
-msgstr "CUDA غير متاح: {}"
+msgstr "‏CUDA غير متاح: {}"
 
 #. Translators: the model's fixed batch size (tiles per inference run)
-#: src/sidebar.rs:374
+#: src/sidebar.rs:384
 msgid "batch {}"
 msgstr "حجم الدفعة {}"
 
 #. Translators: the model takes any number of tiles per inference run
-#: src/sidebar.rs:376
+#: src/sidebar.rs:386
 msgid "dynamic batch"
 msgstr "دفعة ديناميكية"
 
-#: src/sidebar.rs:423
+#: src/sidebar.rs:433
 msgid "Embeddings from '{name}' ({n} value) are stored with results."
 msgid_plural "Embeddings from '{name}' ({n} values) are stored with results."
 msgstr[0] "تُخزَّن التضمينات من «{name}» ({n} قيمة) مع النتائج."
@@ -1130,32 +1166,32 @@ msgstr[4] "تُخزَّن التضمينات من «{name}» ({n} قيمة) مع
 msgstr[5] "تُخزَّن التضمينات من «{name}» ({n} قيمة) مع النتائج."
 
 #. Translators: the Threads field's hint: keep "auto", the word typed there
-#: src/sidebar.rs:503
+#: src/sidebar.rs:513
 msgid "1–{}, or auto"
-msgstr "1–{}، أو auto"
+msgstr "‏⁨1–{}⁩، أو auto"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:527
+#: src/sidebar.rs:537
 msgid "Auto: the model's {mpp}, resampled from level {level}"
 msgstr "تلقائي: {mpp} الخاص بالنموذج، بإعادة الاعتيان من المستوى {level}"
 
 #. Translators: a resolution choice; {mpp} is like "0.227 µm/px"
-#: src/sidebar.rs:533
+#: src/sidebar.rs:543
 msgid "Auto: the model's {mpp} = level {level}"
 msgstr "تلقائي: {mpp} الخاص بالنموذج = المستوى {level}"
 
 #. Translators: a resolution choice
-#: src/sidebar.rs:538
+#: src/sidebar.rs:548
 msgid "Auto (level 0)"
 msgstr "تلقائي (المستوى 0)"
 
 #. Translators: a level of the slide's pyramid, in the resolution choices
-#: src/sidebar.rs:548
+#: src/sidebar.rs:558
 msgid "Level {}"
 msgstr "المستوى {}"
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:574
+#: src/sidebar.rs:589
 msgid ""
 "The slide's finest level is {mpp}, coarser than the model's {model}: tiles "
 "are interpolated and errors will be inflated."
@@ -1164,7 +1200,7 @@ msgstr ""
 "البلاطات وستكون الأخطاء مضخَّمة."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:583
+#: src/sidebar.rs:598
 msgid ""
 "Level {level} is {mpp} but the model was trained at {model}; errors will be "
 "inflated."
@@ -1173,7 +1209,7 @@ msgstr ""
 "مضخَّمة."
 
 #. Translators: {mpp} and {model} are resolutions like "0.227 µm/px"
-#: src/sidebar.rs:593
+#: src/sidebar.rs:608
 msgid ""
 "Tiles are read from level {level} ({mpp}) and resampled to the model's "
 "{model}."
@@ -1182,44 +1218,49 @@ msgstr ""
 "{model}."
 
 #. Translators: {mpp} and {model} are resolutions like "0.23 µm/px"
-#: src/sidebar.rs:604
+#: src/sidebar.rs:619
 msgid "Level {level} at {mpp} (model {model})."
 msgstr "المستوى {level} بدقة {mpp} (النموذج {model})."
 
 #. Translators: {mpp} is a resolution like "0.23 µm/px"
-#: src/sidebar.rs:611
+#: src/sidebar.rs:626
 msgid "Level {level} at {mpp}."
 msgstr "المستوى {level} بدقة {mpp}."
 
-#: src/sidebar.rs:616
+#: src/sidebar.rs:631
 msgid "Level {} (the slide is not calibrated)."
 msgstr "المستوى {} (الشريحة غير معايَرة)."
 
-#: src/sidebar.rs:629 src/sidebar.rs:886
+#: src/sidebar.rs:642 ui/eovae-sidebar.slint:749
+msgctxt "Resolution"
+msgid "Auto"
+msgstr "تلقائي"
+
+#: src/sidebar.rs:644 src/sidebar.rs:901
 msgid "Open a slide."
 msgstr "افتح شريحة."
 
-#: src/sidebar.rs:651
+#: src/sidebar.rs:666
 msgid "{done} of {n} tile · {background} background · {unreadable} unreadable"
 msgid_plural ""
 "{done} of {n} tiles · {background} background · {unreadable} unreadable"
 msgstr[0] ""
-"{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
+"‏{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
 msgstr[1] ""
-"{done} من أصل بلاطة واحدة · الخلفية: {background} · غير المقروءة: "
+"‏{done} من أصل بلاطة واحدة · الخلفية: {background} · غير المقروءة: "
 "{unreadable}"
 msgstr[2] ""
-"{done} من أصل {n} بلاطتين · الخلفية: {background} · غير المقروءة: "
+"‏{done} من أصل {n} بلاطتين · الخلفية: {background} · غير المقروءة: "
 "{unreadable}"
 msgstr[3] ""
-"{done} من أصل {n} بلاطات · الخلفية: {background} · غير المقروءة: {unreadable}"
+"‏{done} من أصل {n} بلاطات · الخلفية: {background} · غير المقروءة: {unreadable}"
 msgstr[4] ""
-"{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
+"‏{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
 msgstr[5] ""
-"{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
+"‏{done} من أصل {n} بلاطة · الخلفية: {background} · غير المقروءة: {unreadable}"
 
 #. Translators: Viewport and Whole slide are the buttons of the same names
-#: src/sidebar.rs:699
+#: src/sidebar.rs:714
 msgid ""
 "Zoom in to analyse automatically ({n} tile visible), or run Viewport or "
 "Whole slide."
@@ -1245,7 +1286,7 @@ msgstr[5] ""
 "كبّر للتحليل التلقائي ({n} بلاطة مرئية)، أو شغّل «منطقة العرض» أو «الشريحة "
 "كاملة»."
 
-#: src/sidebar.rs:748
+#: src/sidebar.rs:763
 msgid ""
 "{n} tissue tile scored, {background} background, {unreadable} unreadable — "
 "{percent} % of the {total} tiles at level {level}."
@@ -1253,104 +1294,104 @@ msgid_plural ""
 "{n} tissue tiles scored, {background} background, {unreadable} unreadable — "
 "{percent} % of the {total} tiles at level {level}."
 msgstr[0] ""
-"{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"‏{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 msgstr[1] ""
 "بلاطة نسيج واحدة مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 msgstr[2] ""
-"{n} بلاطتا نسيج مقيَّمتان، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"‏{n} بلاطتا نسيج مقيَّمتان، الخلفية: {background}، غير المقروءة: {unreadable} — "
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 msgstr[3] ""
-"{n} بلاطات نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"‏{n} بلاطات نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 msgstr[4] ""
-"{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"‏{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 msgstr[5] ""
-"{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
-"{percent}% من البلاطات البالغ عددها {total} في المستوى {level}."
+"‏{n} بلاطة نسيج مقيَّمة، الخلفية: {background}، غير المقروءة: {unreadable} — "
+"⁨{percent}%⁩ من البلاطات البالغ عددها {total} في المستوى {level}."
 
 #. Translators: MAE is the mean absolute error; p95 the 95th percentile
-#: src/sidebar.rs:768
+#: src/sidebar.rs:783
 msgid "Tile MAE: mean {mean} · median {median} · p95 {p95} · max {max}"
 msgstr ""
-"MAE البلاطات: المتوسط {mean} · الوسيط {median} · p95 {p95} · الأقصى {max}"
+"‏MAE البلاطات: المتوسط {mean} · الوسيط {median} · p95 {p95} · الأقصى {max}"
 
 #. Translators: a bar of the error histogram: tiles whose error is from {lo} to {hi}
-#: src/sidebar.rs:788
+#: src/sidebar.rs:803
 msgid "{lo}–{hi}: {n} tile"
 msgid_plural "{lo}–{hi}: {n} tiles"
-msgstr[0] "{lo}–{hi}: {n} بلاطة"
-msgstr[1] "{lo}–{hi}: بلاطة واحدة"
-msgstr[2] "{lo}–{hi}: {n} بلاطتان"
-msgstr[3] "{lo}–{hi}: {n} بلاطات"
-msgstr[4] "{lo}–{hi}: {n} بلاطة"
-msgstr[5] "{lo}–{hi}: {n} بلاطة"
+msgstr[0] "‏⁨{lo}–{hi}⁩: {n} بلاطة"
+msgstr[1] "‏⁨{lo}–{hi}⁩: بلاطة واحدة"
+msgstr[2] "‏⁨{lo}–{hi}⁩: {n} بلاطتان"
+msgstr[3] "‏⁨{lo}–{hi}⁩: {n} بلاطات"
+msgstr[4] "‏⁨{lo}–{hi}⁩: {n} بلاطة"
+msgstr[5] "‏⁨{lo}–{hi}⁩: {n} بلاطة"
 
 #. Translators: a region's scores: MAE is the mean absolute error, max the largest pixel error
-#: src/sidebar.rs:845
+#: src/sidebar.rs:860
 msgid "MAE {mae} · max {max}"
-msgstr "MAE {mae} · الأقصى {max}"
+msgstr "‏MAE {mae} · الأقصى {max}"
 
 #. Translators: the error map's legend: MAE is the mean absolute error; p05–p95 the 5th to 95th percentile
-#: src/sidebar.rs:859
+#: src/sidebar.rs:874
 msgid "Tile MAE (p05–p95)"
-msgstr "MAE البلاطات (p05–p95)"
+msgstr "‏MAE البلاطات (p05–p95)"
 
-#: src/sidebar.rs:866
+#: src/sidebar.rs:881
 msgid "Pixel error"
 msgstr "خطأ البكسل"
 
-#: src/sidebar.rs:885
+#: src/sidebar.rs:900
 msgid "Nothing analysed on this slide with these settings yet."
 msgstr "لم يُحلَّل شيء على هذه الشريحة بهذه الإعدادات بعد."
 
 #. Translators: the result cache: {used} of {budget} (sizes) on disk, and how many analysis runs it holds
-#: src/sidebar.rs:913
+#: src/sidebar.rs:928
 msgid "{used} of {budget} on disk · {n} run"
 msgid_plural "{used} of {budget} on disk · {n} runs"
-msgstr[0] "{used} من {budget} على القرص · {n} عملية تحليل"
-msgstr[1] "{used} من {budget} على القرص · عملية تحليل واحدة"
-msgstr[2] "{used} من {budget} على القرص · {n} عمليتا تحليل"
-msgstr[3] "{used} من {budget} على القرص · {n} عمليات تحليل"
-msgstr[4] "{used} من {budget} على القرص · {n} عملية تحليل"
-msgstr[5] "{used} من {budget} على القرص · {n} عملية تحليل"
+msgstr[0] "‏{used} من {budget} على القرص · {n} عملية تحليل"
+msgstr[1] "‏{used} من {budget} على القرص · عملية تحليل واحدة"
+msgstr[2] "‏{used} من {budget} على القرص · {n} عمليتا تحليل"
+msgstr[3] "‏{used} من {budget} على القرص · {n} عمليات تحليل"
+msgstr[4] "‏{used} من {budget} على القرص · {n} عملية تحليل"
+msgstr[5] "‏{used} من {budget} على القرص · {n} عملية تحليل"
 
-#: src/sidebar.rs:919
+#: src/sidebar.rs:934
 msgid "Disk cache disabled"
 msgstr "ذاكرة التخزين المؤقت على القرص معطّلة"
 
-#: src/sidebar.rs:927
+#: src/sidebar.rs:942
 msgid "Tile pixels in memory: {used} of {limit}"
 msgstr "بكسلات البلاطات في الذاكرة: {used} من {limit}"
 
-#: src/sidebar.rs:995
+#: src/sidebar.rs:1010
 msgid "Open an ONNX model"
 msgstr "فتح نموذج ONNX"
 
-#: src/sidebar.rs:997
+#: src/sidebar.rs:1012
 msgid "ONNX models"
 msgstr "نماذج ONNX"
 
-#: src/sidebar.rs:1024
+#: src/sidebar.rs:1039
 msgid "Choose the ONNX Runtime library"
 msgstr "اختيار مكتبة ONNX Runtime"
 
-#: src/sidebar.rs:1272
+#: src/sidebar.rs:1287
 msgid "Open a slide first."
 msgstr "افتح شريحة أولًا."
 
-#: src/sidebar.rs:1366
+#: src/sidebar.rs:1381
 msgid "Export tile scores"
 msgstr "تصدير درجات البلاطات"
 
-#: src/sidebar.rs:1383
+#: src/sidebar.rs:1398
 msgid "Clear the VAE result cache?"
 msgstr "هل تريد مسح ذاكرة التخزين المؤقت لنتائج VAE؟"
 
 #. Translators: {} is a size, e.g. "120 MB"
-#: src/sidebar.rs:1386
+#: src/sidebar.rs:1401
 msgid ""
 "This deletes {} of stored results for every slide. Results are recomputed "
 "when needed."
@@ -1358,109 +1399,73 @@ msgstr ""
 "سيؤدي هذا إلى حذف {} من النتائج المخزّنة لجميع الشرائح. يُعاد حساب النتائج عند "
 "الحاجة."
 
-#: src/sidebar.rs:1389
+#: src/sidebar.rs:1404
 msgid "Clear"
 msgstr "مسح"
 
-#: src/sidebar.rs:1390
+#: src/sidebar.rs:1405
 msgid "Cancel"
 msgstr "إلغاء"
 
-#: ui/eovae-sidebar.slint:201
+#: ui/eovae-sidebar.slint:718
 msgctxt "EovaeSidebar"
 msgid "No model loaded."
 msgstr "لم يُحمَّل أي نموذج."
 
-#: ui/eovae-sidebar.slint:221
-msgctxt "Preprocessing"
-msgid "ImageNet mean/std"
-msgstr "mean/std لـ ImageNet"
-
-#. Translators: inference device: CUDA when it works, else the CPU
-#: ui/eovae-sidebar.slint:230
-msgctxt "Device"
-msgid "Auto"
-msgstr "تلقائي"
-
-#: ui/eovae-sidebar.slint:232
-msgctxt "Resolution"
-msgid "Auto"
-msgstr "تلقائي"
-
-#: ui/eovae-sidebar.slint:258
-msgctxt "Overlay"
-msgid "Original"
-msgstr "الأصل"
-
-#: ui/eovae-sidebar.slint:259
-msgctxt "Overlay"
-msgid "Reconstruction"
-msgstr "إعادة البناء"
-
-#: ui/eovae-sidebar.slint:260
-msgctxt "Overlay"
-msgid "Error map"
-msgstr "خريطة الخطأ"
-
-#: ui/eovae-sidebar.slint:261
-msgctxt "Overlay"
-msgid "Difference"
-msgstr "الفرق"
-
 #. Translators: the sidebar's section about the ONNX model
-#: ui/eovae-sidebar.slint:333
+#: ui/eovae-sidebar.slint:870
 msgctxt "EovaeSidebar"
 msgid "Model"
 msgstr "النموذج"
 
-#: ui/eovae-sidebar.slint:347
+#: ui/eovae-sidebar.slint:884
 msgctxt "EovaeSidebar"
 msgid "No model"
 msgstr "لا يوجد نموذج"
 
 #. Translators: {} is the inference device, e.g. CPU · 8 threads
-#: ui/eovae-sidebar.slint:362
+#: ui/eovae-sidebar.slint:899
 msgctxt "EovaeSidebar"
 msgid "Running on {}"
 msgstr "يعمل على {}"
 
-#: ui/eovae-sidebar.slint:369
+#: ui/eovae-sidebar.slint:914
 msgctxt "EovaeSidebar"
 msgid "Load ONNX…"
 msgstr "تحميل ONNX…"
 
 #. Translators: unloads the model
-#: ui/eovae-sidebar.slint:378
+#: ui/eovae-sidebar.slint:926
 msgctxt "EovaeSidebar"
 msgid "Clear"
 msgstr "مسح"
 
 #. Translators: chooses the ONNX Runtime library
-#: ui/eovae-sidebar.slint:385
+#: ui/eovae-sidebar.slint:936
 msgctxt "EovaeSidebar"
 msgid "Runtime…"
 msgstr "بيئة التشغيل…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Address…"
 msgstr "العنوان…"
 
-#: ui/eovae-sidebar.slint:409
+#: ui/eovae-sidebar.slint:969
 msgctxt "EovaeSidebar"
 msgid "Hide address"
 msgstr "إخفاء العنوان"
 
-#: ui/eovae-sidebar.slint:423
+#: ui/eovae-sidebar.slint:990
 msgctxt "EovaeSidebar"
 msgid ""
 "Your site's copy of the model (the .onnx file; the reference model's .onnx."
 "data comes from the same folder):"
 msgstr ""
-"نسخة مؤسستك من النموذج (ملف .onnx؛ ويأتي ملف .onnx.data للنموذج المرجعي من "
+"نسخة مؤسستك من النموذج (ملف ⁨.onnx⁩؛ ويأتي ملف ⁨.onnx.data⁩ للنموذج المرجعي من "
 "المجلد نفسه):"
 
-#: ui/eovae-sidebar.slint:438
+#: ui/eovae-sidebar.slint:1005
 msgctxt "EovaeSidebar"
 msgid ""
 "SHA-256 of your own model at that address (empty: the reference model, "
@@ -1469,167 +1474,167 @@ msgstr ""
 "قيمة SHA-256 لنموذجك الخاص في ذلك العنوان (فارغ: النموذج المرجعي، ويُتحقق منه "
 "بمطابقته مع قيمة SHA-256 التي يعرفها eovae):"
 
-#: ui/eovae-sidebar.slint:443
+#: ui/eovae-sidebar.slint:1010
 msgctxt "EovaeSidebar"
 msgid "64 hex digits"
 msgstr "64 رقمًا ست عشريًا"
 
 #. Translators: {} is the model's input: name · type · shape
-#: ui/eovae-sidebar.slint:458
+#: ui/eovae-sidebar.slint:1025
 msgctxt "EovaeSidebar"
 msgid "Input: {}"
 msgstr "المُدخل: {}"
 
 #. Translators: the model's output the sidebar reads
-#: ui/eovae-sidebar.slint:462
+#: ui/eovae-sidebar.slint:1029
 msgctxt "EovaeSidebar"
 msgid "Output"
 msgstr "المُخرج"
 
-#: ui/eovae-sidebar.slint:484
+#: ui/eovae-sidebar.slint:1048
 msgctxt "EovaeSidebar"
 msgid "Preprocessing"
 msgstr "المعالجة المسبقة"
 
-#: ui/eovae-sidebar.slint:494
+#: ui/eovae-sidebar.slint:1059
 msgctxt "EovaeSidebar"
 msgid "Input range"
 msgstr "نطاق المُدخل"
 
-#: ui/eovae-sidebar.slint:506
+#: ui/eovae-sidebar.slint:1068
 msgctxt "EovaeSidebar"
 msgid "Output range"
 msgstr "نطاق المُخرج"
 
-#: ui/eovae-sidebar.slint:518
+#: ui/eovae-sidebar.slint:1077
 msgctxt "EovaeSidebar"
 msgid "Composite transparency onto white"
 msgstr "دمج الشفافية على خلفية بيضاء"
 
-#: ui/eovae-sidebar.slint:524
+#: ui/eovae-sidebar.slint:1083
 msgctxt "EovaeSidebar"
 msgid "Turn near-black pixels white"
 msgstr "تحويل البكسلات القريبة من الأسود إلى الأبيض"
 
-#: ui/eovae-sidebar.slint:532
+#: ui/eovae-sidebar.slint:1093
 msgctxt "EovaeSidebar"
 msgid "Use the model's preprocessing"
 msgstr "استخدام المعالجة المسبقة للنموذج"
 
-#: ui/eovae-sidebar.slint:544
+#: ui/eovae-sidebar.slint:1104
 msgctxt "EovaeSidebar"
 msgid "Analysis"
 msgstr "التحليل"
 
 #. Translators: the inference device (CPU or CUDA)
-#: ui/eovae-sidebar.slint:559
+#: ui/eovae-sidebar.slint:1119
 msgctxt "EovaeSidebar"
 msgid "Device"
 msgstr "الجهاز"
 
 #. Translators: the pyramid level tiles are read from
-#: ui/eovae-sidebar.slint:572
+#: ui/eovae-sidebar.slint:1129
 msgctxt "EovaeSidebar"
 msgid "Resolution"
 msgstr "الدقة"
 
 #. Translators: CPU inference threads
-#: ui/eovae-sidebar.slint:590
+#: ui/eovae-sidebar.slint:1144
 msgctxt "EovaeSidebar"
 msgid "Threads"
 msgstr "مؤشرات الترابط"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch"
 msgstr "الدفعة"
 
 #. Translators: batch size (tiles per run); (model): the model fixes it
-#: ui/eovae-sidebar.slint:606
+#: ui/eovae-sidebar.slint:1160
 msgctxt "EovaeSidebar"
 msgid "Batch (model)"
 msgstr "الدفعة (النموذج)"
 
 #. Translators: TF32 is a faster, less precise number format of NVIDIA GPUs
 #. (CUDA); the computed errors change slightly.
-#: ui/eovae-sidebar.slint:622
+#: ui/eovae-sidebar.slint:1176
 msgctxt "EovaeSidebar"
 msgid "Allow TF32 on CUDA (faster, less precise)"
 msgstr "السماح بـ TF32 على CUDA (أسرع، وأقل دقة)"
 
-#: ui/eovae-sidebar.slint:628
+#: ui/eovae-sidebar.slint:1182
 msgctxt "EovaeSidebar"
 msgid "Skip background tiles"
 msgstr "تخطي بلاطات الخلفية"
 
-#: ui/eovae-sidebar.slint:634
+#: ui/eovae-sidebar.slint:1188
 msgctxt "EovaeSidebar"
 msgid "Analyse visible tiles automatically"
 msgstr "تحليل البلاطات المرئية تلقائيًا"
 
 #. Translators: analyses the visible part of the slide
-#: ui/eovae-sidebar.slint:645
+#: ui/eovae-sidebar.slint:1207
 msgctxt "EovaeSidebar"
 msgid "Viewport"
 msgstr "منطقة العرض"
 
 #. Translators: analyses the region of interest drawn on the slide
-#: ui/eovae-sidebar.slint:655
+#: ui/eovae-sidebar.slint:1219
 msgctxt "EovaeSidebar"
 msgid "ROI"
 msgstr "ROI"
 
-#: ui/eovae-sidebar.slint:664
+#: ui/eovae-sidebar.slint:1230
 msgctxt "EovaeSidebar"
 msgid "Whole slide"
 msgstr "الشريحة كاملة"
 
 #. Translators: stops the running analysis
-#: ui/eovae-sidebar.slint:674
+#: ui/eovae-sidebar.slint:1242
 msgctxt "EovaeSidebar"
 msgid "Cancel"
 msgstr "إلغاء"
 
-#: ui/eovae-sidebar.slint:722
+#: ui/eovae-sidebar.slint:1291
 msgctxt "EovaeSidebar"
 msgid "Results"
 msgstr "النتائج"
 
 #. Translators: what the overlay shows: Original, Reconstruction, …
-#: ui/eovae-sidebar.slint:737
+#: ui/eovae-sidebar.slint:1306
 msgctxt "EovaeSidebar"
 msgid "Overlay"
 msgstr "التراكب"
 
-#: ui/eovae-sidebar.slint:824
+#: ui/eovae-sidebar.slint:1390
 msgctxt "EovaeSidebar"
 msgid "Highest-error regions"
 msgstr "المناطق الأعلى خطأً"
 
-#: ui/eovae-sidebar.slint:840
+#: ui/eovae-sidebar.slint:1409
 msgctxt "EovaeSidebar"
 msgid "Export CSV…"
 msgstr "تصدير CSV…"
 
 #. Translators: the intended use: keep its meaning exactly
-#: ui/eovae-sidebar.slint:848
+#: ui/eovae-sidebar.slint:1416
 msgctxt "EovaeSidebar"
 msgid "Research use only; not for diagnosis."
 msgstr "للاستخدام البحثي فقط؛ وليس للتشخيص."
 
 #. Translators: the section about eovae's stored results
-#: ui/eovae-sidebar.slint:856
+#: ui/eovae-sidebar.slint:1424
 msgctxt "EovaeSidebar"
 msgid "Cache"
 msgstr "ذاكرة التخزين المؤقت"
 
-#: ui/eovae-sidebar.slint:874
+#: ui/eovae-sidebar.slint:1442
 msgctxt "EovaeSidebar"
 msgid "Keep reconstructions on disk (large)"
 msgstr "الاحتفاظ بإعادات البناء على القرص (حجم كبير)"
 
-#: ui/eovae-sidebar.slint:883
+#: ui/eovae-sidebar.slint:1453
 msgctxt "EovaeSidebar"
 msgid "Clear cache…"
 msgstr "مسح ذاكرة التخزين المؤقت…"

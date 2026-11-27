@@ -778,6 +778,12 @@ impl Catalog {
     pub fn plural_form(&self, n: u64) -> usize {
         self.plural.form(n)
     }
+
+    /// The plural rule of the catalog: its `Plural-Forms` header's, or the
+    /// language's when it has none.
+    pub fn plural_rule(&self) -> &PluralRule {
+        &self.plural
+    }
 }
 
 /// A gettext plural rule: the C expression of a `Plural-Forms` header
@@ -1051,6 +1057,28 @@ impl PluralRule {
             .unwrap_or(usize::MAX)
             .min(self.count - 1)
     }
+
+    /// Whether `other` gives every number the same form as this rule, as
+    /// two spellings of one rule do (`plural=n != 1;` and
+    /// `plural=(n != 1);`). Numbers are compared where gettext rules tell
+    /// them apart: the small ones, and by their last two or three digits.
+    /// The number of forms is not compared ([`Self::count`]).
+    pub fn same_forms(&self, other: &PluralRule) -> bool {
+        (0..=10_000u64)
+            .chain([
+                100_000,
+                1_000_000,
+                1_000_001,
+                1_000_002,
+                1_000_005,
+                1_000_011,
+                1_000_021,
+                1_000_100,
+                10_000_000,
+                u64::from(u32::MAX),
+            ])
+            .all(|n| self.form(n) == other.form(n))
+    }
 }
 
 /// What [`check_catalog`] found in a catalog.
@@ -1063,8 +1091,9 @@ pub struct CatalogReport {
     pub missing: Vec<String>,
     /// Texts the catalog has but the template no longer does.
     pub obsolete: Vec<String>,
-    /// What would show wrongly: a header that does not fit the language,
-    /// plural forms that are missing, placeholders that are lost or made up.
+    /// What is wrong: a header that does not fit the language (or lacks its
+    /// plural rule), plural forms that are missing, placeholders that are
+    /// lost or made up.
     pub problems: Vec<String>,
 }
 
@@ -1125,7 +1154,12 @@ fn placeholders_in_order(text: &str) -> Vec<&str> {
 /// Checks a catalog of `language` (the text of its `.po` file) against
 /// what eov needs to show it, and, when given, its template (`.pot`):
 ///
-/// - the header names the language and its plural forms;
+/// - the header names the language and has its plural rule
+///   (`Plural-Forms`) in any spelling: as many forms as `language` has,
+///   and the same form for every number ([`PluralRule::same_forms`]). A
+///   header without one is reported too (`msgfmt --check` refuses a
+///   catalog with plural texts without one), although eov reads a plugin's
+///   catalog without one with the language's rule;
 /// - a text with a number has as many forms as the language has, and each
 ///   form that numbers other than one take shows the number (`{n}`) when
 ///   the English does;
@@ -1154,7 +1188,6 @@ pub fn check_catalog(
             return report;
         }
     };
-    let compact = |text: &str| text.split_whitespace().collect::<String>();
     match file.metadata.get("Language") {
         Some(tag) if tag.trim() == language.tag => {}
         other => report.problems.push(format!(
@@ -1164,14 +1197,34 @@ pub fn check_catalog(
         )),
     }
     let rule = match file.metadata.get("Plural-Forms") {
-        Some(forms) if compact(forms) == compact(language.plural_forms) => {
-            PluralRule::from_header(forms).ok()
-        }
-        other => {
+        Some(forms) => match (
+            PluralRule::from_header(forms),
+            PluralRule::from_header(language.plural_forms),
+        ) {
+            (Ok(rule), Ok(wanted))
+                if rule.count() == wanted.count() && rule.same_forms(&wanted) =>
+            {
+                Some(rule)
+            }
+            (Err(error), _) => {
+                report.problems.push(format!(
+                    "the header's Plural-Forms {forms:?} cannot be read ({error}); {}'s is {}",
+                    language.english_name, language.plural_forms
+                ));
+                None
+            }
+            _ => {
+                report.problems.push(format!(
+                    "the header's Plural-Forms {forms:?} is not the rule of {} ({}, in any spelling)",
+                    language.english_name, language.plural_forms
+                ));
+                None
+            }
+        },
+        None => {
             report.problems.push(format!(
-                "the header's Plural-Forms is {}, not {}",
-                other.map(String::as_str).unwrap_or("(none)"),
-                language.plural_forms
+                "the header has no Plural-Forms; {}'s is {}",
+                language.english_name, language.plural_forms
             ));
             None
         }
@@ -2026,6 +2079,80 @@ mod tests {
         assert!(problems.contains("loses"), "{problems}");
         assert!(problems.contains("2 plural forms"), "{problems}");
         assert!(problems.contains("does not show {n}"), "{problems}");
+    }
+
+    /// A catalog may write its language's plural rule in any spelling (as
+    /// Weblate, msginit or Poedit write them); another rule, another number
+    /// of forms and a header without a rule are reported.
+    #[test]
+    fn plural_rules_are_checked_by_the_forms_they_give() {
+        let check = |tag: &str, forms: Option<&str>| {
+            let language = by_tag(tag).unwrap();
+            let header = empty_catalog(language, "t");
+            let header = match forms {
+                Some(forms) => header.replace(language.plural_forms, forms),
+                None => header.replace(
+                    &format!("\"Plural-Forms: {}\\n\"\n", language.plural_forms),
+                    "",
+                ),
+            };
+            assert_eq!(header.contains("Plural-Forms"), forms.is_some());
+            check_catalog(
+                language,
+                &format!("{header}\nmsgid \"Close\"\nmsgstr \"x\"\n"),
+                None,
+            )
+            .problems
+        };
+        for (tag, forms) in [
+            ("de", "nplurals=2; plural=(n != 1);"),
+            ("de", "nplurals=2; plural=n != 1;"),
+            ("fr", "nplurals=2; plural=n>1"),
+            (
+                "cs",
+                "nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;",
+            ),
+            (
+                "ru",
+                "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+            ),
+            ("ja", "nplurals=1; plural=0;"),
+        ] {
+            assert_eq!(
+                check(tag, Some(forms)),
+                Vec::<String>::new(),
+                "{tag}: {forms}"
+            );
+        }
+        for (tag, forms) in [
+            ("pl", "nplurals=2; plural=(n != 1);"),
+            ("de", "nplurals=3; plural=(n != 1);"),
+            ("fr", "nplurals=2; plural=(n != 1);"),
+            ("de", "nplurals=2; plural=n !! 1;"),
+        ] {
+            let problems = check(tag, Some(forms));
+            assert!(
+                problems.len() == 1 && problems[0].contains("Plural-Forms"),
+                "{tag}: {forms}: {problems:?}"
+            );
+        }
+        let problems = check("ro", None);
+        assert!(
+            problems.len() == 1 && problems[0].contains("no Plural-Forms"),
+            "{problems:?}"
+        );
+        // Two spellings of one rule give the same forms; other rules do not.
+        let rule = |forms: &str| PluralRule::from_header(forms).unwrap();
+        assert!(
+            rule("nplurals=2; plural=n>1;").same_forms(&rule(by_tag("fr").unwrap().plural_forms))
+        );
+        assert!(!rule("nplurals=2; plural=n!=1;").same_forms(&rule("nplurals=2; plural=n>1;")));
+        let catalog = Catalog::parse(by_tag("fr").unwrap(), b"msgid \"\"\nmsgstr \"\"\n").unwrap();
+        assert!(
+            catalog
+                .plural_rule()
+                .same_forms(&rule("nplurals=2; plural=(n > 1);"))
+        );
     }
 
     #[test]

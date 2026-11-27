@@ -145,6 +145,10 @@ jobs:
           # slint-tr-extractor matches the Slint version eov is built with.
           cargo install --locked slint-tr-extractor --version 1.19.0
           cargo install --locked xtr --version 0.1.11
+      # The rules `check` and `import` apply to translations (right-to-left
+      # marks, isolates, placeholders).
+      - name: Test the catalog tool
+        run: python3 -m unittest discover -s tools/i18n -p 'test_*.py' -v
       # Templates out of date with the sources, catalogs not merged with
       # them, invalid catalogs and wrong headers. Completeness, placeholders
       # and plural forms are checked by the eov tests (i18n::tests).

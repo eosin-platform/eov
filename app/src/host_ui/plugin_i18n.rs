@@ -154,7 +154,7 @@ fn surface_catalog(
     // rspolib's panics on malformed files into errors. Its rule is the
     // header's, or the language's when there is none.
     let catalog = Catalog::parse(language, text.as_bytes()).map_err(|error| error.message)?;
-    if !same_plural_forms(|n| catalog.plural_form(n), |n| wanted.form(n)) {
+    if !catalog.plural_rule().same_forms(&wanted) {
         return Err(format!(
             "its plural rule gives some numbers other forms than {}'s rule ({})",
             language.english_name, language.plural_forms
@@ -197,26 +197,6 @@ fn surface_catalog(
         return Err("cannot write a copy for the surfaces with the language's plural rule".into());
     }
     Ok(copy)
-}
-
-/// Whether two plural rules give the same form to every number gettext
-/// rules tell apart (they look at the last two or three digits, and at
-/// small numbers).
-fn same_plural_forms(a: impl Fn(u64) -> usize, b: impl Fn(u64) -> usize) -> bool {
-    (0..=10_000u64)
-        .chain([
-            100_000,
-            1_000_000,
-            1_000_001,
-            1_000_002,
-            1_000_005,
-            1_000_011,
-            1_000_021,
-            1_000_100,
-            10_000_000,
-            u64::from(u32::MAX),
-        ])
-        .all(|n| a(n) == b(n))
 }
 
 /// A `.po` text read line by line, as far as the surface bundle needs it:
@@ -575,10 +555,7 @@ mod tests {
         let language = i18n::by_tag(tag).unwrap();
         let catalog = Catalog::parse(language, bundled(bundle, tag).as_bytes()).unwrap();
         let rule = PluralRule::from_header(language.plural_forms).unwrap();
-        assert!(same_plural_forms(
-            |n| catalog.plural_form(n),
-            |n| rule.form(n)
-        ));
+        assert!(catalog.plural_rule().same_forms(&rule));
         catalog
     }
 

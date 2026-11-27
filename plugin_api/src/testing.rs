@@ -63,6 +63,18 @@
 //! that sends it; texts a plugin makes on threads of its own are in
 //! English, since new threads start in English. It suits plugins that make
 //! their texts on the thread that delivers events.
+//!
+//! A harness finds the plugin's catalogs as eov does: through the `[i18n]`
+//! table of `plugin.toml` in [`PluginInit::plugin_root`]. [`test_init`]'s
+//! root is an empty temporary folder, so a language set on it changes only
+//! [`i18n::current`](crate::i18n::current) (the decimal separator,
+//! isolation), and `tr!` stays English without a word. To test
+//! translations, put `plugin.toml` and
+//! `<catalogs>/<tag>/LC_MESSAGES/<domain>.po` into `plugin_root` before
+//! creating the harness, as the example plugin's
+//! `texts_follow_the_language_of_the_interface` test does, or set a catalog
+//! with [`i18n::set_catalog`](crate::i18n::set_catalog) after creating it
+//! (creating another harness sets the language and catalog again).
 
 use crate::abi::{
     FfiError, FfiErrorKind, FfiResult, FilterFrame, FilterView, HostFfi, HostFfi_TO, Pixels,
@@ -745,7 +757,7 @@ impl HostFfi for MockHost {
 /// Default init for tests: unique, writable temporary directories, and no
 /// language, so the plugin's texts are in English (see the
 /// [module documentation](self#languages-in-tests) on tests that switch
-/// languages).
+/// languages). Its `plugin_root` holds no `plugin.toml` and no catalogs.
 pub fn test_init(plugin_id: &str) -> PluginInit {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
@@ -790,7 +802,8 @@ impl<P: Plugin> TestHarness<P> {
 
     /// Creates the plugin with `init`, switching `tr!` to `init.language`
     /// (English when `None`) for the whole plugin library, or for this
-    /// thread with the `thread-local-language` feature.
+    /// thread with the `thread-local-language` feature, and loading the
+    /// catalog that `plugin.toml` in `init.plugin_root` declares for it.
     pub fn with_init(init: PluginInit) -> Result<Self, String> {
         Self::with_host(MockHost::new(), init)
     }

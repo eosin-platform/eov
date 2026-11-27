@@ -102,7 +102,7 @@ tissue	tecido
 tissue QC	controle de qualidade do tecido (CQ do tecido)	"CQ do tecido" in compact labels.
 pen marks	marcas de caneta	
 folds	dobras	
-blur, out of focus	desfoque, fora de foco	"áreas desfocadas".
+blur, out of focus	desfoque, fora de foco	"áreas desfocadas". Tissue QC flags are for review, not certainties: keep the hedge on every flag ("possíveis dobras ou possível desfoque", "possivelmente fora de foco"); never "possíveis dobras ou áreas desfocadas", where "possíveis" does not reach the blur.
 grid cell (tissue QC)	quadrícula	Never "célula" (would read as a biological cell).
 tissue detection	detecção de tecido	
 tissue mask	máscara de tecido	
@@ -284,7 +284,7 @@ requirement (SemVer, environment)	requisito	"requisito SemVer", "requisito de am
 lock file	arquivo de bloqueio	
 preset	predefinição	"predefinição de coloração H-DAB".
 skip, skipped	ignorar, ignorado	Patches, slides or plugins left out of a run.
-leave out (filter option)	omitir	"Omitir marcas de caneta, dobras e áreas desfocadas"; not "excluir", which means delete.
+leave out (filter option)	omitir	"Omitir marcas de caneta, possíveis dobras e possível desfoque"; not "excluir", which means delete.
 Open Containing Folder	Abrir pasta do arquivo	
 Close Others / Close to the Right / Close All (tabs)	Fechar outras abas / Fechar abas à direita / Fechar todas as abas	
 Up (parent folder button)	Subir um nível	
@@ -330,7 +330,7 @@ click, Shift+click, double-click	clique, Shift+clique, clique duas vezes	"Ctrl+c
 (counts that can be zero)	Resultados: {n}	pt-BR uses the singular form for 0 and 1; where 0 is common, use a neutral "label: {n}" in both forms ("Resultados: {n}", "Campos posicionados nesta lâmina: {n}", "contagem: {n}").
 predicted, prediction	predito, predição	Cellaris; badge "PREDIÇÃO — uso exclusivo em pesquisa, não usar para diagnóstico"; never "previsto" for model output, never "artificial"/"simulado".
 not for diagnosis	não usar para diagnóstico	Full: "não devem ser usadas para diagnóstico"; always together with "uso exclusivo em pesquisa".
-readout (Cellaris region readout)	leitura	"Leitura de região do Cellaris", section "LEITURA DE REGIÃO", "Leitura copiada…".
+readout, region readout (Cellaris)	resumo, resumo de região	Statistics (mean, spread, density r²) computed from the model's predicted values over a region, not a measurement: never "leitura" (an instrument reading), "medição", "medida", "medir" or "aferição" ("medições"/"medida" only where the English says measurements/measured: "as predições não são medições", "a IF medida"). Masculine: "Resumo copiado…", "Cancelado · {}", "substituído por uma nova região"; plural "resumos". Tool and job title Cellaris region readout = "Resumo de região do Cellaris" (in text: a ferramenta “Resumo de região do Cellaris”); section REGION READOUT = "RESUMO DE REGIÃO"; readout region (layer) = "Cellaris — região do resumo"; a readout of the predicted values = "um resumo dos valores preditos"; a long readout = "um resumo que vai demorar para ser calculado".
 window (Cellaris model input)	janela	The square image the model predicts from: "{n} janelas", "{} s por janela".
 cell (Cellaris grid square)	quadrícula	Small square of the slide predicted at once; never "célula" (biological cell).
 tissue block (Cellaris, 5 µm square)	quadrado de tecido	Never "bloco de tecido" (would read as a paraffin block).
@@ -364,5 +364,5 @@ macOS System Settings › Privacy & Security › Accessibility	Ajustes do Sistem
 marker (example plugin point)	marcador	Example plugin only; protein markers are also "marcador".
 worker thread	thread de trabalho	A part of eov or a plugin that works in the background; feminine: "Não foi possível iniciar uma thread de trabalho", "Uma thread de trabalho do eovae falhou inesperadamente".
 host (eov, in plugin messages)	o eov	In a plugin's messages "the host" is eov itself: "o eov retornou {n} bytes para uma região de {width}×{height}".
-compute (Cellaris predictions, readout)	calcular	"Calcular a leitura de uma região grande?", "Calculando: {done} de {n} quadrículas", "{}% calculado"; never "medir".
+compute (Cellaris predictions, readout)	calcular	"Calcular o resumo de uma região grande?", "Calculando: {done} de {n} quadrículas", "{}% calculado"; never "medir".
 (file type names)	Imagem de lâmina inteira <formato> da <fabricante>	As shared-mime-info's pt_BR names: "Imagem de lâmina inteira NDPI da Hamamatsu", "Imagem de lâmina inteira MIRAX", "Imagem BigTIFF".

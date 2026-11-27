@@ -152,9 +152,10 @@ fn config_error(error: &DatasetConfigError) -> String {
     match error {
         // Translators: no slides were chosen for a dataset.
         DatasetConfigError::NoInputs => tr!("no input paths were given"),
-        // Translators: the size of the dataset's patches is out of range.
+        // Translators: the dialog's Patch Size field (the size of the
+        // dataset's patches, in pixels) is out of range.
         DatasetConfigError::TileSize { value, min, max } => tr!(
-            "tile size must be between {min} and {max} pixels (got {value})",
+            "patch size must be between {min} and {max} pixels (got {value})",
             min = min,
             max = max,
             value = value
@@ -470,16 +471,21 @@ mod tests {
     use super::*;
 
     /// In English the dialog says why a run cannot start as `eov_common`
-    /// does, word for word.
+    /// does, word for word, except for the tile size, which it calls the
+    /// patch size, as its field does (the command line's `--tile-size`
+    /// keeps eov_common's wording).
     #[test]
     fn config_errors_say_what_common_says() {
-        for error in [
-            DatasetConfigError::NoInputs,
-            DatasetConfigError::TileSize {
+        assert_eq!(
+            config_error(&DatasetConfigError::TileSize {
                 value: 8,
                 min: 16,
                 max: 8192,
-            },
+            }),
+            "patch size must be between 16 and 8192 pixels (got 8)"
+        );
+        for error in [
+            DatasetConfigError::NoInputs,
             DatasetConfigError::Stride {
                 value: 0,
                 min: 1,

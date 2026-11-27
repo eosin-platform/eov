@@ -319,8 +319,9 @@ pub struct State {
     pub pane_layers: bool,
     /// The `model.fetch` request waiting for eov's answer.
     pub model_fetch: Option<String>,
-    /// Why the last download did not happen (eov has told the user too).
-    pub download_note: Option<String>,
+    /// Why the last download did not happen (eov has told the user too),
+    /// worded when shown.
+    pub download_note: Option<Message>,
     /// The main file of the download target, when eov's model store has
     /// it (looked up when eovae starts and after the address changes).
     pub download_stored: Option<String>,
@@ -507,7 +508,8 @@ impl NoRun {
     /// Why, in the interface's language and in English (when it ends a
     /// job, eov's log gets the English).
     pub fn message(&self) -> Message {
-        Message::new(|| self.text())
+        let this = self.clone();
+        Message::new(move || this.text())
     }
 
     /// Why, in the language being written (see [`Message`]).
@@ -1437,7 +1439,7 @@ impl<B: Backend> Core<B> {
             match failure {
                 Some(error) => {
                     core.host
-                        .notify_error(tr!("The VAE model could not be loaded"), error.shown);
+                        .notify_error(tr!("The VAE model could not be loaded"), error.shown());
                 }
                 None => core.prebuild(),
             }
@@ -1491,12 +1493,13 @@ impl<B: Backend> Core<B> {
             }
             Err(error) if error.is_unsupported() => {
                 state.model_store = false;
-                // Translators: "Load ONNX…" is the sidebar's button of that name
-                state.download_note = Some(tr!(
-                    "This eov cannot download models: load the model file with Load ONNX…"
-                ));
+                state.download_note = Some(Message::new(|| {
+                    // Translators: "Load ONNX…" is the sidebar's button of that name
+                    tr!("This eov cannot download models: load the model file with Load ONNX…")
+                }));
             }
-            Err(error) => state.download_note = Some(error.to_string()),
+            // eov's reason, as eov wrote it.
+            Err(error) => state.download_note = Some(Message::plain(error.to_string())),
         }
         drop(state);
         self.dirty.mark(|d| d.sidebar = true);
@@ -1515,8 +1518,11 @@ impl<B: Backend> Core<B> {
                 return Ok(());
             }
             state.model_fetch = None;
-            // eov has told the user why; the sidebar keeps it in view.
-            state.download_note = error.filter(|_| path.is_none() && !cancelled);
+            // eov has told the user why, in its words; the sidebar keeps it in
+            // view.
+            state.download_note = error
+                .filter(|_| path.is_none() && !cancelled)
+                .map(Message::plain);
             if path.is_some() {
                 state.download_stored = path.clone();
             }
@@ -1662,15 +1668,12 @@ impl<B: Backend> Core<B> {
                 {
                     self.host.notify(
                         NotifyLevel::Warning,
-                        tr!(
-                            "VAE inference runs on the CPU: {}",
-                            crate::engine::reason_text(reason)
-                        ),
+                        tr!("VAE inference runs on the CPU: {}", reason),
                     );
                 }
                 if let Err(error) = &result {
                     self.host
-                        .notify_error(tr!("The VAE model cannot run"), error.shown.clone());
+                        .notify_error(tr!("The VAE model cannot run"), error.shown());
                 }
                 self.dirty.everything();
                 return result;
@@ -1988,7 +1991,7 @@ impl<B: Backend> Core<B> {
         let reported = host_job.is_some() && matches!(outcome, JobOutcome::Failed { .. });
         if let Some(job) = host_job {
             job.finish(match &outcome {
-                JobOutcome::Failed { error, .. } => Some(error.shown.clone()),
+                JobOutcome::Failed { error, .. } => Some(error.shown()),
                 _ => None,
             });
         }
@@ -2028,7 +2031,7 @@ impl<B: Backend> Core<B> {
             Err(payload) => {
                 let panic = panic_text(&*payload).unwrap_or_default();
                 JobOutcome::Failed {
-                    error: Message::new(|| tr!("internal error: {}", panic)),
+                    error: Message::new(move || tr!("internal error: {}", panic)),
                     counts: Counts::default(),
                 }
                 .into()
@@ -2066,7 +2069,7 @@ impl<B: Backend> Core<B> {
                 .info(format!("VAE analysis failed: {}", log_text(&error.english)));
             if !reported {
                 self.host
-                    .notify_error(tr!("VAE analysis failed"), error.shown.clone());
+                    .notify_error(tr!("VAE analysis failed"), error.shown());
             }
         }
         self.dirty.everything();
@@ -2409,16 +2412,18 @@ impl PixelSource for HostPixels {
             .read_region(*request)
             .map_err(|e| Message::plain(e.message))?;
         if image.width != request.width || image.height != request.height {
-            return Err(Message::new(|| {
+            let (width, height) = (image.width, image.height);
+            let (asked_width, asked_height) = (request.width, request.height);
+            return Err(Message::new(move || {
                 // Translators: why a part of the slide could not be read: the
                 // host (eov) gave an image of another size than asked for, in
                 // pixels.
                 tr!(
                     "the host returned {width}×{height} for a {asked_width}×{asked_height} region",
-                    width = image.width,
-                    height = image.height,
-                    asked_width = request.width,
-                    asked_height = request.height
+                    width = width,
+                    height = height,
+                    asked_width = asked_width,
+                    asked_height = asked_height
                 )
             }));
         }

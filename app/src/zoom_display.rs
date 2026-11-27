@@ -1,6 +1,6 @@
 use crate::ui_update::localized_number;
 use eov_common::{format_decimal, format_significant};
-use eov_plugin_api::i18n::{parse_decimal, tr};
+use eov_plugin_api::i18n::{isolate, parse_decimal, tr};
 
 const WHOLE_NUMBER_EPSILON: f64 = 0.05;
 
@@ -37,9 +37,9 @@ pub fn zoom_display_info(digital_zoom: f64, objective_power: Option<f64>) -> Zoo
                     // Translators: "20×" is a magnification (as by a
                     // microscope objective); the digital zoom is a percentage.
                     "{optical}× optical-equivalent zoom; objective power {objective}×; digital zoom {digital}",
-                    optical = optical_text,
-                    objective = objective_text,
-                    digital = digital_zoom_text
+                    optical = isolate(&optical_text),
+                    objective = isolate(&objective_text),
+                    digital = isolate(&digital_zoom_text)
                 ),
             }
         }

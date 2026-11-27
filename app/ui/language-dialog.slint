@@ -73,7 +73,7 @@ component LanguageRow inherits Rectangle {
             if root.entry.detail != "": Text {
                 text: root.entry.detail;
                 color: Theme.text-secondary;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 horizontal-alignment: Locale.start;
                 wrap: word-wrap;
                 height: self.preferred-height;
@@ -207,7 +207,7 @@ export component LanguageDialog inherits Rectangle {
                     // Translators: keep github.com/eosin-platform/eov/issues as it is.
                     text: @tr("Translations other than English were drafted with machine translation and have not yet been reviewed by native speakers. Wording that is unclear, inaccurate or just awkward can be reported at github.com/eosin-platform/eov/issues — corrections are welcome.");
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                     height: self.preferred-height;

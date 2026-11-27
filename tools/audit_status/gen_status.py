@@ -38,7 +38,7 @@ out = []
 w = out.append
 w('## Status after the 1.0 improvement pass')
 w('')
-w(f'*Updated 2026-11-23 (localisation), at `eov` master @ `{head}` plus uncommitted work, version 1.0.0 (every component, plugins included, moved to 1.0.0; eov-plugin-api is 1.1.0 since localisation).*')
+w(f'*Updated 2026-11-26 (localisation), at `eov` master @ `{head}` plus uncommitted work, version 1.0.0 (every component, plugins included, moved to 1.0.0; eov-plugin-api is 1.1.0 since localisation).*')
 w('')
 w('The findings in §§3–13 describe the audited 0.4.9 revision and are left as written. This section records what the 1.0 pass changed. "Where" lists the commits in this repository that made the change. For the annotations, cellaris and gamepad submodules it lists the superproject commits that recorded the submodule; the fixes themselves are commits in those repositories. eovae lives in this repository.')
 w('')

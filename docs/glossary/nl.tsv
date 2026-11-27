@@ -36,7 +36,7 @@ patch (dataset)	patch (mv. patches)	Dataset image for machine learning; the data
 cache	cache	
 region of interest (ROI)	interessegebied (ROI)	het interessegebied; tool and labels: Interessegebied; ROI as abbreviation where space is short
 region	gebied	e.g. Gebied van het preparaat, gescande gebied
-measurement	meting	
+measurement	meting	Only real measurements (Measure tool, measured IF = gemeten IF); never for the Cellaris statistics of predicted values
 Measure (tool)	Meten	Tool name
 distance (measure mode)	afstand	Path length = Padlengte, polygon area = Polygoonoppervlakte, rectangle area = Rechthoekoppervlakte, ellipse area = Ellipsoppervlakte, angle = Hoek
 area (measured)	oppervlakte	Not "oppervlak" (the surface itself); perimeter = omtrek; length = lengte
@@ -264,14 +264,15 @@ even-odd rule	even-oneven-regel
 review status	beoordelingsstatus	Draft / Verified / Rejected = Concept / Geverifieerd / Afgewezen
 notes (of a layer)	notities	A comment on an annotation stays opmerking
 property (of an annotation)	eigenschap	PROPERTIES = EIGENSCHAPPEN
-section headings in capitals	HOOFDLETTERS behouden	e.g. METINGEN, OPMERKINGEN, GEBIEDSUITLEZING
+section headings in capitals	HOOFDLETTERS behouden	e.g. METINGEN, OPMERKINGEN, GEBIEDSSTATISTIEKEN
 tumour cell	tumorcel (mv. tumorcellen)	
 combined positive score (CPS)	combined positive score (CPS)	Kept in English, as in Dutch PD-L1 reporting
 not for diagnosis	niet voor diagnostisch gebruik	Safety text, with uitsluitend voor onderzoeksdoeleinden; never shorten
 PREDICTED (banner)	VOORSPELD	VOORSPELD — uitsluitend voor onderzoeksdoeleinden, niet voor diagnostisch gebruik
-region readout, readout (Cellaris)	gebiedsuitlezing, uitlezing	readout region = uitleesgebied
+region readout, readout (Cellaris)	gebiedsstatistieken, statistieken	Statistics (mean, spread, density r²) computed from the model's predicted values over a region, not a measurement: never uitlezing/uitlezen or aflezing (an instrument reading), meting, meetwaarde, meten or signaal (metingen/gemeten only where the English says measurements/measured: voorspellingen zijn geen metingen; gemeten IF). Always plural. REGION READOUT = GEBIEDSSTATISTIEKEN; tool and job title Cellaris region readout = Cellaris-gebiedsstatistieken (in text: het gereedschap Cellaris-gebiedsstatistieken); readout region (layer) = Cellaris — gebied van de statistieken; a readout of the predicted values = statistieken van de voorspelde waarden; Compute a readout of a large region? = Statistieken van een groot gebied berekenen?; computing a region readout = gebiedsstatistieken worden berekend; a long readout = een langdurige berekening van statistieken; readouts = statistieken
+compute (predictions, a readout)	berekenen, berekening	Never meten: Compute (button) = Berekenen; Computing: {done} of {n} cells = Berekenen: {done} van {n} rastercellen; {} % computed = {} % berekend; Not computed: {} = Niet berekend: {}
 window (square image a model predicts from)	venster	{n} windows of predictions = {n} vensters met voorspellingen; the model's window = modelvenster
-display window (of a marker or channel)	weergavevenster	Range of values its colour is drawn over; ends: Zwart / Wit
+display window (of a marker or channel)	weergavevenster	Range of values its colour is drawn over; ends: Ondergrens / Bovengrens (Low / High)
 cell (Cellaris grid square)	rastercel (mv. rastercellen)	A grid square predicted at once; never plain cel, which reads as a biological cell
 tissue block (5 µm square, Cellaris)	weefselvakje (vakje)	Not weefselblok, which is a paraffin block
 bright-field	helderveld	not bright-field H&E = geen helderveld-H&E
@@ -297,3 +298,8 @@ response curve	responscurve
 system pointer	systeemaanwijzer	System pointer control = Besturing van de systeemaanwijzer
 tuning (gamepad)	afstelling	
 marker (example plugin point)	markering	Only for placed point marks; biological markers stay marker
+<maker> whole-slide image (file type name)	Whole-slide image (<fabrikant>)	File managers (Type column): Whole-slide image (Aperio), Whole-slide image (Hamamatsu NDPI); BigTIFF image = BigTIFF-afbeelding
+flagged (by tissue QC)	gemarkeerd (door weefsel-QC)	Flags for review, not certainties; possible folds or blur = mogelijke plooien of onscherpte
+host (eov, which runs a plugin)	hostapplicatie	eovae errors: de hostapplicatie gaf {n} bytes terug voor …; the Flatpak host stays hostsysteem
+Whole slide / Viewport / Region of interest (eovae run finished, cancelled, failed)	Analyse van het hele preparaat / het weergavegebied / het interessegebied	e.g. Analyse van het weergavegebied voltooid in {duration}; the sidebar buttons stay Preparaat / Weergave / ROI
+Low / High (ends of a Cellaris display window)	Ondergrens / Bovengrens	Replaces the earlier Black/White labels (Zwart / Wit)

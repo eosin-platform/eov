@@ -464,7 +464,8 @@ fn type_into(ui: &AppWindow, element: &ElementHandle, text: &str) {
 
 /// The dialogs' number fields take the digits Persian and Arabic keyboards
 /// type, and what is not a number changes nothing (Enter shows the number
-/// in use again); whole numbers stay whole.
+/// in use again); whole numbers stay whole, also when they are written with
+/// a thousands separator, and count as they are typed.
 #[test]
 fn number_fields_take_the_digits_every_keyboard_types() {
     use slint::platform::Key;
@@ -483,7 +484,7 @@ fn number_fields_take_the_digits_every_keyboard_types() {
         // Persian digits, read as they are typed.
         type_into(&ui, &tile_size, "۵۱۲");
         assert_eq!(ui.get_dataset_export_settings().tile_size, 512);
-        // Not a number: the tile size stays, and Enter shows it again.
+        // Not a number: the patch size stays, and Enter shows it again.
         type_into(&ui, &tile_size, "x");
         assert_eq!(ui.get_dataset_export_settings().tile_size, 512);
         assert_eq!(tile_size.accessible_value().as_deref(), Some("x"));
@@ -499,6 +500,34 @@ fn number_fields_take_the_digits_every_keyboard_types() {
         type_into(&ui, &threads, "inf");
         key(&ui, Key::Return);
         assert_eq!(ui.get_dataset_export_settings().threads, 4);
+        // A thousands separator, as English, German, French or Persian
+        // write one: the whole number counts as soon as it is typed (the
+        // "1" typed first is not what stays), with no Enter.
+        type_into(&ui, &stride, "1,024");
+        assert_eq!(ui.get_dataset_export_settings().stride, 1024);
+        assert_eq!(stride.accessible_value().as_deref(), Some("1,024"));
+        for grouped in [
+            "1.024",
+            "1 024",
+            "1\u{A0}024",
+            "1\u{202F}024",
+            "١٬٠٢٤",
+            "۱٬۰۲۴",
+        ] {
+            type_into(&ui, &stride, "512");
+            assert_eq!(ui.get_dataset_export_settings().stride, 512);
+            type_into(&ui, &stride, grouped);
+            assert_eq!(ui.get_dataset_export_settings().stride, 1024, "{grouped:?}");
+        }
+        key(&ui, Key::Return);
+        assert_eq!(stride.accessible_value().as_deref(), Some("1024"));
+        type_into(&ui, &tile_size, "8,192");
+        assert_eq!(ui.get_dataset_export_settings().tile_size, 8192);
+        type_into(&ui, &threads, "1.000");
+        assert_eq!(ui.get_dataset_export_settings().threads, 1000);
+        // Other decimals are rounded, also with a decimal comma.
+        type_into(&ui, &threads, "2,5");
+        assert_eq!(ui.get_dataset_export_settings().threads, 3);
         let white = find(&ui, AccessibleRole::TextInput, "White threshold (%)");
         type_into(&ui, &white, "۴۰");
         assert!((ui.get_dataset_export_settings().white_threshold - 0.4).abs() < 1e-6);
@@ -544,6 +573,70 @@ fn number_fields_take_the_digits_every_keyboard_types() {
         key(&ui, Key::Return);
         assert_eq!(ui.get_export_settings().measurement_color.red(), 200);
         assert_eq!(red.accessible_value().as_deref(), Some("200"));
+        ui.set_export_dialog_visible(false);
+        ui.hide().unwrap();
+    });
+}
+
+/// The colour menu's red, green and blue fields use a value as it is
+/// typed: moving on to the next field (Tab, a click) or setting it through
+/// assistive technology keeps it, and Enter shows the value used.
+#[test]
+fn colour_values_count_without_enter() {
+    use slint::platform::Key;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let mut settings = ui.get_export_settings();
+        settings.has_measurement = true;
+        settings.show_measurement = true;
+        settings.measurement_color = slint::Color::from_rgb_u8(46, 204, 113);
+        ui.set_export_settings(settings);
+        ui.set_export_dialog_visible(true);
+        settle(&ui);
+        find(&ui, AccessibleRole::Button, "Colour").invoke_accessible_default_action();
+        settle(&ui);
+        let rgb = |ui: &AppWindow| {
+            let color = ui.get_export_settings().measurement_color;
+            (color.red(), color.green(), color.blue())
+        };
+        let red = find(&ui, AccessibleRole::TextInput, "Red (0–255)");
+        let green = find(&ui, AccessibleRole::TextInput, "Green (0–255)");
+        let blue = find(&ui, AccessibleRole::TextInput, "Blue (0–255)");
+
+        // Red, Tab, green, Tab, blue, Enter: all three are used. Tab
+        // selects the next field's text, so typing replaces it.
+        type_into(&ui, &red, "255");
+        key(&ui, Key::Tab);
+        key(&ui, "0");
+        key(&ui, Key::Tab);
+        key(&ui, "0");
+        key(&ui, Key::Return);
+        assert_eq!(rgb(&ui), (255, 0, 0));
+        assert_eq!(red.accessible_value().as_deref(), Some("255"));
+        assert_eq!(green.accessible_value().as_deref(), Some("0"));
+
+        // A click into the next field instead, and no Enter at all.
+        type_into(&ui, &red, "10");
+        type_into(&ui, &green, "20");
+        assert_eq!(rgb(&ui), (10, 20, 0));
+
+        // While a value is typed, the field keeps what was typed; Enter
+        // shows the value used (at most 255).
+        type_into(&ui, &blue, "300");
+        assert_eq!(rgb(&ui), (10, 20, 255));
+        assert_eq!(blue.accessible_value().as_deref(), Some("300"));
+        key(&ui, Key::Return);
+        assert_eq!(blue.accessible_value().as_deref(), Some("255"));
+
+        // Set by assistive technology (Slint's default: the text, then
+        // `edited`).
+        blue.set_accessible_value("77");
+        settle(&ui);
+        assert_eq!(rgb(&ui), (10, 20, 77));
+        // What is not a number leaves the colour as it is.
+        green.set_accessible_value("abc");
+        settle(&ui);
+        assert_eq!(rgb(&ui), (10, 20, 77));
         ui.set_export_dialog_visible(false);
         ui.hide().unwrap();
     });
@@ -1194,6 +1287,703 @@ fn with_the_systems_window_buttons_the_title_bar_leaves_them_room() {
         assert!(wrapped.1 > open.1 && wrapped.2 <= logo.0, "{wrapped:?}");
         let render = bounds(&find(&ui, AccessibleRole::Button, "Use CPU renderer"));
         assert!(render.1 > open.1 && render.0 < 20.0, "{render:?}");
+        ui.hide().unwrap();
+    });
+}
+
+/// Back to English when a test ends, also when it fails.
+struct English<'a>(&'a AppWindow);
+
+impl Drop for English<'_> {
+    fn drop(&mut self) {
+        crate::i18n::switch_to(self.0, eov_plugin_api::i18n::source());
+    }
+}
+
+/// The elements with this id (`Component::id`) that are on screen.
+fn elements(ui: &AppWindow, id: &str) -> Vec<ElementHandle> {
+    let found: Vec<_> = ElementHandle::find_by_element_id(ui, id).collect();
+    assert!(!found.is_empty(), "no element {id}");
+    found
+}
+
+/// Whether `inner` lies within `outer` (both as [`bounds`] gives them).
+fn inside(inner: (f32, f32, f32, f32), outer: (f32, f32, f32, f32)) -> bool {
+    const SLACK: f32 = 0.5;
+    inner.0 >= outer.0 - SLACK
+        && inner.1 >= outer.1 - SLACK
+        && inner.2 <= outer.2 + SLACK
+        && inner.3 <= outer.3 + SLACK
+}
+
+/// Polls `future` to its end (compiling with the interpreter waits for
+/// nothing).
+fn spin_on<T>(future: impl std::future::Future<Output = T>) -> T {
+    use std::task::{Context, Poll, Waker};
+    let mut cx = Context::from_waker(Waker::noop());
+    let mut future = std::pin::pin!(future);
+    loop {
+        if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
+            return value;
+        }
+    }
+}
+
+/// Measures texts as the window lays them out, in the same (the system's)
+/// fonts: what a text needs, to compare with what its element is given.
+struct TextMeasure(slint_interpreter::ComponentInstance);
+
+impl TextMeasure {
+    fn new() -> Self {
+        let source = r#"
+            export component Measure inherits Window {
+                in property <string> text;
+                in property <length> size;
+                in property <length> wrap-width;
+                out property <length> line-width: line.preferred-width;
+                out property <length> wrapped-height: wrapped.preferred-height;
+
+                line := Text {
+                    text: root.text;
+                    font-size: root.size;
+                }
+
+                wrapped := Text {
+                    width: root.wrap-width;
+                    text: root.text;
+                    font-size: root.size;
+                    wrap: word-wrap;
+                }
+            }
+        "#;
+        let result = spin_on(
+            slint_interpreter::Compiler::default()
+                .build_from_source(source.into(), "measure.slint".into()),
+        );
+        let definition = result
+            .component("Measure")
+            .unwrap_or_else(|| panic!("{:?}", result.diagnostics().collect::<Vec<_>>()));
+        Self(definition.create().unwrap())
+    }
+
+    fn measure(&self, text: &str, size: f32, wrap_width: f32, what: &str) -> f32 {
+        use slint_interpreter::Value;
+        let set = |name: &str, value: Value| self.0.set_property(name, value).unwrap();
+        set("text", Value::String(text.into()));
+        set("size", Value::Number(size.into()));
+        set("wrap-width", Value::Number(wrap_width.into()));
+        match self.0.get_property(what).unwrap() {
+            Value::Number(length) => length as f32,
+            other => panic!("{what}: {other:?}"),
+        }
+    }
+
+    /// The width of `text` on one line, at `size`.
+    fn width(&self, text: &str, size: f32) -> f32 {
+        self.measure(text, size, 0.0, "line-width")
+    }
+
+    /// The height of `text` at `size`, word-wrapped at `width`.
+    fn wrapped_height(&self, text: &str, size: f32, width: f32) -> f32 {
+        self.measure(text, size, width, "wrapped-height")
+    }
+}
+
+/// Whether two lengths are the same, but for rounding.
+fn same(a: f32, b: f32) -> bool {
+    (a - b).abs() < 0.5
+}
+
+/// The Dataset export dialog's checkbox labels wrap inside the dialog in
+/// every language (Russian ran past its border) and are shown in full: each
+/// row is as tall as before (22 px), taller by what its wrapped label needs,
+/// and the rows do not overlap. A click anywhere on a row toggles its
+/// checkbox (the label too, not only the space after it).
+#[test]
+fn dataset_checkbox_labels_wrap_inside_the_dialog() {
+    use slint::platform::PointerEventButton;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let _english = English(&ui);
+        let measure = TextMeasure::new();
+        ui.set_dataset_export_dialog_visible(true);
+        settle(&ui);
+        // Labels that take more than one line (in several languages).
+        let mut wrapped = 0;
+        for language in eov_plugin_api::i18n::LANGUAGES {
+            crate::i18n::switch_to(&ui, language);
+            settle(&ui);
+            let tag = language.tag;
+            let size = ui.global::<crate::Locale>().invoke_text_size(11.0);
+            let card = bounds(&elements(&ui, "DatasetExportDialog::card")[0]);
+            // The rows (the checkboxes) and their labels, from the top.
+            let mut rows: Vec<_> = ElementHandle::find_by_element_type_name(&ui, "CheckRow")
+                .map(|row| (bounds(&row), row.accessible_label().unwrap()))
+                .collect();
+            rows.sort_by(|a, b| a.0.1.total_cmp(&b.0.1));
+            let mut labels: Vec<_> = elements(&ui, "CheckRow::label")
+                .iter()
+                .map(bounds)
+                .collect();
+            labels.sort_by(|a, b| a.1.total_cmp(&b.1));
+            assert_eq!((rows.len(), labels.len()), (3, 3), "{tag}");
+            for ((row, text), &at) in rows.iter().zip(&labels) {
+                assert!(
+                    inside(at, card),
+                    "{tag}: {text:?} at {at:?} is not inside the dialog {card:?}"
+                );
+                // All of it: its lines at the width it has, inside its row.
+                let needed = measure.wrapped_height(text, size, at.2 - at.0);
+                assert!(
+                    at.3 - at.1 >= needed - 0.5 && inside(at, *row),
+                    "{tag}: {text:?} at {at:?} needs {needed} px, in the row {row:?}"
+                );
+                assert!(
+                    same(row.3 - row.1, 22f32.max(needed + 5.0)),
+                    "{tag}: the row of {text:?} is {row:?}, its label needs {needed} px"
+                );
+                if needed > measure.wrapped_height(text, size, 10000.0) + 0.5 {
+                    wrapped += 1;
+                }
+            }
+            for pair in rows.windows(2) {
+                assert!(pair[0].0.3 <= pair[1].0.1, "{tag}: rows overlap: {pair:?}");
+            }
+        }
+        assert!(
+            wrapped > 0,
+            "no label took two lines: rows that grow went untested"
+        );
+        crate::i18n::switch_to(&ui, eov_plugin_api::i18n::source());
+        settle(&ui);
+        let before = ui.get_dataset_export_settings();
+        for label in elements(&ui, "CheckRow::label") {
+            label.mock_single_click(PointerEventButton::Left);
+            settle(&ui);
+        }
+        let after = ui.get_dataset_export_settings();
+        assert_eq!(
+            (after.tissue_only, after.exclude_qc, after.deidentify),
+            (!before.tissue_only, !before.exclude_qc, !before.deidentify)
+        );
+        ui.set_dataset_export_dialog_visible(false);
+        ui.hide().unwrap();
+    });
+}
+
+/// The Save a Copy dialog's choices wrap their details inside the dialog
+/// in every language (the OME-TIFF one hid what OpenSlide cannot see, in
+/// English too): a long detail makes its choice taller, and the dialog
+/// holds it; short ones keep the height they had.
+#[test]
+fn save_copy_details_wrap_inside_the_dialog() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let _english = English(&ui);
+        let mut settings = ui.get_save_copy_settings();
+        settings.title = "C3L-00004-21.svs".into();
+        settings.whole_text = "25895 × 23396 px".into();
+        settings.summary = "25895 × 23396 px in 7 levels of 512-px tiles at 0.4942 µm/px.".into();
+        settings.deidentify = true;
+        ui.set_save_copy_settings(settings.clone());
+        ui.set_save_copy_dialog_visible(true);
+        settle(&ui);
+        for language in eov_plugin_api::i18n::LANGUAGES {
+            crate::i18n::switch_to(&ui, language);
+            settle(&ui);
+            let card = bounds(&elements(&ui, "SaveCopyDialog::card")[0]);
+            for detail in elements(&ui, "Choice::detail") {
+                assert!(
+                    inside(bounds(&detail), card),
+                    "{}: {:?} is not inside the dialog {card:?}",
+                    language.tag,
+                    bounds(&detail)
+                );
+            }
+            for label in elements(&ui, "CheckRow::label") {
+                assert!(inside(bounds(&label), card), "{}", language.tag);
+            }
+        }
+        crate::i18n::switch_to(&ui, eov_plugin_api::i18n::source());
+        settle(&ui);
+        let whole = find(&ui, AccessibleRole::RadioButton, "Whole slide");
+        assert_eq!(whole.size().height, 38.0, "a one-line detail as before");
+        let jpeg = find(&ui, AccessibleRole::RadioButton, "JPEG, high quality (90)");
+        assert_eq!(jpeg.size().height, 24.0, "no detail, as before");
+        settings.has_roi = true;
+        settings.roi_text = "1234 × 5678 px at 9, 10; ".repeat(24).into();
+        ui.set_save_copy_settings(settings);
+        settle(&ui);
+        let roi = find(&ui, AccessibleRole::RadioButton, "Region of interest");
+        assert!(roi.size().height > 76.0, "{:?}", roi.size());
+        let card = bounds(&elements(&ui, "SaveCopyDialog::card")[0]);
+        assert!(inside(bounds(&roi), card), "{:?} {card:?}", bounds(&roi));
+        let save = bounds(&find(&ui, AccessibleRole::Button, "Save…"));
+        assert!(save.1 > bounds(&roi).3 && inside(save, card), "{save:?}");
+        ui.set_save_copy_dialog_visible(false);
+        ui.hide().unwrap();
+    });
+}
+
+/// The export dialog's stroke and caps rows: in every language each label
+/// gets the width its text needs and a gap of 8 px, in one column for both
+/// rows, and the choices one width that fits the longest of their texts
+/// with 6 px on either side; the rows fit in the dialog. Where the texts
+/// need less (English), the rows look as before: 46 px labels, 52 px
+/// choices.
+#[test]
+fn export_line_style_rows_fit_their_texts() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let _english = English(&ui);
+        let measure = TextMeasure::new();
+        let mut settings = ui.get_export_settings();
+        settings.has_measurement = true;
+        settings.show_measurement = true;
+        // The widest stroke row: with the dash length and gap.
+        settings.measurement_stroke_style = crate::StrokeStyle::Dashed;
+        settings.has_roi = true;
+        settings.show_roi_outline = true;
+        ui.set_export_settings(settings);
+        ui.set_export_dialog_visible(true);
+        settle(&ui);
+        // Languages whose texts need more than 46 px labels and 52 px
+        // choices (French "Extrémités", the Russian choices).
+        let (mut wider_labels, mut wider_choices) = (0, 0);
+        for language in eov_plugin_api::i18n::LANGUAGES {
+            crate::i18n::switch_to(&ui, language);
+            settle(&ui);
+            let tag = language.tag;
+            let size = ui.global::<crate::Locale>().invoke_text_size(11.0);
+            let card = bounds(&elements(&ui, "ExportDialog::card")[0]);
+            let strokes = elements(&ui, "StrokeStyleSelector::label");
+            let caps = elements(&ui, "CapStyleSelector::label");
+            assert_eq!((strokes.len(), caps.len()), (2, 2), "{tag}");
+            // The choices' texts, as wide as they are (centred in their
+            // choices).
+            let texts: Vec<_> = elements(&ui, "SegmentButton::label")
+                .iter()
+                .map(bounds)
+                .collect();
+            for (stroke_label, caps_label) in strokes.iter().zip(&caps) {
+                // One column for both rows, as wide as the longer label
+                // needs with its gap, and 46 px at least.
+                let needed = |label: &ElementHandle| {
+                    measure.width(&label.accessible_label().unwrap(), size) + 8.0
+                };
+                let column = 46f32.max(needed(stroke_label).max(needed(caps_label)));
+                wider_labels += usize::from(column > 46.0);
+                let rows = [bounds(stroke_label), bounds(caps_label)];
+                assert_eq!(rows[0].2, rows[1].2, "{tag}: one label column");
+                for (label, row) in [stroke_label, caps_label].iter().zip(rows) {
+                    assert!(
+                        same(row.2 - row.0, column),
+                        "{tag}: {:?} is {} px wide, its column needs {column} px",
+                        label.accessible_label(),
+                        row.2 - row.0
+                    );
+                }
+                // The choices (and fields) after each label.
+                let mut columns = Vec::new();
+                for label in rows {
+                    let choices: Vec<_> = ElementQuery::from_root(&ui)
+                        .match_accessible_role(AccessibleRole::RadioButton)
+                        .find_all()
+                        .into_iter()
+                        .map(|choice| bounds(&choice))
+                        .filter(|choice| {
+                            (choice.1 + choice.3) / 2.0 > label.1
+                                && (choice.1 + choice.3) / 2.0 < label.3
+                        })
+                        .collect();
+                    assert_eq!(choices.len(), 3, "{tag}: {choices:?}");
+                    let mut right = label.2;
+                    for choice in &choices {
+                        assert!(
+                            choice.0 >= right,
+                            "{tag}: {choice:?} overlaps what comes before it"
+                        );
+                        assert!(inside(*choice, card), "{tag}: {choice:?} outside {card:?}");
+                        right = choice.2;
+                    }
+                    columns.push(choices);
+                }
+                for (a, b) in columns[0].iter().zip(&columns[1]) {
+                    assert_eq!((a.0, a.2), (b.0, b.2), "{tag}: the choices line up");
+                }
+                // Each choice holds its text with 6 px on either side, and
+                // all six are as wide as the longest text needs (52 px at
+                // least).
+                let mut widest = 0f32;
+                for choice in columns.iter().flatten() {
+                    let text = texts
+                        .iter()
+                        .find(|text| {
+                            let (x, y) = center(**text);
+                            x > choice.0 && x < choice.2 && y > choice.1 && y < choice.3
+                        })
+                        .unwrap_or_else(|| panic!("{tag}: no text in the choice {choice:?}"));
+                    assert!(
+                        text.2 - text.0 + 12.0 <= choice.2 - choice.0 + 0.5
+                            && inside(*text, *choice),
+                        "{tag}: the text {text:?} does not fit in its choice {choice:?}"
+                    );
+                    widest = widest.max(text.2 - text.0);
+                }
+                let width = 52f32.max(widest + 12.0);
+                wider_choices += usize::from(width > 52.0);
+                for choice in columns.iter().flatten() {
+                    assert!(
+                        same(choice.2 - choice.0, width),
+                        "{tag}: {choice:?} is not {width} px wide"
+                    );
+                }
+            }
+            // The dash length and gap fields fit too.
+            for field in ElementHandle::find_by_element_type_name(&ui, "SmallTextInput") {
+                assert!(inside(bounds(&field), card), "{tag}: {:?}", bounds(&field));
+            }
+        }
+        assert!(
+            wider_labels > 0 && wider_choices > 0,
+            "no text needed more room ({wider_labels}, {wider_choices}): wider rows went untested"
+        );
+        ui.set_export_dialog_visible(false);
+        ui.hide().unwrap();
+    });
+}
+
+/// The HUD's Image Adjustments: the label column is as wide as its longest
+/// label needs, 68 px at least, and the panel (260 px) grows with it. A
+/// slider's label also ends 7 px before the slider's handle at 0 (the
+/// Japanese "Sharpness" touched it); the Units and Stain Norm labels take
+/// the whole column, 4 px before their buttons. So the English panel
+/// keeps its size with any font that fits its labels in 60 and 68 px. The
+/// six Units and Stain Norm choices are a third of 160 px wide, or as wide
+/// as their widest text plus 3 px ("Macenko" and "Vahadane" ran together
+/// in Hindi), and the panel grows with them too.
+#[test]
+fn hud_adjustment_labels_fit_their_column() {
+    use slint_interpreter::Value;
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let _english = English(&ui);
+        let measure = TextMeasure::new();
+        // The Units and Stain Norm labels' texts, translated as the window
+        // translates them (assistive technology does not see those labels).
+        let mut compiler = slint_interpreter::Compiler::default();
+        compiler.set_translation_domain("eov".into());
+        compiler.set_bundled_translations_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("translations"),
+        );
+        let source = r#"
+            export component Texts {
+                out property <string> units: @tr("HudSettingsPanel" => "Units");
+                out property <string> stain: @tr("HudSettingsPanel" => "Stain Norm");
+                out property <string> mm: @tr("HudSettingsPanel" => "mm");
+                out property <string> inches: @tr("HudSettingsPanel" => "in");
+                out property <string> none: @tr("Stain normalization" => "None");
+                out property <string> macenko: @tr("HudSettingsPanel" => "Macenko");
+                out property <string> vahadane: @tr("HudSettingsPanel" => "Vahadane");
+            }
+        "#;
+        let result = spin_on(compiler.build_from_source(source.into(), "texts.slint".into()));
+        let texts = result
+            .component("Texts")
+            .expect("compiles")
+            .create()
+            .unwrap();
+        let text = |name: &str| match texts.get_property(name).unwrap() {
+            Value::String(text) => text.to_string(),
+            other => panic!("{name}: {other:?}"),
+        };
+        fill(&ui);
+        settle(&ui);
+        let mut wider_choices = 0;
+        for language in eov_plugin_api::i18n::LANGUAGES {
+            crate::i18n::switch_to(&ui, language);
+            settle(&ui);
+            let tag = language.tag;
+            let size = ui.global::<crate::Locale>().invoke_text_size(11.0);
+            let choice_size = ui.global::<crate::Locale>().invoke_text_size(10.0);
+            // The sliders' labels (each slider is named after its label),
+            // and the Units and Stain Norm labels.
+            let mut sliders: Vec<_> = ElementHandle::find_by_element_type_name(&ui, "HudSlider")
+                .map(|slider| (bounds(&slider).1, slider.accessible_label().unwrap()))
+                .collect();
+            sliders.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut slider_labels: Vec<_> = elements(&ui, "HudSlider::label-text")
+                .iter()
+                .map(bounds)
+                .collect();
+            slider_labels.sort_by(|a, b| a.1.total_cmp(&b.1));
+            assert_eq!((sliders.len(), slider_labels.len()), (4, 4), "{tag}");
+            let rows = [
+                (
+                    bounds(&elements(&ui, "HudSettingsPanel::units-label")[0]),
+                    text("units"),
+                ),
+                (
+                    bounds(&elements(&ui, "HudSettingsPanel::stain-label")[0]),
+                    text("stain"),
+                ),
+            ];
+            let column = sliders
+                .iter()
+                .map(|(_, label)| measure.width(label, size) + 8.0)
+                .chain(rows.iter().map(|(_, label)| measure.width(label, size)))
+                .fold(68f32, f32::max)
+                .min(150.0);
+            // The choices and their texts.
+            let choices = [
+                ("um", "µm".to_string()),
+                ("mm", text("mm")),
+                ("in", text("inches")),
+                ("none", text("none")),
+                ("macenko", text("macenko")),
+                ("vahadane", text("vahadane")),
+            ]
+            .map(|(id, label)| {
+                let at = bounds(&elements(&ui, &format!("HudSettingsPanel::{id}-choice"))[0]);
+                (label, at)
+            });
+            let choice = choices
+                .iter()
+                .map(|(label, _)| measure.width(label, choice_size) + 3.0)
+                .fold(160.0 / 3.0, f32::max);
+            if choice > 160.0 / 3.0 + 0.5 {
+                wider_choices += 1;
+            }
+            for (label, at) in &choices {
+                assert!(
+                    same(at.2 - at.0, choice),
+                    "{tag}: the choice {label:?} is {at:?}, not {choice} px wide"
+                );
+            }
+            let panel = ElementHandle::find_by_element_type_name(&ui, "HudSettingsPanel")
+                .next()
+                .unwrap();
+            let panel = bounds(&panel);
+            assert!(
+                same(panel.2 - panel.0, column + 3.0 * choice + 32.0),
+                "{tag}: the panel is {panel:?}, its labels need a column of {column} px \
+                 and its choices {choice} px each"
+            );
+            let labels = sliders
+                .iter()
+                .map(|(_, label)| label.to_string())
+                .zip(slider_labels.iter().map(|at| (*at, column - 8.0)))
+                .chain(
+                    rows.iter()
+                        .map(|(at, label)| (label.clone(), (*at, column))),
+                );
+            for (label, (at, width)) in labels {
+                assert!(
+                    same(at.2 - at.0, width) && same(at.0, panel.0 + 12.0),
+                    "{tag}: {label:?} at {at:?}, not {width} px from {}",
+                    panel.0 + 12.0
+                );
+            }
+            // A slider's handle at 0 starts where its touch area does: 7 px
+            // after its label. The first Units and Stain Norm choices start
+            // 4 px after their labels.
+            let mut touches: Vec<_> = elements(&ui, "HudSlider::slider-touch")
+                .iter()
+                .map(bounds)
+                .collect();
+            touches.sort_by(|a, b| a.1.total_cmp(&b.1));
+            for ((_, label), (at, touch)) in sliders.iter().zip(slider_labels.iter().zip(&touches))
+            {
+                assert!(
+                    same(touch.0 - at.2, 7.0),
+                    "{tag}: {label:?} ends at {}, its handle at 0 starts at {}",
+                    at.2,
+                    touch.0
+                );
+            }
+            for ((at, label), (_, first)) in rows.iter().zip([&choices[0], &choices[3]]) {
+                assert!(
+                    same(first.0 - at.2, 4.0),
+                    "{tag}: {label:?} ends at {}, its first choice starts at {}",
+                    at.2,
+                    first.0
+                );
+            }
+        }
+        assert!(
+            wider_choices > 0,
+            "no choice needed more room: wider choices went untested"
+        );
+        ui.hide().unwrap();
+    });
+}
+
+/// The Save a Copy and Dataset export dialogs, each with the elements that
+/// stay in view below its settings: its buttons, and its error.
+type ShortDialog = (SetVisible, &'static str, &'static [&'static str]);
+
+const SHORT_DIALOGS: [ShortDialog; 2] = [
+    (
+        AppWindow::set_save_copy_dialog_visible,
+        "SaveCopyDialog::card",
+        &["DialogButton"],
+    ),
+    (
+        AppWindow::set_dataset_export_dialog_visible,
+        "DatasetExportDialog::card",
+        &[
+            "DatasetExportDialog::cancel-btn-touch",
+            "DatasetExportDialog::confirm-btn-touch",
+        ],
+    ),
+];
+
+/// In a window too short for them (800 × 600 px, the smallest), the Save a
+/// Copy and Dataset export dialogs keep their title, their error and their
+/// buttons in view and scroll the settings between them, in every language
+/// (the buttons were cut off); where the settings fit, nothing scrolls.
+#[test]
+fn short_windows_scroll_the_dialogs_settings() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = AppWindow::new().unwrap();
+        ui.window().set_size(slint::PhysicalSize::new(800, 600));
+        ui.show().unwrap();
+        let _english = English(&ui);
+        let error = "The copy cannot be written: ".repeat(6);
+        let mut copy = ui.get_save_copy_settings();
+        copy.title = "C3L-00004-21.svs".into();
+        copy.whole_text = "25895 × 23396 px".into();
+        copy.summary = "25895 × 23396 px in 7 levels of 512-px tiles at 0.4942 µm/px.".into();
+        copy.error = error.as_str().into();
+        ui.set_save_copy_settings(copy);
+        let mut dataset = ui.get_dataset_export_settings();
+        dataset.error = error.as_str().into();
+        ui.set_dataset_export_settings(dataset);
+        let window = (0.0, 0.0, 800.0, 600.0);
+        // Scrolls a long way down (with the wheel) and lets it settle.
+        let scroll_down = |area: &ElementHandle| {
+            area.scroll(0.0, -5000.0);
+            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(2));
+            settle(&ui);
+        };
+        for language in eov_plugin_api::i18n::LANGUAGES {
+            crate::i18n::switch_to(&ui, language);
+            settle(&ui);
+            let tag = language.tag;
+            for (set_visible, card, below) in SHORT_DIALOGS {
+                set_visible(&ui, true);
+                settle(&ui);
+                let card = bounds(&elements(&ui, card)[0]);
+                assert!(inside(card, window), "{tag}: {card:?}");
+                let area = ElementHandle::find_by_element_type_name(&ui, "ScrollArea")
+                    .next()
+                    .expect("the settings scroll");
+                let (top, content) = (bounds(&area), elements(&ui, "ScrollArea::content"));
+                let content = bounds(&content[0]);
+                assert!(inside(top, card), "{tag}: {top:?} {card:?}");
+                assert!(same(content.1, top.1), "{tag}: {content:?} {top:?}");
+                assert!(
+                    content.3 > top.3 + 1.0,
+                    "{tag}: {content:?} fits in {top:?}"
+                );
+                // The error and the buttons, in view below the settings.
+                let mut kept: Vec<_> = below
+                    .iter()
+                    .flat_map(|name| {
+                        ElementHandle::find_by_element_type_name(&ui, name)
+                            .chain(ElementHandle::find_by_element_id(&ui, name))
+                    })
+                    .map(|element| bounds(&element))
+                    .collect();
+                assert_eq!(kept.len(), 2, "{tag}: {kept:?}");
+                let shown_error = find(&ui, AccessibleRole::Text, &error);
+                kept.push(bounds(&shown_error));
+                for element in kept {
+                    assert!(
+                        inside(element, card) && element.1 >= top.3,
+                        "{tag}: {element:?} is not in view below {top:?} in {card:?}"
+                    );
+                }
+                // Scrolled to the end, the last checkbox is in view.
+                scroll_down(&area);
+                let scrolled = bounds(&elements(&ui, "ScrollArea::content")[0]);
+                assert!(same(scrolled.3, top.3), "{tag}: {scrolled:?} {top:?}");
+                assert!(same(scrolled.3 - scrolled.1, content.3 - content.1));
+                let last = ElementHandle::find_by_element_type_name(&ui, "CheckRow")
+                    .map(|row| bounds(&row))
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .unwrap();
+                assert!(inside(last, top), "{tag}: {last:?} {top:?}");
+                set_visible(&ui, false);
+                settle(&ui);
+            }
+        }
+        // Where the settings fit, they do not scroll.
+        crate::i18n::switch_to(&ui, eov_plugin_api::i18n::source());
+        ui.window().set_size(slint::PhysicalSize::new(1280, 2400));
+        settle(&ui);
+        for (set_visible, _, _) in SHORT_DIALOGS {
+            set_visible(&ui, true);
+            settle(&ui);
+            let area = ElementHandle::find_by_element_type_name(&ui, "ScrollArea")
+                .next()
+                .unwrap();
+            let (top, content) = (bounds(&area), elements(&ui, "ScrollArea::content"));
+            let content = bounds(&content[0]);
+            assert_eq!(
+                (content.1, content.3),
+                (top.1, top.3),
+                "as tall as the settings"
+            );
+            scroll_down(&area);
+            assert_eq!(bounds(&elements(&ui, "ScrollArea::content")[0]), content);
+            set_visible(&ui, false);
+            settle(&ui);
+        }
+        ui.hide().unwrap();
+    });
+}
+
+/// The Keyboard Shortcuts panel wraps a long entry (a plugin's tool with
+/// the keys it goes with) instead of cutting it, and keeps its key in
+/// view; a short entry keeps its height.
+#[test]
+fn long_shortcut_entries_wrap() {
+    crate::test_support::run_on_slint_ui_test_thread(|| {
+        let ui = window();
+        let long = "Brush (paint a region, over a selected region to extend it; Alt or the eraser erases; [ and ] change its size) "
+            .repeat(3);
+        let long = long.trim().to_string();
+        let row = |heading: bool, label: &str, keys: &str| crate::ShortcutRow {
+            heading,
+            label: label.into(),
+            id: "".into(),
+            keys: keys.into(),
+        };
+        ui.set_shortcut_rows(model(vec![
+            row(true, "Annotations (plugin)", ""),
+            row(false, "Rectangle", "Ctrl+Alt+F11"),
+            row(false, &long, "Ctrl+Alt+F12"),
+        ]));
+        ui.set_shortcuts_panel_visible(true);
+        settle(&ui);
+        let short = find(&ui, AccessibleRole::Text, "Rectangle");
+        let entry = find(&ui, AccessibleRole::Text, &long);
+        let key = bounds(&find(&ui, AccessibleRole::Text, "Ctrl+Alt+F12"));
+        assert!(short.size().height <= 24.0, "{:?}", short.size());
+        assert!(
+            entry.size().height >= 3.0 * short.size().height,
+            "{:?} {:?}",
+            entry.size(),
+            short.size()
+        );
+        assert!(bounds(&entry).2 <= key.0, "the entry stops before its key");
+        let heading = find(&ui, AccessibleRole::Text, "Annotations (plugin)");
+        assert!(
+            bounds(&heading).3 <= bounds(&short).1,
+            "the heading comes first"
+        );
+        ui.set_shortcuts_panel_visible(false);
         ui.hide().unwrap();
     });
 }

@@ -35,7 +35,7 @@ component SmallButton inherits Rectangle {
     label := Text {
         text: root.text;
         color: root.active ? Theme.text-on-accent : Theme.text-primary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
@@ -72,7 +72,7 @@ component Check inherits Rectangle {
         height: 100%;
         text: "✓";
         color: Theme.text-on-accent;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
@@ -116,7 +116,7 @@ component ValueField inherits Rectangle {
         height: 100%;
         text: root.text;
         color: Theme.text-primary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: right;
         vertical-alignment: center;
         overflow: elide;
@@ -146,7 +146,7 @@ component ValueField inherits Rectangle {
         height: 100%;
         text: root.text;
         color: Theme.text-primary;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
         horizontal-alignment: right;
         vertical-alignment: center;
         single-line: true;
@@ -420,7 +420,7 @@ export component ChannelsPanel inherits Rectangle {
                     vertical-stretch: 0;
                     text: root.summary;
                     color: Theme.text-secondary;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     horizontal-alignment: Locale.start;
                 }
 
@@ -467,7 +467,7 @@ export component ChannelsPanel inherits Rectangle {
                     Text {
                         text: @tr("Colours:");
                         color: Theme.text-secondary;
-                        font-size: 11px;
+                        font-size: Locale.text-size(11px);
                         vertical-alignment: center;
                     }
 
@@ -562,7 +562,7 @@ export component ChannelsPanel inherits Rectangle {
                                         Text {
                                             text: row.detail;
                                             color: Theme.text-secondary;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             vertical-alignment: center;
                                         }
 
@@ -612,7 +612,7 @@ export component ChannelsPanel inherits Rectangle {
                                         Text {
                                             text: "–";
                                             color: Theme.text-secondary;
-                                            font-size: 11px;
+                                            font-size: Locale.text-size(11px);
                                             vertical-alignment: center;
                                             accessible-role: none;
                                         }
@@ -700,7 +700,7 @@ export component ChannelsPanel inherits Rectangle {
                     vertical-stretch: 0;
                     text: @tr("Minimum and maximum are in the file's sample values: at the minimum a channel is black, at the maximum its full colour. γ above 1 brightens dim signal. Settings are kept for this slide; exports and plugins see the same picture.");
                     color: Theme.text-secondary;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     wrap: word-wrap;
                     horizontal-alignment: Locale.start;
                 }

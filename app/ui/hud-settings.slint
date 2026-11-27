@@ -1,3 +1,4 @@
+import { Locale } from "locale.slint";
 import { Theme } from "theme.slint";
 import { DialogKeys } from "dialog-keys.slint";
 import {
@@ -33,7 +34,8 @@ component HudSlider inherits Rectangle {
     }
 
     /// The width of the label column (the panel makes it fit its longest
-    /// label: translations are longer than the English).
+    /// label: translations are longer than the English). The label starts
+    /// 8 px into it, and the slider's handle at 0 starts 7 px after it.
     in property <length> label-width: 68px;
     /// What the label needs.
     out property <length> label-preferred-width: label-text.preferred-width;
@@ -46,10 +48,11 @@ component HudSlider inherits Rectangle {
     label-text := Text {
         x: 8px;
         y: (parent.height - self.height) / 2;
-        width: root.label-width;
+        width: root.label-width - 8px;
         text: root.label;
         color: Theme.text-label;
-        font-size: 11px;
+        font-size: Locale.text-size(11px);
+        horizontal-alignment: Locale.start;
         vertical-alignment: center;
         accessible-role: none;
     }
@@ -107,7 +110,7 @@ component HudSlider inherits Rectangle {
         width: root.track-right - 8px;
         text: root.display-text;
         color: Theme.text-value;
-        font-size: 10px;
+        font-size: Locale.text-size(10px);
         horizontal-alignment: right;
         vertical-alignment: center;
         accessible-role: none;
@@ -145,12 +148,23 @@ export component HudSettingsPanel inherits Rectangle {
     callback close-requested();
 
     // The labels' column fits the longest label (68 px in English, at most
-    // 150 px), and the panel grows with it.
-    property <length> label-width: min(150px, max(68px, sharpness-slider.label-preferred-width,
-        gamma-slider.label-preferred-width, brightness-slider.label-preferred-width,
-        contrast-slider.label-preferred-width, units-label.preferred-width,
-        stain-label.preferred-width));
-    width: 260px + root.label-width - 68px;
+    // 150 px), and the panel grows with it. A slider's label starts 8 px
+    // into the column, so it ends 7 px before the slider's handle at 0; the
+    // Units and Stain Norm labels take the whole column, which ends 4 px
+    // before their buttons.
+    property <length> label-width: min(150px, max(68px,
+        8px + max(sharpness-slider.label-preferred-width, gamma-slider.label-preferred-width,
+            brightness-slider.label-preferred-width, contrast-slider.label-preferred-width),
+        units-label.preferred-width, stain-label.preferred-width));
+    // The Units and Stain Norm choices are equally wide: a third of 160 px
+    // (as in English), or the widest of their texts plus 3 px (small text
+    // is larger in Hindi), and the panel grows with them. A row holds the
+    // label column, 12 px, the three choices 2 px apart and 8 px; the
+    // panel's layout adds 4 px on either side.
+    property <length> choice-width: max(160px / 3, 3px + max(um-text.preferred-width, mm-text.preferred-width,
+        in-text.preferred-width, none-text.preferred-width, macenko-text.preferred-width,
+        vahadane-text.preferred-width));
+    width: root.label-width + 3 * root.choice-width + 32px;
     height: layout.preferred-height + 33px;
     background: Theme.hud-panel-bg;
     border-radius: 8px;
@@ -185,10 +199,12 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
+                width: parent.width - 16px;
                 text: @tr("Image Adjustments");
                 color: Theme.text-strong;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 font-weight: 700;
+                horizontal-alignment: Locale.start;
                 vertical-alignment: center;
             }
         }
@@ -222,7 +238,7 @@ export component HudSettingsPanel inherits Rectangle {
             min-value: 0.2;
             max-value: 3.0;
             default-value: 1.0;
-            display-text: Math.round(root.gamma * 100) / 100 + "";
+            display-text: Locale.localized-number(Math.round(root.gamma * 100) / 100);
             changed(v) => {
                 root.gamma-changed(v);
             }
@@ -247,7 +263,7 @@ export component HudSettingsPanel inherits Rectangle {
             min-value: 0.2;
             max-value: 3.0;
             default-value: 1.0;
-            display-text: Math.round(root.contrast * 100) / 100 + "x";
+            display-text: Locale.localized-number(Math.round(root.contrast * 100) / 100) + "x";
             changed(v) => {
                 root.contrast-changed(v);
             }
@@ -267,7 +283,8 @@ export component HudSettingsPanel inherits Rectangle {
                 width: root.label-width;
                 text: @tr("Units");
                 color: Theme.text-label;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
+                horizontal-alignment: Locale.start;
                 vertical-alignment: center;
                 accessible-role: none;
             }
@@ -279,7 +296,7 @@ export component HudSettingsPanel inherits Rectangle {
                 height: 22px;
                 spacing: 2px;
 
-                Rectangle {
+                um-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -300,17 +317,17 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    um-text := Text {
                         text: "µm";
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.um ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                 }
 
-                Rectangle {
+                mm-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -331,17 +348,17 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    mm-text := Text {
                         text: @tr("mm");
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.mm ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                 }
 
-                Rectangle {
+                in-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -362,12 +379,12 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    in-text := Text {
                         // Translators: the unit symbol of inches, as in "1.00 in".
                         text: @tr("in");
                         accessible-role: none;
                         color: root.measurement-unit == MeasurementUnit.inches ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -387,10 +404,11 @@ export component HudSettingsPanel inherits Rectangle {
             stain-label := Text {
                 x: 8px;
                 width: root.label-width;
-                // Translators: row label for stain normalisation, at most 68 px wide (about 11 characters): abbreviate as needed.
+                // Translators: row label for stain normalisation; its column grows to fit it, up to 150 px (about 25 characters).
                 text: @tr("Stain Norm");
                 color: Theme.text-label;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
+                horizontal-alignment: Locale.start;
                 vertical-alignment: center;
                 accessible-role: none;
             }
@@ -402,7 +420,7 @@ export component HudSettingsPanel inherits Rectangle {
                 height: 22px;
                 spacing: 2px;
 
-                Rectangle {
+                none-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -423,17 +441,17 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    none-text := Text {
                         text: @tr("Stain normalization" => "None");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.none ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                 }
 
-                Rectangle {
+                macenko-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -454,17 +472,17 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    macenko-text := Text {
                         text: @tr("Macenko");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.macenko ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                 }
 
-                Rectangle {
+                vahadane-choice := Rectangle {
                     width: (parent.width - 4px) / 3;
                     height: 22px;
                     border-radius: 3px;
@@ -485,11 +503,11 @@ export component HudSettingsPanel inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    vahadane-text := Text {
                         text: @tr("Vahadane");
                         accessible-role: none;
                         color: root.stain-normalization == StainNormalization.vahadane ? Theme.text-selected : Theme.text-primary;
-                        font-size: 10px;
+                        font-size: Locale.text-size(10px);
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -508,10 +526,12 @@ export component HudSettingsPanel inherits Rectangle {
 
             Text {
                 x: 8px;
+                width: parent.width - 16px;
                 text: @tr("Colour Deconvolution");
                 color: Theme.text-strong;
-                font-size: 11px;
+                font-size: Locale.text-size(11px);
                 font-weight: 700;
+                horizontal-alignment: Locale.start;
                 vertical-alignment: center;
             }
         }
@@ -594,10 +614,10 @@ export component HudSettingsPanel inherits Rectangle {
                     x: parent.width - parent.track-right + 4px;
                     y: (parent.height - self.height) / 2;
                     width: 28px;
-                    text: Math.round(root.deconv-hematoxylin-intensity * 100) / 100 + "x";
+                    text: Locale.localized-number(Math.round(root.deconv-hematoxylin-intensity * 100) / 100) + "x";
                     accessible-role: none;
                     color: Theme.text-value;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -649,7 +669,7 @@ export component HudSettingsPanel inherits Rectangle {
                     accessible-role: none;
                     color: Theme.stain-hematoxylin;
                     opacity: root.deconv-hematoxylin-visible ? 1.0 : 0.35;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     font-weight: 700;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -749,10 +769,10 @@ export component HudSettingsPanel inherits Rectangle {
                     x: parent.width - parent.track-right + 4px;
                     y: (parent.height - self.height) / 2;
                     width: 28px;
-                    text: Math.round(root.deconv-eosin-intensity * 100) / 100 + "x";
+                    text: Locale.localized-number(Math.round(root.deconv-eosin-intensity * 100) / 100) + "x";
                     accessible-role: none;
                     color: Theme.text-value;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -804,7 +824,7 @@ export component HudSettingsPanel inherits Rectangle {
                     accessible-role: none;
                     color: Theme.stain-eosin;
                     opacity: root.deconv-eosin-visible ? 1.0 : 0.35;
-                    font-size: 11px;
+                    font-size: Locale.text-size(11px);
                     font-weight: 700;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -861,7 +881,7 @@ export component HudSettingsPanel inherits Rectangle {
             text: @tr("Reset to Defaults");
             accessible-role: none;
             color: Theme.error;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             font-weight: 600;
             horizontal-alignment: center;
             vertical-alignment: center;

@@ -228,7 +228,7 @@ geometry, feature (GeoJSON)	ジオメトリ、フィーチャー	FeatureCollecti
 tumour cells / immune cells	腫瘍細胞 / 免疫細胞	
 CPS (combined positive score)	CPS（Combined Positive Score）	PD-L1 の CPS。式はそのまま
 confidence interval (95%)	95% 信頼区間	
-readout, region readout (Cellaris)	集計、領域集計	予測値の領域ごとの集計。Measure（readout を実行）も「集計」。予測は計測値ではないため「計測」「測定」は使わない
+readout, region readout (Cellaris)	集計、領域集計	モデルの予測値から計算した領域内の統計（平均・ばらつき・濃度 r²）。見出し・ツール名は「領域集計」、コピーする結果は「集計結果」、readout を計算する（Compute）は「集計を計算」「計算」。予測値は計測値ではないため「計測」「測定」「読み取り」「測定値」は使わない（「計測値」「実測」は英語が measurement(s)・measured と言う箇所だけ）
 window (model input square)	予測ウィンドウ	モデルが予測に使う正方形の画像。GUI のウィンドウと区別する
 display window (marker, channel)	表示範囲	eov のチャンネルパネル（表示範囲（ウィンドウ））と同じ
 cell (Cellaris grid cell)	セル	一度に予測するスライドの小さな正方形。生物学的な細胞（細胞）と混同しない

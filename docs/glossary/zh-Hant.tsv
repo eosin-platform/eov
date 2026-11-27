@@ -271,7 +271,7 @@ study (DICOM)	檢查（study）	DICOM series：系列
 checksum	總和檢查碼	
 feature (GeoJSON)	圖徵	FeatureCollection 保留原文
 coordinates	座標	不用「坐標」
-readout (Cellaris region readout)	讀值（區域讀值）	Cellaris 區域讀值：測量區域內的預測值表格
+readout (Cellaris region readout)	統計（區域統計）	Cellaris 區域統計：模型預測值在區域內的統計（平均、離散度、密度 r²），由預測計算而得，並非測量。指計算結果的數值時寫「統計值」：無法計算統計值、已將統計值複製…；工具名稱「Cellaris 區域統計」；readout region：統計區域；the readout can be cancelled：可取消統計。不用「讀值」「讀數」（儀器或檢測的讀數，聽起來像測量值）或「測量」
 cell (Cellaris grid cell)	網格	Cellaris 一次預測的方格（約 41.6 µm），不是生物學的細胞
 tissue block (Cellaris, 5 µm square)	組織方塊	5 µm 的組織方格；不用「組織塊」（易與石蠟包埋組織塊混淆）
 window (model input window)	預測視窗	模型預測所用的方形影像；區別於 display window：顯示範圍
@@ -302,3 +302,4 @@ have focus (eov has focus)	取得焦點	在 eov 取得焦點時
 Remote Desktop portal	遠端桌面入口	Wayland 桌面入口（portal）
 On / Off (toggle)	開 / 關	小型切換開關；狀態文字：已開啟 / 已關閉
 marker (example plugin point)	標記點	範例外掛程式放置的點，區別於蛋白質標記（marker）
+host (eov, as a plugin sees it)	eov 主程式	執行外掛程式的 eov；eovae 錯誤訊息：eov 主程式為 {width}×{height} 的區域傳回了 {n} 位元組。不用「宿主」「主機」（主機指電腦，如 Flatpak 的 on the host：在主機上）

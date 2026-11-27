@@ -62,8 +62,11 @@ impl UiHost {
         for (plugin_id, label, hotkey) in bindings {
             let mut keys = Chord::from_hotkey(&hotkey).label();
             if hotkey.momentary {
+                // The key isolated: a `[` in right-to-left text would be
+                // drawn mirrored, naming the other key.
+                let key = isolate(&keys);
                 // Translators: a key a plugin uses while it is held down.
-                keys = tr!("{} (hold)", keys);
+                keys = tr!("{} (hold)", key);
             }
             by_plugin
                 .entry(self.plugin_name(&plugin_id))
@@ -71,6 +74,7 @@ impl UiHost {
                 .push((label, keys));
         }
         for (plugin, keys) in by_plugin {
+            let plugin = isolate(&plugin);
             // Translators: a heading of the Keyboard Shortcuts panel: the
             // keys of the plugin named {}.
             rows.push(heading(&tr!("{} (plugin)", plugin)));

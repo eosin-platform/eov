@@ -297,13 +297,14 @@ pub fn reference() -> Reference {
 /// Splits a 4-D input shape into (layout, height, width, batch).
 fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), Message> {
     if dims.len() != 4 {
-        return Err(Message::new(|| {
+        let count = dims.len();
+        return Err(Message::new(move || {
             tr!(
                 // Translators: about the model's input tensor; the words in
                 // parentheses name its four axes in order and may be translated.
                 "it has {n} dimension; an image tensor has 4 (batch, channels, height, width)"
                     | "it has {n} dimensions; an image tensor has 4 (batch, channels, height, width)"
-                        % dims.len()
+                        % count
             )
         }));
     }
@@ -322,7 +323,7 @@ fn classify_image(dims: &[Dim]) -> Result<(Layout, Dim, Dim, Dim), Message> {
             dims[2].clone(),
             dims[0].clone(),
         )),
-        (Some(c), _) if c == 1 || c == 4 => Err(Message::new(|| {
+        (Some(c), _) if c == 1 || c == 4 => Err(Message::new(move || {
             tr!("it has {n} channel; eovae feeds RGB (3 channels)"
                 | "it has {n} channels; eovae feeds RGB (3 channels)" % c)
         })),
@@ -376,36 +377,45 @@ pub fn analyse_summary(
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Err(Message::new(|| {
+            let count = several.len();
+            return Err(Message::new(move || {
                 tr!(
                     "the model needs {n} input ({names}); eovae feeds exactly one image input"
                         | "the model needs {n} inputs ({names}); eovae feeds exactly one image input"
-                            % several.len(),
+                            % count,
                     names = i18n::isolate(&names)
                 )
             }));
         }
     };
-    // The input's name in a message (in the language being written).
-    let name = || i18n::isolate(&input.name);
+    // The input's name, for messages: they insert it in the language being
+    // written (`i18n::isolate`).
+    let name = input.name.clone();
     let input_elem = tensor_type(input.elem_type).ok_or_else(|| {
-        Message::new(|| {
+        let (name, kind) = (name.clone(), input.type_label());
+        Message::new(move || {
             tr!(
                 "input '{name}' is {kind}; eovae feeds float32 or float16",
-                name = name(),
-                kind = input.type_label()
+                name = i18n::isolate(&name),
+                kind = kind
             )
         })
     })?;
-    let dims = input
-        .shape
-        .as_ref()
-        .ok_or_else(|| Message::new(|| tr!("input '{}' does not declare its shape", name())))?;
+    let dims = input.shape.as_ref().ok_or_else(|| {
+        let name = name.clone();
+        Message::new(move || {
+            tr!(
+                "input '{}' does not declare its shape",
+                i18n::isolate(&name)
+            )
+        })
+    })?;
     let (layout, height, width, batch) = classify_image(dims).map_err(|error| {
-        Message::new(|| {
+        let name = name.clone();
+        Message::new(move || {
             tr!(
                 "input '{name}' is not an image: {error}",
-                name = name(),
+                name = i18n::isolate(&name),
                 error = &error
             )
         })
@@ -413,10 +423,10 @@ pub fn analyse_summary(
     let tile_size = match (height.fixed(), width.fixed()) {
         (Some(h), Some(w)) if h == w => h as u32,
         (Some(h), Some(w)) => {
-            return Err(Message::new(|| {
+            return Err(Message::new(move || {
                 tr!(
                     "input '{name}' is {height}×{width}; eovae analyses square tiles",
-                    name = name(),
+                    name = i18n::isolate(&name),
                     height = h,
                     width = w
                 )
@@ -433,7 +443,7 @@ pub fn analyse_summary(
         (Some(size), None) | (None, Some(size)) => size as u32,
     };
     if !(16..=2048).contains(&tile_size) {
-        return Err(Message::new(|| {
+        return Err(Message::new(move || {
             tr!("tiles of {} px are not supported (16–2048)", tile_size)
         }));
     }
@@ -460,9 +470,10 @@ pub fn analyse_summary(
             continue;
         };
         let Some(dims) = &output.shape else {
-            rejected.push(Message::new(|| {
+            let name = output.name.clone();
+            rejected.push(Message::new(move || {
                 // Translators: an output of the model (its name) that declares no shape
-                tr!("{} (no shape)", i18n::isolate(&output.name))
+                tr!("{} (no shape)", i18n::isolate(&name))
             }));
             continue;
         };
@@ -500,7 +511,8 @@ pub fn analyse_summary(
                 )
             })
         } else {
-            Message::new(|| {
+            let shape = input.shape_label();
+            Message::new(move || {
                 let outputs = rejected
                     .iter()
                     .map(Message::to_string)
@@ -508,7 +520,7 @@ pub fn analyse_summary(
                     .join(", ");
                 tr!(
                     "no output is an RGB image matching the input {shape} (outputs: {outputs})",
-                    shape = i18n::isolate(input.shape_label()),
+                    shape = i18n::isolate(&shape),
                     outputs = i18n::isolate(outputs)
                 )
             })
@@ -666,14 +678,18 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, Message> {
         return Err(Message::new(|| tr!("only .onnx models are supported")));
     }
     if !path.is_file() {
-        return Err(Message::new(|| {
+        let path = path.to_path_buf();
+        return Err(Message::new(move || {
             tr!("{} does not exist", i18n::isolate(path.display()))
         }));
     }
     let summary = onnx_scan::scan_file(path).map_err(|error| {
         match onnx_scan::InvalidModel::detail(&error) {
             // The detail is technical, and English like a library's.
-            Some(detail) => Message::new(|| tr!("not a valid ONNX model: {}", detail)),
+            Some(detail) => {
+                let detail = detail.to_string();
+                Message::new(move || tr!("not a valid ONNX model: {}", detail))
+            }
             None => Message::plain(error.to_string()),
         }
     })?;
@@ -683,19 +699,21 @@ pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<ModelInfo, Message> {
     let mut files = vec![path.to_path_buf()];
     for location in &summary.external_data {
         if !onnx_scan::is_safe_location(location) {
-            return Err(Message::new(|| {
+            let location = location.clone();
+            return Err(Message::new(move || {
                 tr!(
                     "the model's weights point outside its folder ('{}')",
-                    i18n::isolate(location)
+                    i18n::isolate(&location)
                 )
             }));
         }
         let weights = directory.join(location);
         if !weights.is_file() {
-            return Err(Message::new(|| {
+            let location = location.clone();
+            return Err(Message::new(move || {
                 tr!(
                     "the model's weights file '{}' is missing; keep it next to the .onnx file",
-                    i18n::isolate(location)
+                    i18n::isolate(&location)
                 )
             }));
         }

@@ -23,6 +23,21 @@ struct Message {
     at: chrono_like::Clock,
 }
 
+impl Message {
+    /// The message as the Messages list shows it.
+    fn row(&self) -> NotificationData {
+        NotificationData {
+            level: level_code(self.level),
+            message: self.message.clone().into(),
+            detail: self.detail.clone().into(),
+            source: self.source.clone().into(),
+            // Shown after the source: isolated, it keeps its order
+            // ("16:22:24 UTC") in right-to-left languages.
+            time: isolate(self.at.label()).into(),
+        }
+    }
+}
+
 /// Minimal wall-clock formatting without a date-time dependency.
 mod chrono_like {
     #[derive(Clone, Copy)]
@@ -200,18 +215,7 @@ impl Notices {
     }
 
     pub(super) fn apply(&self, ui: &AppWindow) {
-        let items: Vec<NotificationData> = self
-            .messages
-            .iter()
-            .rev()
-            .map(|m| NotificationData {
-                level: level_code(m.level),
-                message: m.message.clone().into(),
-                detail: m.detail.clone().into(),
-                source: m.source.clone().into(),
-                time: m.at.label().into(),
-            })
-            .collect();
+        let items: Vec<NotificationData> = self.messages.iter().rev().map(Message::row).collect();
         ui.set_notifications(ModelRc::from(Rc::new(VecModel::from(items))));
         ui.set_unread_notifications(self.unread as i32);
         ui.set_unread_errors(self.unread_errors);
@@ -289,6 +293,36 @@ mod tests {
         assert!(notices.unread_errors);
         notices.mark_read();
         assert_eq!(notices.unread, 0);
+    }
+
+    /// The time after a message's source keeps its order in right-to-left
+    /// languages ("16:22:24 UTC", which was drawn "UTC 16:22:24").
+    #[test]
+    fn message_times_keep_their_order_in_right_to_left_languages() {
+        use eov_plugin_api::i18n;
+        struct English;
+        impl Drop for English {
+            fn drop(&mut self) {
+                i18n::set_catalog(i18n::source(), None);
+            }
+        }
+        let _english = English;
+        let message = Message {
+            level: NotifyLevel::Info,
+            message: "m".into(),
+            detail: String::new(),
+            source: "p".into(),
+            at: chrono_like::Clock {
+                hours: 16,
+                minutes: 22,
+                seconds: 24,
+            },
+        };
+        assert_eq!(message.row().time, "16:22:24 UTC");
+        for tag in ["ar", "fa", "he"] {
+            i18n::set_catalog(i18n::by_tag(tag).unwrap(), None);
+            assert_eq!(message.row().time, "\u{2068}16:22:24 UTC\u{2069}", "{tag}");
+        }
     }
 
     #[test]

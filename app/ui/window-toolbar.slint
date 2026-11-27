@@ -70,7 +70,11 @@ export component WindowToolbar inherits Rectangle {
     in property <int> filtering-mode-index: filtering-mode == FilteringMode.bilinear ? 0 : filtering-mode == FilteringMode.trilinear ? 1 : 2;
     in-out property <bool> filter-popup-visible: false;
     in property <[PluginButtonData]> plugin-buttons: [];
-    property <string> plugin-hovered-tooltip-text: "";
+    // The plugin button under the pointer (-1: none), and where its tooltip
+    // goes. The text is read from the model, so it follows the language.
+    property <int> plugin-hovered-index: -1;
+    property <string> plugin-hovered-tooltip-text: root.plugin-hovered-index >= 0 && root.plugin-hovered-index < root.plugin-buttons.length
+        ? root.plugin-buttons[root.plugin-hovered-index].tooltip : "";
     property <length> plugin-hovered-tooltip-center-x: 0px;
     property <length> plugin-hovered-tooltip-top-y: 0px;
     /// Keys from the shortcut table, for tooltips.
@@ -122,11 +126,11 @@ export component WindowToolbar inherits Rectangle {
     out property <length> filter-combo-width: filter-combo-area.width;
     out property <bool> hovered-tooltip-visible: hovered-tooltip-text != "";
     out property <string> hovered-tooltip-text:
-        open-button.hovered ? open-button.tooltip-text : undo-button.hovered ? undo-button.tooltip-text : redo-button.hovered ? redo-button.tooltip-text : series-button.hovered ? series-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : viewport-lock-button.hovered ? viewport-lock-button.tooltip-text : link-button.hovered ? link-button.tooltip-text : align-button.hovered ? align-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : theme-button.hovered ? theme-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : plugins-button.hovered ? plugins-button.tooltip-text : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? @tr("Minimize window") : !root.use-native-window-controls && maximize-touch.has-hover ? @tr("Maximize window") : !root.use-native-window-controls && close-win-touch.has-hover ? @tr("Close window") : "";
+        open-button.hovered ? open-button.tooltip-text : undo-button.hovered ? undo-button.tooltip-text : redo-button.hovered ? redo-button.tooltip-text : series-button.hovered ? series-button.tooltip-text : minimap-button.hovered ? minimap-button.tooltip-text : viewport-lock-button.hovered ? viewport-lock-button.tooltip-text : link-button.hovered ? link-button.tooltip-text : align-button.hovered ? align-button.tooltip-text : navigate-button.hovered ? navigate-button.tooltip-text : roi-button.hovered ? roi-button.tooltip-text : measure-button.hovered ? measure-button.tooltip-text : cpu-button.hovered ? cpu-button.tooltip-text : gpu-button.hovered ? gpu-button.tooltip-text : metadata-button.hovered ? metadata-button.tooltip-text : scale-bar-button.hovered ? scale-bar-button.tooltip-text : theme-button.hovered ? theme-button.tooltip-text : language-button.hovered ? language-button.tooltip-text : dataset-export-button.hovered ? dataset-export-button.tooltip-text : plugins-button.hovered ? plugins-button.tooltip-text : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-text : !root.use-native-window-controls && minimize-touch.has-hover ? @tr("Minimize window") : !root.use-native-window-controls && maximize-touch.has-hover ? @tr("Maximize window") : !root.use-native-window-controls && close-win-touch.has-hover ? @tr("Close window") : "";
     out property <length> hovered-tooltip-center-x:
-        open-button.hovered ? open-button.absolute-position.x + open-button.width / 2 : undo-button.hovered ? undo-button.absolute-position.x + undo-button.width / 2 : redo-button.hovered ? redo-button.absolute-position.x + redo-button.width / 2 : series-button.hovered ? series-button.absolute-position.x + series-button.width / 2 : minimap-button.hovered ? minimap-button.absolute-position.x + minimap-button.width / 2 : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.x + viewport-lock-button.width / 2 : link-button.hovered ? link-button.absolute-position.x + link-button.width / 2 : align-button.hovered ? align-button.absolute-position.x + align-button.width / 2 : navigate-button.hovered ? navigate-button.absolute-position.x + navigate-button.width / 2 : roi-button.hovered ? roi-button.absolute-position.x + roi-button.width / 2 : measure-button.hovered ? measure-button.absolute-position.x + measure-button.width / 2 : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2 : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2 : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2 : scale-bar-button.hovered ? scale-bar-button.absolute-position.x + scale-bar-button.width / 2 : theme-button.hovered ? theme-button.absolute-position.x + theme-button.width / 2 : dataset-export-button.hovered ? dataset-export-button.absolute-position.x + dataset-export-button.width / 2 : plugins-button.hovered ? plugins-button.absolute-position.x + plugins-button.width / 2 : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-center-x : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2 : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize_control.width / 2 : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close_control.width / 2 : 0px;
+        open-button.hovered ? open-button.absolute-position.x + open-button.width / 2 : undo-button.hovered ? undo-button.absolute-position.x + undo-button.width / 2 : redo-button.hovered ? redo-button.absolute-position.x + redo-button.width / 2 : series-button.hovered ? series-button.absolute-position.x + series-button.width / 2 : minimap-button.hovered ? minimap-button.absolute-position.x + minimap-button.width / 2 : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.x + viewport-lock-button.width / 2 : link-button.hovered ? link-button.absolute-position.x + link-button.width / 2 : align-button.hovered ? align-button.absolute-position.x + align-button.width / 2 : navigate-button.hovered ? navigate-button.absolute-position.x + navigate-button.width / 2 : roi-button.hovered ? roi-button.absolute-position.x + roi-button.width / 2 : measure-button.hovered ? measure-button.absolute-position.x + measure-button.width / 2 : cpu-button.hovered ? cpu-button.absolute-position.x + cpu-button.width / 2 : gpu-button.hovered ? gpu-button.absolute-position.x + gpu-button.width / 2 : metadata-button.hovered ? metadata-button.absolute-position.x + metadata-button.width / 2 : scale-bar-button.hovered ? scale-bar-button.absolute-position.x + scale-bar-button.width / 2 : theme-button.hovered ? theme-button.absolute-position.x + theme-button.width / 2 : language-button.hovered ? language-button.absolute-position.x + language-button.width / 2 : dataset-export-button.hovered ? dataset-export-button.absolute-position.x + dataset-export-button.width / 2 : plugins-button.hovered ? plugins-button.absolute-position.x + plugins-button.width / 2 : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-center-x : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.x + minimize-control.width / 2 : !root.use-native-window-controls && maximize-touch.has-hover ? maximize-control.absolute-position.x + maximize_control.width / 2 : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.x + close_control.width / 2 : 0px;
     out property <length> hovered-tooltip-top-y:
-        open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px : undo-button.hovered ? undo-button.absolute-position.y + undo-button.height + 6px : redo-button.hovered ? redo-button.absolute-position.y + redo-button.height + 6px : series-button.hovered ? series-button.absolute-position.y + series-button.height + 6px : minimap-button.hovered ? minimap-button.absolute-position.y + minimap-button.height + 6px : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.y + viewport-lock-button.height + 6px : link-button.hovered ? link-button.absolute-position.y + link-button.height + 6px : align-button.hovered ? align-button.absolute-position.y + align-button.height + 6px : navigate-button.hovered ? navigate-button.absolute-position.y + navigate-button.height + 6px : roi-button.hovered ? roi-button.absolute-position.y + roi-button.height + 6px : measure-button.hovered ? measure-button.absolute-position.y + measure-button.height + 6px : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px : scale-bar-button.hovered ? scale-bar-button.absolute-position.y + scale-bar-button.height + 6px : theme-button.hovered ? theme-button.absolute-position.y + theme-button.height + 6px : dataset-export-button.hovered ? dataset-export-button.absolute-position.y + dataset-export-button.height + 6px : plugins-button.hovered ? plugins-button.absolute-position.y + plugins-button.height + 6px : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-top-y : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize_control.height + 6px : !root.use-native-window-controls && maximize-touch.has-hover ? maximize_control.absolute-position.y + maximize_control.height + 6px : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close_control.height + 6px : 0px;
+        open-button.hovered ? open-button.absolute-position.y + open-button.height + 6px : undo-button.hovered ? undo-button.absolute-position.y + undo-button.height + 6px : redo-button.hovered ? redo-button.absolute-position.y + redo-button.height + 6px : series-button.hovered ? series-button.absolute-position.y + series-button.height + 6px : minimap-button.hovered ? minimap-button.absolute-position.y + minimap-button.height + 6px : viewport-lock-button.hovered ? viewport-lock-button.absolute-position.y + viewport-lock-button.height + 6px : link-button.hovered ? link-button.absolute-position.y + link-button.height + 6px : align-button.hovered ? align-button.absolute-position.y + align-button.height + 6px : navigate-button.hovered ? navigate-button.absolute-position.y + navigate-button.height + 6px : roi-button.hovered ? roi-button.absolute-position.y + roi-button.height + 6px : measure-button.hovered ? measure-button.absolute-position.y + measure-button.height + 6px : cpu-button.hovered ? cpu-button.absolute-position.y + cpu-button.height + 6px : gpu-button.hovered ? gpu-button.absolute-position.y + gpu-button.height + 6px : metadata-button.hovered ? metadata-button.absolute-position.y + metadata-button.height + 6px : scale-bar-button.hovered ? scale-bar-button.absolute-position.y + scale-bar-button.height + 6px : theme-button.hovered ? theme-button.absolute-position.y + theme-button.height + 6px : language-button.hovered ? language-button.absolute-position.y + language-button.height + 6px : dataset-export-button.hovered ? dataset-export-button.absolute-position.y + dataset-export-button.height + 6px : plugins-button.hovered ? plugins-button.absolute-position.y + plugins-button.height + 6px : root.plugin-hovered-tooltip-text != "" ? root.plugin-hovered-tooltip-top-y : !root.use-native-window-controls && minimize-touch.has-hover ? minimize-control.absolute-position.y + minimize_control.height + 6px : !root.use-native-window-controls && maximize-touch.has-hover ? maximize_control.absolute-position.y + maximize_control.height + 6px : !root.use-native-window-controls && close-win-touch.has-hover ? close-control.absolute-position.y + close_control.height + 6px : 0px;
 
     // The strip along the top of the title bar, above the first row of
     // buttons, moves the window like the rest of its empty space. Without
@@ -423,7 +427,10 @@ export component WindowToolbar inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     filter-combo-area := Rectangle {
-                        width: 82px;
+                        // As wide as the longest of the modes' names (82 px at
+                        // least), so that it keeps its width when the mode
+                        // changes: the padding, the spacing and the arrow.
+                        width: max(82px, filter-mode-names.preferred-width + 8px + 4px + filter-arrow.preferred-width + 6px);
                         height: 26px;
                         border-radius: 3px;
                         background: filter-combo-touch.has-hover ? Theme.surface-hover : Theme.surface;
@@ -455,19 +462,47 @@ export component WindowToolbar inherits Rectangle {
                             filter-mode-text := Text {
                                 text: root.filtering-mode == FilteringMode.bilinear ? @tr("Bilinear") : root.filtering-mode == FilteringMode.trilinear ? @tr("Trilinear") : @tr("Lanczos-3");
                                 color: Theme.text-primary;
-                                font-size: 11px;
+                                font-size: Locale.text-size(11px);
+                                horizontal-alignment: Locale.start;
                                 vertical-alignment: center;
                                 horizontal-stretch: 1;
                                 overflow: elide;
                                 accessible-role: none;
                             }
 
-                            Text {
+                            filter-arrow := Text {
                                 text: "▾";
                                 color: Theme.text-secondary;
-                                font-size: 10px;
+                                font-size: Locale.text-size(10px);
                                 vertical-alignment: center;
                                 accessible-role: none;
+                            }
+                        }
+
+                        // Measures the names (never shown).
+                        Rectangle {
+                            width: 0px;
+                            height: 0px;
+                            visible: false;
+
+                            filter-mode-names := VerticalLayout {
+                                Text {
+                                    text: @tr("Bilinear");
+                                    font-size: Locale.text-size(11px);
+                                    accessible-role: none;
+                                }
+
+                                Text {
+                                    text: @tr("Trilinear");
+                                    font-size: Locale.text-size(11px);
+                                    accessible-role: none;
+                                }
+
+                                Text {
+                                    text: @tr("Lanczos-3");
+                                    font-size: Locale.text-size(11px);
+                                    accessible-role: none;
+                                }
                             }
                         }
                     }
@@ -491,15 +526,24 @@ export component WindowToolbar inherits Rectangle {
                         is-active: btn.active;
                         checkable: btn.is-tool || btn.active;
                         enabled: btn.enabled;
+                        // The host replaces the model whenever a plugin's
+                        // buttons change (a click toggles one, the language
+                        // changes): the button under the pointer goes without
+                        // reporting that it is no longer hovered, and its
+                        // tooltip would stay on screen. Its successor clears
+                        // it (the pointer's next move shows it again).
+                        init => {
+                            if root.plugin-hovered-index == idx {
+                                root.plugin-hovered-index = -1;
+                            }
+                        }
                         changed hovered => {
                             if self.hovered {
-                                root.plugin-hovered-tooltip-text = btn.tooltip;
+                                root.plugin-hovered-index = idx;
                                 root.plugin-hovered-tooltip-center-x = self.absolute-position.x + self.width / 2;
                                 root.plugin-hovered-tooltip-top-y = self.absolute-position.y + self.height + 6px;
-                            } else if root.plugin-hovered-tooltip-text == btn.tooltip {
-                                root.plugin-hovered-tooltip-text = "";
-                                root.plugin-hovered-tooltip-center-x = 0px;
-                                root.plugin-hovered-tooltip-top-y = 0px;
+                            } else if root.plugin-hovered-index == idx {
+                                root.plugin-hovered-index = -1;
                             }
                         }
                         clicked => {

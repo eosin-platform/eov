@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { RecentFileData } from "types.slint";
+import { Locale } from "locale.slint";
 
 /// About this eov, set by the host.
 export global AppInfo {
@@ -20,10 +21,13 @@ export component HomeScreen inherits Rectangle {
     Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        width: 300px;
-        height: recent-files.length > 0 ? 480px : 300px;
+        // As wide as the tagline and the drag-and-drop line need (300 px at
+        // least), within the pane; in a narrower pane they wrap, and the
+        // column grows taller.
+        width: max(300px, min(root.width - 32px, max(tagline.preferred-width, drop-hint.preferred-width)));
+        height: max(recent-files.length > 0 ? 480px : 300px, home-column.min-height);
 
-        VerticalLayout {
+        home-column := VerticalLayout {
             alignment: center;
             spacing: 0px;
 
@@ -38,11 +42,12 @@ export component HomeScreen inherits Rectangle {
                 height: 16px;
             }
 
-            Text {
+            tagline := Text {
                 text: @tr("Whole Slide Image Viewer");
                 color: Theme.text-secondary;
                 font-size: 14px;
                 horizontal-alignment: center;
+                wrap: word-wrap;
             }
 
             Rectangle {
@@ -103,11 +108,12 @@ export component HomeScreen inherits Rectangle {
                 height: 16px;
             }
 
-            Text {
+            drop-hint := Text {
                 text: @tr("or drag and drop WSI files or folders");
                 color: Theme.text-secondary;
                 font-size: 12px;
                 horizontal-alignment: center;
+                wrap: word-wrap;
             }
 
             if recent-files.length > 0: Rectangle {
@@ -214,7 +220,7 @@ export component HomeScreen inherits Rectangle {
             // Translators: "not for primary diagnosis" is the regulatory wording: eov must not be used to make a diagnosis from the slide; do not translate it as the "principal diagnosis" of hospital coding.
             text: @tr("For research and education. Not a medical device; not for primary diagnosis.");
             color: Theme.text-secondary;
-            font-size: 10px;
+            font-size: Locale.text-size(10px);
             horizontal-alignment: center;
             wrap: word-wrap;
         }
@@ -226,13 +232,13 @@ export component HomeScreen inherits Rectangle {
             Text {
                 text: "eov " + AppInfo.version;
                 color: Theme.text-secondary;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
             }
 
             Text {
                 text: "·";
                 color: Theme.text-secondary;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 accessible-role: none;
             }
 
@@ -258,7 +264,7 @@ export component HomeScreen inherits Rectangle {
                 Text {
                     text: AppInfo.language-name;
                     color: language-touch.has-hover ? Theme.text-primary : Theme.link;
-                    font-size: 10px;
+                    font-size: Locale.text-size(10px);
                     accessible-role: none;
 
                     language-touch := TouchArea {
@@ -273,14 +279,14 @@ export component HomeScreen inherits Rectangle {
             Text {
                 text: "·";
                 color: Theme.text-secondary;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 accessible-role: none;
             }
 
             Text {
                 text: @tr("Check for Updates…");
                 color: update-touch.has-hover ? Theme.text-primary : Theme.link;
-                font-size: 10px;
+                font-size: Locale.text-size(10px);
                 accessible-role: button;
                 accessible-label: @tr("Check for eov updates");
                 accessible-action-default => {

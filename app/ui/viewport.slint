@@ -15,6 +15,7 @@ import { MetadataHud } from "metadata-hud.slint";
 import { ScaleBar } from "scale-bar.slint";
 import { HudToolbar } from "hud-toolbar.slint";
 import { HudSettingsPanel } from "hud-settings.slint";
+import { Locale } from "locale.slint";
 
 export { Minimap, ZoomSlider, MetadataHud, ScaleBar, HudToolbar, HudSettingsPanel }
 
@@ -256,6 +257,7 @@ export component Viewport inherits Rectangle {
     if show-metadata && metadata-items.length > 0: MetadataHud {
         x: parent.width - self.width - 16px;
         y: 16px;
+        available-width: root.width - 32px;
         items: root.metadata-items;
     }
 
@@ -281,6 +283,9 @@ export component Viewport inherits Rectangle {
     if root.hud.show-hud-toolbar: hud_toolbar := HudToolbar {
         x: 16px;
         y: 16px;
+        // Its tooltips and menus stay inside the pane.
+        area-left: -self.x;
+        area-width: root.width;
         pane-id: root.pane-id;
         plugin-menu-open <=> root.hud-plugin-menu-open;
         zoom-level: root.viewport-info.zoom;
@@ -429,7 +434,7 @@ export component Viewport inherits Rectangle {
             height: root.hud.color-warning != "" ? self.preferred-height : 0px;
             text: root.hud.color-warning;
             color: Theme.slide-badge-warning;
-            font-size: 11px;
+            font-size: Locale.text-size(11px);
             wrap: word-wrap;
         }
     }

@@ -233,7 +233,7 @@ attach (annotations to a slide)	rattacher
 back up, merge (database)	sauvegarder, fusionner
 DICOM bulk annotations	annotations DICOM groupées	DICOM IOD names (Microscopy Bulk Simple Annotations) stay in English.
 combined positive score (CPS)	score positif combiné (CPS)	PD-L1.
-readout (Cellaris)	relevé	Region readout = relevé de région; REGION READOUT = RELEVÉ DE RÉGION.
+readout, region readout (Cellaris)	statistiques, statistiques de région	Statistics computed from a model's predicted values, not a measurement: never « relevé » (a meter or instrument reading), « mesure » or « lecture ». REGION READOUT = STATISTIQUES DE RÉGION; tool Cellaris region readout = Statistiques de région Cellaris; Compute a readout of… = Calculer les statistiques de…; a long readout = un long calcul de statistiques; readout region (layer) = région des statistiques.
 cell (Cellaris grid square)	case	A square of the slide predicted at once; never « cellule ».
 tissue block (5 µm square)	bloc de tissu
 window (model input tile)	fenêtre	Square image a model predicts from.

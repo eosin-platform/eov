@@ -223,7 +223,7 @@ confidence interval	konfidensinterval; KI	Compact: (95 %-KI {low}–{high}).
 mouse pointer, system pointer	musemarkør, systemets musemarkør	Never plain markør (= marker); Pointer Speed = Markørhastighed.
 undo label that is also a menu item or dialog title	imperative (Slet lag, Slet klasse, Ryd tællinger, Slet annotation)	Same msgid serves both; a noun phrase would be wrong in the menu/dialog.
 prediction, predict	forudsigelse, forudsige	Predicted = forudsagt (see synthetic, predicted).
-readout, region readout	aflæsning, områdeaflæsning	Cellaris; REGION READOUT = OMRÅDEAFLÆSNING; Cellaris region readout = Cellaris-områdeaflæsning (tool name).
+readout, region readout	opgørelse, områdeopgørelse	Cellaris: a summary computed from predicted values, never aflæsning (= instrument/meter reading) or måling; REGION READOUT = OMRÅDEOPGØRELSE; Cellaris region readout = Cellaris-områdeopgørelse (tool name); readout region = opgørelsesområde; a long readout = en tidskrævende opgørelse.
 window (model input)	vindue	Square image a model predicts from (Cellaris, eovae); s per window = s pr. vindue.
 display window (Cellaris marker)	visningsvindue	Kept apart from the model's vindue; ends Black/White = Sort/Hvid.
 cell (Cellaris grid cell)	gittercelle	Square of the slide predicted at once; never a biological cell (celle).
@@ -244,7 +244,7 @@ dead zone, response curve	dødzone, responskurve	Tuning = Finjustering.
 mapping (gamepad), Unassigned	tildeling, Ikke tildelt	Mappings = Tildelinger.
 profile (settings)	profil	Save As/New/Import/Export/Delete = Gem som/Ny/Importér/Eksportér/Slet.
 whole-slide image (file type name)	Digitalt præparat (…)	File manager type names: Aperio whole-slide image = Digitalt præparat (Aperio); Hamamatsu NDPI whole-slide image = Digitalt præparat (Hamamatsu NDPI); BigTIFF image = BigTIFF-billede.
-compute (predictions, a readout)	beregne; Beregn	Never måle: Computing: = Beregner:; Compute a readout of a large region? = Vil du beregne en aflæsning af et stort område?
+compute (predictions, a readout)	beregne; Beregn	Never måle: Computing: = Beregner:; Compute a readout of a large region? = Vil du beregne en opgørelse for et stort område?
 worker thread	arbejdstråd	A plugin's background thread: Could not start a worker thread = En arbejdstråd kunne ikke startes.
 host (eov, for a plugin)	værtsprogrammet	eovae errors: the host returned … = værtsprogrammet returnerede …
 Whole slide / Viewport / Region of interest / Automatic analysis finished, cancelled, failed (eovae)	Analysen af hele præparatet / visningsområdet / interesseområdet; Den automatiske analyse	Button names used as the subject become "the analysis of …": blev fuldført på {duration}, blev annulleret efter {duration}, mislykkedes.

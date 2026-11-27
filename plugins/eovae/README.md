@@ -298,7 +298,10 @@ checks need more:
   matches_the_python_reference -- --ignored` compares eovae's pipeline with
   it (agreement to about 1e-7).
 - `scripts/check_ui.sh` compiles the sidebar with the Slint version eov uses
-  and checks every pushed property against its declared type.
+  and checks every pushed property against its declared type. The sidebar
+  must also compile with Slint 1.17, the oldest version `plugin.toml`
+  accepts (`cargo test` checks that it uses none of the scroll properties
+  Slint 1.19 renamed).
 - `EOVAE_ORT_LIB=… cargo test --release batch_runs_with_onnx_runtime --
   --ignored` runs the batch command with ONNX Runtime and the HistoVAE
   reference model (another model: `EOVAE_BATCH_MODEL`).
@@ -342,6 +345,11 @@ next to the template `translations/eovae.pot`, as `[i18n]` in
 `tools/i18n/i18n.py` in this repository (`python3 tools/i18n/i18n.py update
 eovae`; see [Translating eov](../../docs/translating.md)). Corrections are
 welcome: improve the catalog of your language and open a pull request.
+
+Translations need not be shortened to fit the sidebar: its texts wrap, and
+its buttons are as wide as their labels and go onto more lines when they do
+not fit side by side. In Arabic, Persian and Hebrew the texts start at the
+right; the controls keep their places (the layout is not mirrored).
 
 Batch results (`summary.json`, `tiles.csv`, `heatmap.png`), CSV exports
 with their manifests, and log messages are written in English, whatever

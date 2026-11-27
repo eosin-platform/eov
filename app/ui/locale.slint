@@ -24,17 +24,22 @@ export global Locale {
 
     /// The text in the language's decimal separator (people type `.` or
     /// `,` whatever the language).
-    pure function localized-number(text: string) -> string {
+    public pure function localized-number(text: string) -> string {
         return text.replace-all(".", root.decimal-separator).replace-all(",", root.decimal-separator);
+    }
+
+    /// `text` with the Arabic-Indic and Persian digits their keyboards type
+    /// as ASCII digits.
+    pure function western-digits(text: string) -> string {
+        return text.replace-all("٠", "0").replace-all("١", "1").replace-all("٢", "2").replace-all("٣", "3").replace-all("٤", "4").replace-all("٥", "5").replace-all("٦", "6").replace-all("٧", "7").replace-all("٨", "8").replace-all("٩", "9")
+            .replace-all("۰", "0").replace-all("۱", "1").replace-all("۲", "2").replace-all("۳", "3").replace-all("۴", "4").replace-all("۵", "5").replace-all("۶", "6").replace-all("۷", "7").replace-all("۸", "8").replace-all("۹", "9");
     }
 
     /// `text` in ASCII digits: the Arabic-Indic and Persian digits their
     /// keyboards type, the Arabic decimal sign as `.`, and the minus sign
     /// as `-`.
     pure function ascii-digits(text: string) -> string {
-        return text.replace-all("٠", "0").replace-all("١", "1").replace-all("٢", "2").replace-all("٣", "3").replace-all("٤", "4").replace-all("٥", "5").replace-all("٦", "6").replace-all("٧", "7").replace-all("٨", "8").replace-all("٩", "9")
-            .replace-all("۰", "0").replace-all("۱", "1").replace-all("۲", "2").replace-all("۳", "3").replace-all("۴", "4").replace-all("۵", "5").replace-all("۶", "6").replace-all("۷", "7").replace-all("۸", "8").replace-all("۹", "9")
-            .replace-all("\u{066B}", ".").replace-all("\u{2212}", "-");
+        return root.western-digits(text).replace-all("\u{066B}", ".").replace-all("\u{2212}", "-");
     }
 
     pure function parse-ascii(text: string) -> float {
@@ -60,6 +65,19 @@ export global Locale {
         return root.rtl ? "\u{2068}" + text + "\u{2069}" : text;
     }
 
+    /// `text` laid out in the writing direction of the interface: in
+    /// right-to-left languages it starts with U+200F (RIGHT-TO-LEFT MARK).
+    /// A line takes the direction of its first letter, so use it for a
+    /// line the window joins from values whose first may be in Latin
+    /// letters (`Locale.in-direction(Locale.isolate(name) + " · " +
+    /// Locale.isolate(time))`): they then follow one another from the
+    /// right. Isolate the values. Not for text that may be English as a
+    /// whole, such as a message from a library: its punctuation would be
+    /// placed as in right-to-left text.
+    public pure function in-direction(text: string) -> string {
+        return root.rtl ? "\u{200F}" + text : text;
+    }
+
     pure function ascii-is-number(text: string) -> bool {
         return text.replace-all(",", ".").is-float() || root.localized-number(text).is-float();
     }
@@ -73,5 +91,53 @@ export global Locale {
     /// reads "inf" and "NaN" as numbers too, which no field takes.
     public pure function is-number(text: string) -> bool {
         return root.ascii-is-number(root.ascii-digits(text)) && root.finite(root.number(text));
+    }
+
+    /// `text` in ASCII digits without its separator, when it is a whole
+    /// number written with one separator between its thousands (`1,024`,
+    /// `1.024`, `1 024`, `١٬٠٢٤`): one to three digits, the separator, three
+    /// digits, 1000 or more. "" when it is not.
+    ///
+    /// Either of `,` and `.` is taken for the separator, whatever the
+    /// language: in a whole number, three digits after it are never a
+    /// fraction someone meant. So are the space, the no-break space, the
+    /// narrow no-break space and the Arabic thousands separator, with which
+    /// some languages and keyboards group digits; the Arabic decimal sign
+    /// never is.
+    pure function without-thousands(text: string) -> string {
+        let digits = root.western-digits(text);
+        let shape = digits.replace-all("0", "d").replace-all("1", "d").replace-all("2", "d").replace-all("3", "d").replace-all("4", "d").replace-all("5", "d").replace-all("6", "d").replace-all("7", "d").replace-all("8", "d").replace-all("9", "d")
+            .replace-all(",", "#").replace-all(".", "#").replace-all(" ", "#").replace-all("\u{00A0}", "#").replace-all("\u{202F}", "#").replace-all("\u{066C}", "#");
+        if shape != "d#ddd" && shape != "dd#ddd" && shape != "ddd#ddd" {
+            return "";
+        }
+        // The shape has one separator, so this takes away just that one.
+        let whole = digits.replace-all(",", "").replace-all(".", "").replace-all(" ", "").replace-all("\u{00A0}", "").replace-all("\u{202F}", "").replace-all("\u{066C}", "");
+        // A first digit 0 (`0,500`) makes it a decimal after all.
+        return root.number(whole) >= 1000 ? whole : "";
+    }
+
+    /// Whether `text` is a whole number, for a field that takes one: a
+    /// number (see `number`), or one written with a thousands separator
+    /// (`1,024`).
+    public pure function is-whole-number(text: string) -> bool {
+        return root.without-thousands(text) != "" || root.is-number(text);
+    }
+
+    /// The whole number in `text`: one written with a thousands separator
+    /// as that number (`1,024` and `1.024` are 1024 in every language),
+    /// any other number rounded (`128.6` is 129); 0 when it is none. Use
+    /// it with `is-whole-number`.
+    public pure function whole-number(text: string) -> int {
+        let whole = root.without-thousands(text);
+        return Math.round(root.number(whole != "" ? whole : text));
+    }
+
+    /// The size for small text (`font-size: Locale.text-size(11px)`): at
+    /// least 12 px in Hindi, other languages keep `size`. Below 12 px the
+    /// GPU renderer (femtovg 0.28) draws Devanagari with overlapping and
+    /// missing pieces at a scale factor of 1.
+    public pure function text-size(size: length) -> length {
+        return root.tag == "hi" ? max(size, 12px) : size;
     }
 }

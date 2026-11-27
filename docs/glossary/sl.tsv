@@ -36,7 +36,8 @@ patch (dataset)	izsek	Patch extraction: »izrezovanje izsekov«. The dataset dia
 cache	predpomnilnik	
 region of interest (ROI)	območje zanimanja (ROI)	Keep ROI as the abbreviation.
 region (annotation)	območje	A drawn area.
-measurement	meritev	Plural: 1 meritev, 2 meritvi, 3 meritve, 5 meritev.
+measurement	meritev	Plural: 1 meritev, 2 meritvi, 3 meritve, 5 meritev. Only real measurements (eov's measure tool, measured IF); never for Cellaris's region readout of predicted values (»povzetek območja«).
+compute (predictions, a readout)	izračunati; računanje, izračun	Calculating values with a model: »Računanje: {done} od {n} mrežnih celic«, »Ni izračunano: {}«, button »Izračunaj«; never »meriti«.
 Measure (tool)	Merjenje	Tool name; verbs »meriti«, »izmeriti«.
 distance	razdalja	
 path length	dolžina poti	Measure mode of a polyline (several segments).
@@ -46,6 +47,7 @@ polygon	mnogokotnik
 rectangle	pravokotnik	
 ellipse	elipsa	
 outline	obris	
+outline (verb)	orisati	Draw the outline of a region or of tissue: »Orišite območje z vsaj tremi točkami«, »Orišite tkivo z orodjem …«. Never »obrisati«, which reads as »wipe« or »erase«.
 annotation	anotacija	A drawn mark with a meaning; a free-text comment is »komentar«.
 class (annotation class)	razred	E.g. »Tumor«, »Stroma«; »razred anotacije«.
 layer	plast	
@@ -227,7 +229,7 @@ runtime (ONNX Runtime)	izvajalno okolje	The name ONNX Runtime stays.
 embedding	vložitev	Model output vector.
 reconstruction (VAE)	rekonstrukcija	VAE stays.
 score (tile score)	ocena	»ocene ploščic«.
-readout (region readout)	odčitek	»odčitek območja«.
+readout, region readout (Cellaris)	povzetek, povzetek območja	Statistics (mean, spread, density r²) computed from a model's predicted values over a region, not a measurement: never »odčitek« (an instrument reading), »meritev«, »merjenje«, »izmeriti« or »izmerjen« (»meritve«/»izmerjen« only where the English says measurements/measured: »napovedi niso meritve«, »izmerjena IF«). Tool and job title »Povzetek območja Cellaris« (»z orodjem Povzetek območja Cellaris«); heading REGION READOUT = »POVZETEK OBMOČJA«; layer »Cellaris — območje povzetka«; »s povzetkom napovedanih vrednosti v območju«; Compute a readout of a large region? = »Ali želite izračunati povzetek velikega območja?«; computing a (region) readout, a readout starts / can be cancelled = »računanje povzetka (območja)«; readouts = »povzetki«.
 legend	legenda	
 virtual staining	virtualno barvanje	Computed (synthetic) stain; see »synthetic«.
 segmentation, detection, classification	segmentacija, zaznavanje, razvrščanje	»Zaznavanje jeder«; a classifier: »klasifikator«.
@@ -256,7 +258,7 @@ cell (Cellaris grid square, 41.6 µm)	mrežna celica	Never plain »celica«, whi
 window (model input image)	okno	Square image a model predicts from: »okno 256×256 px«, »{n} oken napovedi«.
 tissue block (Cellaris, 5 µm square)	kvadratek tkiva	Not »blok tkiva« (paraffin block).
 display window (marker, arcsinh)	razpon prikaza	Range of values a marker colour is drawn over: »Razpon prikaza za {} (arcsinh)«.
-readout columns: mean / spread / density r²	povpr. / razpr. / r² gostote	Narrow columns of the Cellaris region readout; spread is the standard deviation (»razpršenost«).
+readout columns: mean / spread / density r²	povpr. / razpr. / r² gostote	Narrow columns of the Cellaris region readout (»povzetek območja«); spread is the standard deviation (»razpršenost«).
 reconstruction error	napaka rekonstrukcije	eovae (VAE anomaly) analysis.
 error map	zemljevid napak	eovae overlay; also »Izvirnik«, »Rekonstrukcija«, »Razlika« (Overlay choices).
 preprocessing	predobdelava	eovae model input preparation.

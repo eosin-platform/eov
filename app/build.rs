@@ -70,8 +70,10 @@ fn catalogs(dir: &Path) -> Vec<(String, PathBuf)> {
 /// Rust source for `app/src/i18n.rs`: the bundled languages in Slint's
 /// order, and for each language its plural rule and the translated texts
 /// that Rust code uses (entries that occur in `.rs` files, or nowhere in
-/// particular). Untranslated, fuzzy and obsolete entries are left out, as
-/// msgfmt does; they show in English.
+/// particular; a text that a `.slint` file shares with Rust code has the
+/// references of both, as `tools/i18n/i18n.py extract` writes them).
+/// Untranslated, fuzzy and obsolete entries are left out, as msgfmt does;
+/// they show in English.
 fn rust_catalogs(catalogs: &[(String, PathBuf)]) -> String {
     use rspolib::prelude::*;
     let mut code = String::from(
