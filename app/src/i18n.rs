@@ -575,8 +575,8 @@ mod tests {
             ("plugin_api/example-plugin/translations", "example_plugin"),
             ("plugins/annotations/translations", "annotations"),
             ("plugins/cellaris/translations", "cellaris"),
-            ("plugins/eovae/translations", "eovae"),
             ("plugins/gamepad/translations", "gamepad"),
+            ("plugins/vae/translations", "eovae"),
         ];
         let mut failures = Vec::new();
         for (dir, domain) in components {

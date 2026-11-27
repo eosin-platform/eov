@@ -11,7 +11,14 @@
 use semver::{Op, Version, VersionReq};
 use std::path::Path;
 
-const PLUGINS: &[&str] = &["annotations", "cellaris", "eovae", "gamepad"];
+/// The plugins' folders under `plugins/` and the ids their manifests must
+/// declare (eovae's repository is checked out as `plugins/vae`).
+const PLUGINS: &[(&str, &str)] = &[
+    ("annotations", "annotations"),
+    ("cellaris", "cellaris"),
+    ("gamepad", "gamepad"),
+    ("vae", "eovae"),
+];
 
 fn valid_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -20,14 +27,14 @@ fn valid_id(id: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
 }
 
-fn check(directory: &str, text: &str, host: &Version) -> Result<(), String> {
-    let manifest = eov_plugin_api::PluginManifest::from_toml(text, directory)
+fn check(id: &str, text: &str, host: &Version) -> Result<(), String> {
+    let manifest = eov_plugin_api::PluginManifest::from_toml(text, id)
         .map_err(|error| format!("rejected by the host parser: {error}"))?;
     if !valid_id(&manifest.id) {
         return Err(format!("id {:?} is not a valid plugin id", manifest.id));
     }
-    if manifest.id != directory {
-        return Err(format!("id {:?} differs from its directory", manifest.id));
+    if manifest.id != id {
+        return Err(format!("id {:?} is not {id:?}", manifest.id));
     }
     Version::parse(&manifest.version)
         .map_err(|error| format!("version {:?}: {error}", manifest.version))?;
@@ -61,12 +68,12 @@ fn repository_plugin_manifests_load_in_this_eov() {
     let required = std::env::var("EOV_REQUIRE_PLUGIN_MANIFESTS").is_ok_and(|value| value == "1");
     let mut failures = Vec::new();
     let mut checked = 0;
-    for directory in PLUGINS {
+    for (directory, id) in PLUGINS {
         let path = root.join(directory).join("plugin.toml");
         match std::fs::read_to_string(&path) {
             Ok(text) => {
                 checked += 1;
-                if let Err(error) = check(directory, &text, &host) {
+                if let Err(error) = check(id, &text, &host) {
                     failures.push(format!("{}: {error}", path.display()));
                 }
             }

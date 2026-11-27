@@ -830,7 +830,7 @@ eov call quantify '{"model": "h-dab", "stain": "DAB", "thresholds": [0.2, 0.6, 1
 
 ## Plugins
 
-Plugins extend eov with tools, overlays, panels, filters, analyses and slide formats. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/eovae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
+Plugins extend eov with tools, overlays, panels, filters, analyses and slide formats. They are native libraries built against [`eov-plugin-api`](plugin_api/README.md) 1.x, installed as `.eop` packages (`eov plugin install`, or the Plugins panel), and run inside eov. The in-tree plugins: [annotations](plugins/annotations), [gamepad](plugins/gamepad), [eovae](plugins/vae) (a variational-autoencoder anomaly heat map) and [cellaris](plugins/cellaris) (predicted multiplex IF channels from H&E; research use only).
 
 ### Annotations Plugin
 
@@ -858,7 +858,7 @@ The Plugins panel (the plugin button in the toolbar) does the same from the wind
 
 ### Models for AI plugins
 
-AI plugins need model files that are not shipped with them. eov keeps them in one **model store** per user, `<data folder>/models` (`eov paths` lists it as `models`), by the SHA-256 of each model's main file: a model is downloaded once for every plugin, and every file is checked against the SHA-256 the plugin (or you) pinned before anything uses it. [eovae](plugins/eovae/README.md#models) offers the HistoVAE reference model, whose files its model card pins, and [cellaris](plugins/cellaris/README.md#installing) downloads the marker model your site names.
+AI plugins need model files that are not shipped with them. eov keeps them in one **model store** per user, `<data folder>/models` (`eov paths` lists it as `models`), by the SHA-256 of each model's main file: a model is downloaded once for every plugin, and every file is checked against the SHA-256 the plugin (or you) pinned before anything uses it. [eovae](plugins/vae/README.md#models) offers the HistoVAE reference model, whose files its model card pins, and [cellaris](plugins/cellaris/README.md#installing) downloads the marker model your site names.
 
 **From a plugin.** A plugin's *Download model* action asks eov for the model by its SHA-256. A model already in the store is used at once. Otherwise eov asks first, naming the plugin, the model, its size and the servers, and downloads it only after a "yes", with progress and Cancel in the status bar; the plugin then loads it. Batch runs never download: they use the store.
 
@@ -1066,8 +1066,8 @@ Packaging assets live under `assets/` and `packaging/`; the release workflow (`.
 ├── plugins/              # In-tree plugins (separate Cargo projects)
 │   ├── annotations/      # submodule
 │   ├── cellaris/         # submodule
-│   ├── eovae/
-│   └── gamepad/          # submodule
+│   ├── gamepad/          # submodule
+│   └── vae/              # submodule (eovae)
 ├── assets/               # Icons, desktop and MIME files, macOS Info.plist
 ├── packaging/            # AppImage, Flatpak, macOS, Windows and Homebrew packaging
 ├── scripts/              # Release, packaging and development scripts

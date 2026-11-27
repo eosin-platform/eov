@@ -64,8 +64,8 @@ IN_TREE_PLUGINS = [
     "plugin_api/example-plugin",
     "plugins/annotations",
     "plugins/cellaris",
-    "plugins/eovae",
     "plugins/gamepad",
+    "plugins/vae",
 ]
 
 

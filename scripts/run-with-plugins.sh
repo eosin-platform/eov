@@ -113,7 +113,9 @@ package_eovae() {
 echo "Building eov..."
 cargo build -p eov
 
-PLUGINS=(annotations eovae gamepad)
+# Folders under plugins/ (eovae's is plugins/vae); packages are named by the
+# id in each plugin.toml.
+PLUGINS=(annotations gamepad vae)
 
 for plugin_name in "${PLUGINS[@]}"; do
     plugin_src="$PLUGINS_DIR/$plugin_name"

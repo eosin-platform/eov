@@ -716,8 +716,8 @@ mod tests {
             ("plugin_api/example-plugin/translations", "example_plugin"),
             ("plugins/annotations/translations", "annotations"),
             ("plugins/cellaris/translations", "cellaris"),
-            ("plugins/eovae/translations", "eovae"),
             ("plugins/gamepad/translations", "gamepad"),
+            ("plugins/vae/translations", "eovae"),
         ] {
             for language in i18n::translations() {
                 let path = i18n::catalog_path(&root.join(dir), domain, language);
