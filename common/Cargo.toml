@@ -2,7 +2,7 @@
 name = "eov-common"
 version = "1.1.0"
 edition = "2024"
-rust-version = "1.100"
+rust-version = "1.98"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
 license = "MIT OR Apache-2.0 OR GPL-3.0-only"
 description = "Common utilities and abstractions for the EOV project, including WSI handling, image processing, caching, and math utilities."
