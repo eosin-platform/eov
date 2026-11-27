@@ -144,6 +144,10 @@ jobs:
           $libDir = "${{ steps.openslide.outputs.lib-dir }}"
           $env:RUSTFLAGS = "-L native=$libDir"
           $env:OPENSLIDE_LIB_DIR = $libDir
+          # Fat LTO (the workspace release profile) makes the final `eov`
+          # rustc run for well over two hours on the hosted Windows runners
+          # (both arches), past the job timeout; thin LTO links it in minutes.
+          $env:CARGO_PROFILE_RELEASE_LTO = 'thin'
           cargo build --release --locked --target ${{ matrix.rust_target }} `
             --bin eov --bin eov-update-helper --bin eov-console `
             --no-default-features --features "distribution-windows-portable windows-console-launcher"
