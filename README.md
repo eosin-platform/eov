@@ -40,7 +40,7 @@ eov aims to make whole-slide image viewing accessible to researchers, educators 
 ## Installation
 
 <!-- release-install-links:start -->
-Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v0.4.9).
+Windows, macOS, and Linux are supported. Prebuilt binaries can be downloaded from the [Release page](https://github.com/eosin-platform/eov/releases/tag/v1.1.0).
 
 Both x86_64 and arm64 builds for all supported platforms are available. Make you sure you select the right architecture!
 
@@ -68,20 +68,20 @@ brew install --cask eov
 
 The `eov` cask tracks the latest stable release. Versioned casks remain pinned to an immutable release:
 ```bash
-brew install --cask eov@0.4.9
+brew install --cask eov@1.1.0
 ```
 
 `brew uninstall --zap --cask eov` also removes eov's settings, plugins and caches (`~/.eov`, `~/Library/Application Support/eov`, `~/Library/Caches/eov`).
 
 #### Manual Installation (macOS)
 A standalone `.app` file is available containing all dependencies. For Intel-based Macs, download the release with `x86` in the name. Apple M-series machines require the `arm64` bundle (the bundle declares the oldest macOS it runs on; macOS and Homebrew enforce it):
-- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-arm64.zip) (all Macs released since June 2023)
-- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
+- [Apple Silicon (M-series)](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-macos-arm64.zip) (all Macs released since June 2023)
+- [Intel (x86_64) Mac](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-macos-x86_64.zip) (All Macs released prior to 2020 and some through 2023)
 
 ### Windows
 A zip file containing a portable Windows build is available:
-- [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-x86_64.zip) (most Windows machines)
-- [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-windows-arm64.zip) (rarer)
+- [x86_64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-windows-x86_64.zip) (most Windows machines)
+- [arm64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-windows-arm64.zip) (rarer)
 
 Extract the zip; it contains a single `eov` folder. Keep that folder dedicated to eov (the self-updater replaces it as a whole and refuses to run if it contains unrelated files), then run `eov.exe` inside it. Only the portable version is available; no Windows installer is planned. Unless the release is code-signed, you'll get a security alert when attempting to open it. This alert can be safely bypassed through the "Run anyway" button. You will be hassled by this dialog every time you download a new version.
 
@@ -92,8 +92,8 @@ To have Explorer offer eov for slide files ("Open with", double-click) and open 
 ### Linux
 There are two methods of installation.
 
-- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-arm64.AppImage)
-- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-arm64.flatpak)
+- AppImage: [x86_64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-linux-x86_64.AppImage) | [arm64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-linux-arm64.AppImage)
+- Flatpak: [x86_64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-linux-x86_64.flatpak) | [arm64](https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-linux-arm64.flatpak)
 
 The AppImage runs on any distribution with glibc 2.28 or newer (RHEL/Rocky/AlmaLinux 8 and later, Debian 10 and later, Ubuntu 18.10 and later). The Flatpak is installed with `flatpak install --user <file>.flatpak` (or `--system`); it can read slides in your home directory and, read-only, on drives under `/media`, `/run/media` and `/mnt`. See [packaging/flatpak](packaging/flatpak/README.md) to grant access to other locations or, on Flatpak older than 1.15.6, to game controllers.
 
@@ -101,7 +101,7 @@ The AppImage is directly executable:
 
 ```bash
 # Download the binary
-curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v0.4.9/eov-v0.4.9-linux-x86_64.AppImage
+curl -L -o eov https://github.com/eosin-platform/eov/releases/download/v1.1.0/eov-v1.1.0-linux-x86_64.AppImage
 
 # Make it executable
 chmod +x ./eov
