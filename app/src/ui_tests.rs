@@ -447,9 +447,18 @@ fn dialog_controls_act_on_their_actions() {
 /// at a time as a keyboard does: each character goes through the field's
 /// input filter (an `InputType.number` field drops all but ASCII digits).
 fn type_into(ui: &AppWindow, element: &ElementHandle, text: &str) {
-    use slint::platform::{Key, WindowEvent};
     element.mock_single_click(slint::platform::PointerEventButton::Left);
     settle(ui);
+    select_all(ui);
+    for character in text.chars() {
+        key(ui, character.to_string());
+    }
+}
+
+/// Selects all of the focused field's text (Control+A, Slint's select-all
+/// shortcut on every platform).
+fn select_all(ui: &AppWindow) {
+    use slint::platform::{Key, WindowEvent};
     ui.window().dispatch_event(WindowEvent::KeyPressed {
         text: Key::Control.into(),
     });
@@ -457,9 +466,6 @@ fn type_into(ui: &AppWindow, element: &ElementHandle, text: &str) {
     ui.window().dispatch_event(WindowEvent::KeyReleased {
         text: Key::Control.into(),
     });
-    for character in text.chars() {
-        key(ui, character.to_string());
-    }
 }
 
 /// The dialogs' number fields take the digits Persian and Arabic keyboards
@@ -604,11 +610,19 @@ fn colour_values_count_without_enter() {
         let blue = find(&ui, AccessibleRole::TextInput, "Blue (0–255)");
 
         // Red, Tab, green, Tab, blue, Enter: all three are used. Tab
-        // selects the next field's text, so typing replaces it.
+        // selects the next field's text, so typing replaces it; on Apple
+        // platforms Slint's `TextInput` leaves the text unselected, so it is
+        // selected there before typing.
+        let tab = |ui: &AppWindow| {
+            key(ui, Key::Tab);
+            if cfg!(target_vendor = "apple") {
+                select_all(ui);
+            }
+        };
         type_into(&ui, &red, "255");
-        key(&ui, Key::Tab);
+        tab(&ui);
         key(&ui, "0");
-        key(&ui, Key::Tab);
+        tab(&ui);
         key(&ui, "0");
         key(&ui, Key::Return);
         assert_eq!(rgb(&ui), (255, 0, 0));

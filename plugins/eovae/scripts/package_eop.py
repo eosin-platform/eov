@@ -139,7 +139,9 @@ def catalogs_dir() -> pathlib.Path | None:
             return None
         folder = i18n.get("catalogs", "translations")
     except ModuleNotFoundError:  # Python < 3.11
-        section = re.search(r"^\[i18n\][ \t]*$(.*?)(?=^\[|\Z)", text, re.MULTILINE | re.DOTALL)
+        section = re.search(
+            r"^\[i18n\][ \t]*$(.*?)(?=^\[|\Z)", text, re.MULTILINE | re.DOTALL
+        )
         if section is None:
             return None
         match = re.search(r'^catalogs\s*=\s*"([^"]+)"', section.group(1), re.MULTILINE)
@@ -180,7 +182,9 @@ def sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def runtime_files(lib_dir: pathlib.Path, target: str, flavour: str) -> dict[str, pathlib.Path]:
+def runtime_files(
+    lib_dir: pathlib.Path, target: str, flavour: str
+) -> dict[str, pathlib.Path]:
     """Maps staged names to source files (symlinks resolved)."""
     files: dict[str, pathlib.Path] = {}
     names = sorted(p.name for p in lib_dir.iterdir())
@@ -197,12 +201,20 @@ def runtime_files(lib_dir: pathlib.Path, target: str, flavour: str) -> dict[str,
             if name in names:
                 add(name, lib_dir / name)
     elif target.startswith("osx"):
-        versioned = [n for n in names if re.fullmatch(r"libonnxruntime\.\d+\.\d+\.\d+\.dylib", n)]
-        main = versioned[-1] if versioned else ("libonnxruntime.dylib" if "libonnxruntime.dylib" in names else None)
+        versioned = [
+            n for n in names if re.fullmatch(r"libonnxruntime\.\d+\.\d+\.\d+\.dylib", n)
+        ]
+        main = (
+            versioned[-1]
+            if versioned
+            else ("libonnxruntime.dylib" if "libonnxruntime.dylib" in names else None)
+        )
         if main:
             add(main, lib_dir / main)
     else:
-        candidates = [n for n in names if re.fullmatch(r"libonnxruntime\.so(\.\d+)*", n)]
+        candidates = [
+            n for n in names if re.fullmatch(r"libonnxruntime\.so(\.\d+)*", n)
+        ]
         if candidates:
             # Stage the real library once, under its SONAME.
             add("libonnxruntime.so.1", lib_dir / max(candidates, key=len))
@@ -212,7 +224,9 @@ def runtime_files(lib_dir: pathlib.Path, target: str, flavour: str) -> dict[str,
         for name in wanted:
             if name in names:
                 add(name, lib_dir / name)
-    if not any(name.startswith(("libonnxruntime", "onnxruntime.dll")) for name in files):
+    if not any(
+        name.startswith(("libonnxruntime", "onnxruntime.dll")) for name in files
+    ):
         raise SystemExit(f"no ONNX Runtime library found in {lib_dir}")
     if gpu and not any("providers_cuda" in name for name in files):
         raise SystemExit(f"the GPU flavour needs the CUDA provider in {lib_dir}")
@@ -223,7 +237,9 @@ def has_runtime(folder: pathlib.Path) -> bool:
     """Whether ``folder`` (or its ``lib/``) holds an ONNX Runtime library."""
     pattern = re.compile(r"(lib)?onnxruntime(\.so(\.\d+)*|(\.\d+)*\.dylib|\.dll)")
     for candidate in (folder, folder / "lib"):
-        if candidate.is_dir() and any(pattern.fullmatch(p.name) for p in candidate.iterdir()):
+        if candidate.is_dir() and any(
+            pattern.fullmatch(p.name) for p in candidate.iterdir()
+        ):
             return True
     return False
 
@@ -238,11 +254,15 @@ def notices(root: pathlib.Path) -> dict[str, pathlib.Path]:
     return found
 
 
-def fetch_archive(target: str, flavour: str, archive: pathlib.Path | None, cache: pathlib.Path) -> pathlib.Path:
+def fetch_archive(
+    target: str, flavour: str, archive: pathlib.Path | None, cache: pathlib.Path
+) -> pathlib.Path:
     key = (target, flavour)
     if key not in ORT_ARCHIVES:
         choices = ", ".join(f"{p}/{f}" for p, f in sorted(ORT_ARCHIVES))
-        raise SystemExit(f"no pinned ONNX Runtime for {target}/{flavour}; available: {choices}")
+        raise SystemExit(
+            f"no pinned ONNX Runtime for {target}/{flavour}; available: {choices}"
+        )
     name, expected = ORT_ARCHIVES[key]
     if archive is None:
         cache.mkdir(parents=True, exist_ok=True)
@@ -256,7 +276,9 @@ def fetch_archive(target: str, flavour: str, archive: pathlib.Path | None, cache
             partial.replace(archive)
     actual = sha256(archive)
     if actual != expected:
-        raise SystemExit(f"checksum mismatch for {archive}: expected {expected}, got {actual}")
+        raise SystemExit(
+            f"checksum mismatch for {archive}: expected {expected}, got {actual}"
+        )
     return archive
 
 
@@ -276,12 +298,18 @@ def extract(archive: pathlib.Path, into: pathlib.Path) -> pathlib.Path:
     return roots[0]
 
 
-def add_file(archive: tarfile.TarFile, name: str, source: pathlib.Path, mtime: int) -> None:
+def add_file(
+    archive: tarfile.TarFile, name: str, source: pathlib.Path, mtime: int
+) -> None:
     data = source.read_bytes()
     info = tarfile.TarInfo(name)
     info.size = len(data)
     info.mtime = mtime
-    info.mode = 0o755 if source.suffix in (".so", ".dylib", ".dll") or ".so." in source.name else 0o644
+    info.mode = (
+        0o755
+        if source.suffix in (".so", ".dylib", ".dll") or ".so." in source.name
+        else 0o644
+    )
     info.uid = info.gid = 0
     info.uname = info.gname = ""
     archive.addfile(info, io.BytesIO(data))
@@ -300,15 +328,29 @@ def zstd_compress(source: pathlib.Path, target: pathlib.Path, level: int) -> str
     try:
         import zstandard
 
-        target.write_bytes(zstandard.ZstdCompressor(level=level).compress(source.read_bytes()))
+        target.write_bytes(
+            zstandard.ZstdCompressor(level=level).compress(source.read_bytes())
+        )
         return f"zstandard {zstandard.__version__}"
     except ImportError:
         pass
     tool = shutil.which("zstd")
     if tool is None:
-        raise SystemExit("--zstd needs Python 3.14+, the zstandard module or the zstd command")
+        raise SystemExit(
+            "--zstd needs Python 3.14+, the zstandard module or the zstd command"
+        )
     subprocess.run(
-        [tool, "-q", "-f", "-T1", "--no-progress", f"-{level}", "-o", str(target), str(source)],
+        [
+            tool,
+            "-q",
+            "-f",
+            "-T1",
+            "--no-progress",
+            f"-{level}",
+            "-o",
+            str(target),
+            str(source),
+        ],
         check=True,
     )
     return "zstd command"
@@ -316,18 +358,61 @@ def zstd_compress(source: pathlib.Path, target: pathlib.Path, level: int) -> str
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--library", required=True, type=pathlib.Path, help="the built plugin library")
-    parser.add_argument("--output", required=True, type=pathlib.Path, help="the .eop to write")
-    parser.add_argument("--platform", default=None, help="linux-x64, linux-aarch64, osx-arm64, win-x64 or win-arm64 (default: this machine)")
+    parser.add_argument(
+        "--library", required=True, type=pathlib.Path, help="the built plugin library"
+    )
+    parser.add_argument(
+        "--output", required=True, type=pathlib.Path, help="the .eop to write"
+    )
+    parser.add_argument(
+        "--platform",
+        default=None,
+        help="linux-x64, linux-aarch64, osx-arm64, win-x64 or win-arm64 (default: this machine)",
+    )
     runtime = parser.add_mutually_exclusive_group()
-    runtime.add_argument("--fetch-ort", action="store_true", help=f"bundle the pinned ONNX Runtime {ORT_VERSION}")
-    runtime.add_argument("--ort-dir", type=pathlib.Path, default=os.environ.get("EOVAE_ORT_DIR"), help="bundle ONNX Runtime from this folder (default: $EOVAE_ORT_DIR)")
+    runtime.add_argument(
+        "--fetch-ort",
+        action="store_true",
+        help=f"bundle the pinned ONNX Runtime {ORT_VERSION}",
+    )
+    runtime.add_argument(
+        "--ort-dir",
+        type=pathlib.Path,
+        default=os.environ.get("EOVAE_ORT_DIR"),
+        help="bundle ONNX Runtime from this folder (default: $EOVAE_ORT_DIR)",
+    )
     runtime.add_argument("--no-ort", action="store_true", help="bundle no ONNX Runtime")
-    parser.add_argument("--ort-flavor", default="cpu", choices=["cpu", "cuda12", "cuda13"], help="runtime build (GPU flavours add the CUDA provider)")
-    parser.add_argument("--ort-archive", type=pathlib.Path, default=os.environ.get("EOVAE_ORT_ARCHIVE"), help="use this downloaded release archive (still verified)")
-    parser.add_argument("--cache-dir", type=pathlib.Path, default=pathlib.Path(tempfile.gettempdir()) / "eovae-packaging", help="where downloads are kept")
-    parser.add_argument("--zstd", action="store_true", help="compress the package with zstd (eov 1.0 reads plain and zstd packages)")
-    parser.add_argument("--zstd-level", type=int, default=19, choices=range(1, 20), metavar="1-19", help="zstd level for --zstd (default 19)")
+    parser.add_argument(
+        "--ort-flavor",
+        default="cpu",
+        choices=["cpu", "cuda12", "cuda13"],
+        help="runtime build (GPU flavours add the CUDA provider)",
+    )
+    parser.add_argument(
+        "--ort-archive",
+        type=pathlib.Path,
+        default=os.environ.get("EOVAE_ORT_ARCHIVE"),
+        help="use this downloaded release archive (still verified)",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=pathlib.Path,
+        default=pathlib.Path(tempfile.gettempdir()) / "eovae-packaging",
+        help="where downloads are kept",
+    )
+    parser.add_argument(
+        "--zstd",
+        action="store_true",
+        help="compress the package with zstd (eov 1.0 reads plain and zstd packages)",
+    )
+    parser.add_argument(
+        "--zstd-level",
+        type=int,
+        default=19,
+        choices=range(1, 20),
+        metavar="1-19",
+        help="zstd level for --zstd (default 19)",
+    )
     # Accepted for older callers (scripts/run-with-plugins.sh). The old
     # build.rs copied ONNX Runtime next to the library; a folder without one
     # now packages no runtime instead of failing.
@@ -336,7 +421,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.plugin_root and args.plugin_root.resolve() != PLUGIN_ROOT:
         raise SystemExit(f"--plugin-root must be {PLUGIN_ROOT}")
-    if args.native_lib_dir and not (args.fetch_ort or args.no_ort or args.ort_archive or args.ort_dir):
+    if args.native_lib_dir and not (
+        args.fetch_ort or args.no_ort or args.ort_archive or args.ort_dir
+    ):
         if has_runtime(args.native_lib_dir):
             args.ort_dir = args.native_lib_dir
         else:
@@ -351,7 +438,9 @@ def main() -> int:
     plugin = plugin_id()
     expected_library = library_name(plugin, target)
     if args.library.name != expected_library:
-        raise SystemExit(f"the library must be named {expected_library} for {target}, got {args.library.name}")
+        raise SystemExit(
+            f"the library must be named {expected_library} for {target}, got {args.library.name}"
+        )
     if not args.library.is_file():
         raise SystemExit(f"missing plugin library: {args.library}")
 
@@ -367,11 +456,17 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         runtime_root = None
         if args.fetch_ort or args.ort_archive:
-            archive = fetch_archive(target, args.ort_flavor, args.ort_archive, args.cache_dir)
+            archive = fetch_archive(
+                target, args.ort_flavor, args.ort_archive, args.cache_dir
+            )
             runtime_root = extract(archive, pathlib.Path(scratch))
             lib_dir = runtime_root / "lib"
         elif args.ort_dir and not args.no_ort:
-            lib_dir = args.ort_dir if not (args.ort_dir / "lib").is_dir() else args.ort_dir / "lib"
+            lib_dir = (
+                args.ort_dir
+                if not (args.ort_dir / "lib").is_dir()
+                else args.ort_dir / "lib"
+            )
             runtime_root = args.ort_dir
         else:
             lib_dir = None
