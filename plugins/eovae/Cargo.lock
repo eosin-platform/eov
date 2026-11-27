@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "eovae"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "eov-plugin-api",
  "half",

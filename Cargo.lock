@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "eov"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "eov-common"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "ab_glyph",
  "criterion",

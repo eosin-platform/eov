@@ -1,6 +1,6 @@
 [package]
 name = "eov"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 default-run = "eov"
 authors = ["Thomas Havlik <me@thavlik.dev>"]
@@ -29,7 +29,7 @@ required-features = ["windows-console-launcher"]
 
 [dependencies]
 # Common crate
-eov-common = { path = "../common", version = "1.0.0" }
+eov-common = { path = "../common", version = "1.1.0" }
 
 # Plugin API
 eov-plugin-api = { path = "../plugin_api", version = "1.1.0" }

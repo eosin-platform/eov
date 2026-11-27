@@ -1,6 +1,6 @@
 id = "eovae"
 name = "EOV VAE"
-version = "1.0.0"
+version = "1.1.0"
 description = "Reconstruction-error analysis with ONNX VAE models, showing how unlike the training data the tissue looks: heat maps, reconstructions, error statistics and highest-error regions. Research use only; not for diagnosis."
 repository = "https://github.com/eosin-platform/eov"
 api = ">=1.0, <2"
